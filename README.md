@@ -7,7 +7,7 @@ Application web moderne pour centraliser les informations d'une classe de second
 | Espace | URL | Accès |
 |---|---|---|
 | **Élèves** | `https://votre-domaine.fr/` | Lien public court |
-| **Délégué** | `https://votre-domaine.fr/gestion-7xK4p/` | Lien secret + mot de passe |
+| **Délégué** | `https://votre-domaine.fr/gestion/<TOKEN>/` | Lien secret + mot de passe |
 
 ## 🚀 Lancer le projet en développement
 
@@ -27,7 +27,7 @@ npm run dev
 - API + base : **http://localhost:3001** (Express + SQLite)
 
 ### Identifiants par défaut
-- **Lien délégué** : `http://localhost:5173/gestion-7xK4p/`
+- **Lien délégué** : `http://localhost:5173/gestion/<TOKEN>/` (celui que vous avez régénéré dans Paramètres)
 - **Mot de passe** : `delegue2026`
 
 > ⚠️ Changez le mot de passe et le lien privé dès le premier lancement
@@ -97,7 +97,7 @@ SQLite (`data/seconde.db`) avec les tables :
 `poll_votes`, `events`, `resources`, `projects`, `admin_login_attempts`.
 
 Le schéma est conçu pour **ajouter d'autres classes** facilement
-(colonne `class_id` à ajouter + route paramétrée `/gestion-{token}`).
+(colonne `class_id` à ajouter + route paramétrée `/gestion/{token}`).
 
 ## ☁️ Déployer le site
 
@@ -129,7 +129,7 @@ Sur Railway/Render : build command `npm run build`, start command `npm start`.
 
 Résultat :
 - Espace élève : `https://seconde9.fr`
-- Espace délégué : `https://seconde9.fr/gestion-7xK4p/`
+- Espace délégué : `https://seconde9.fr/gestion/<TOKEN>/`
 
 ## 📱 Installer sur l'iPad / iPhone (PWA)
 

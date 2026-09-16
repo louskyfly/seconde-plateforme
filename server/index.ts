@@ -30,6 +30,8 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 initDatabase(db);
 seedDatabase(db);
 
+app.set('trust proxy', process.env.TRUST_PROXY ? parseInt(process.env.TRUST_PROXY, 10) : false);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
@@ -42,7 +44,7 @@ app.use(
     store: new session.MemoryStore(),
     cookie: {
       httpOnly: true,
-      secure: NODE_ENV === 'production',
+      secure: process.env.COOKIE_SECURE === 'true' ? true : ('auto' as const),
       maxAge: 24 * 60 * 60 * 1000,
     },
   })

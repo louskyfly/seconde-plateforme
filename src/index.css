@@ -4,9 +4,10 @@
 
 @layer base {
   :root {
-    --accent: #6366f1;
+    --accent: #3b5ba6;
+    --accent-deep: #1b2f5c;
   }
-  
+
   html {
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
@@ -14,54 +15,182 @@
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 min-h-screen;
+    @apply text-gray-900 min-h-screen;
+    background-color: #e9eff9;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
   }
 
   .dark body {
-    @apply bg-gray-950 text-gray-100;
+    @apply text-gray-100;
+    background-color: #0a1220;
   }
 }
 
+/* ===== Fond « Liquid Glass » : gradient + refractions de lumière ===== */
+.liquid-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 95% at 12% 0%, #c9d9f2 0%, rgba(201, 217, 242, 0) 55%),
+    linear-gradient(155deg, #e3ebf8 0%, #eef3fb 48%, #d6e3f4 100%);
+}
+.dark .liquid-bg {
+  background:
+    radial-gradient(120% 95% at 12% 0%, #1c3160 0%, rgba(28, 49, 96, 0) 55%),
+    linear-gradient(155deg, #0d1830 0%, #0a1220 55%, #101b31 100%);
+}
+
+/* Halos lumineux (sources de lumière qui traversent le verre) */
+.liquid-bg::before,
+.liquid-bg::after,
+.liquid-bg span {
+  content: '';
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(46px);
+  will-change: transform;
+}
+
+.liquid-bg::before {
+  width: 62vmax;
+  height: 62vmax;
+  left: -20vmax;
+  top: -22vmax;
+  background: radial-gradient(circle, rgba(95, 133, 205, 0.55) 0%, rgba(95, 133, 205, 0) 62%);
+  animation: orb-drift 26s ease-in-out infinite alternate;
+}
+.liquid-bg::after {
+  width: 54vmax;
+  height: 54vmax;
+  right: -18vmax;
+  bottom: -20vmax;
+  background: radial-gradient(circle, rgba(141, 170, 224, 0.5) 0%, rgba(141, 170, 224, 0) 62%);
+  animation: orb-drift 34s ease-in-out infinite alternate-reverse;
+}
+.liquid-bg span {
+  display: block;
+  width: 48vmax;
+  height: 48vmax;
+  top: 32%;
+  left: 46%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 60%);
+  animation: orb-drift 22s ease-in-out infinite alternate;
+}
+
+.dark .liquid-bg::before {
+  background: radial-gradient(circle, rgba(43, 67, 133, 0.55) 0%, rgba(43, 67, 133, 0) 62%);
+}
+.dark .liquid-bg::after {
+  background: radial-gradient(circle, rgba(95, 133, 205, 0.28) 0%, rgba(95, 133, 205, 0) 62%);
+}
+.dark .liquid-bg span {
+  background: radial-gradient(circle, rgba(141, 170, 224, 0.16) 0%, rgba(141, 170, 224, 0) 60%);
+}
+
+@keyframes orb-drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(6vmax, 4.5vmax, 0) scale(1.18); }
+}
+
 @layer components {
+  /* ===== Verre (Liquid Glass) ===== */
   .glass {
-    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-lg;
+    position: relative;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.42) 100%);
+    backdrop-filter: blur(24px) saturate(185%);
+    -webkit-backdrop-filter: blur(24px) saturate(185%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow:
+      0 12px 40px rgba(20, 36, 69, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+  }
+  /* Reflet spéculaire + réfraction de la lumière sur la surface */
+  .glass::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(115deg, transparent 22%, rgba(255, 255, 255, 0.35) 46%, transparent 60%),
+      radial-gradient(130% 65% at 15% 0%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 45%);
   }
   .dark .glass {
-    @apply bg-gray-800/70 border-gray-700/30;
+    background: linear-gradient(135deg, rgba(28, 40, 72, 0.72) 0%, rgba(11, 18, 36, 0.6) 100%);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
   }
-  
+  .dark .glass::after {
+    background:
+      linear-gradient(115deg, transparent 22%, rgba(255, 255, 255, 0.07) 46%, transparent 60%),
+      radial-gradient(130% 65% at 15% 0%, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0) 45%);
+  }
+
   .glass-card {
-    @apply glass rounded-2xl p-5 transition-all duration-200;
+    @apply rounded-3xl p-5 transition-all duration-200;
   }
   .glass-card:hover {
-    @apply shadow-xl scale-[1.01];
+    transform: translateY(-2px) scale(1.01);
+    box-shadow:
+      0 20px 48px rgba(20, 36, 69, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.25);
   }
-  
+
   .glass-button {
-    @apply glass rounded-xl px-5 py-3 font-semibold text-sm 
-           active:scale-95 transition-all duration-150 
+    @apply rounded-full px-5 py-3 font-semibold text-sm
+           active:scale-95 transition-all duration-150
            flex items-center justify-center gap-2;
   }
   .glass-button-primary {
-    @apply glass-button bg-indigo-500/90 text-white border-indigo-400/30 
-           hover:bg-indigo-600/90 active:bg-indigo-700/90;
+    @apply glass-button text-white;
+    background: linear-gradient(135deg, #5f85cd 0%, #2b4385 100%);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow:
+      0 10px 24px rgba(43, 67, 133, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35);
   }
-  
+  .glass-button-primary:hover {
+    background: linear-gradient(135deg, #6d93d6 0%, #2e4b8a 100%);
+  }
+  .glass-button-primary:active {
+    background: linear-gradient(135deg, #2e4b8a 0%, #1b2f5c 100%);
+  }
+  .dark .glass-button-primary {
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow:
+      0 10px 24px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
   .glass-input {
-    @apply glass rounded-xl px-4 py-3 w-full text-sm outline-none 
+    @apply rounded-2xl px-4 py-3 w-full text-sm outline-none
            placeholder:text-gray-400 focus:ring-2 focus:ring-indigo-500/50;
   }
-  
+
+  /* Titre en dégradé bleu nuit */
+  .gradient-text-night {
+    background: linear-gradient(120deg, #3b5ba6 0%, #1b2f5c 55%, #5f85cd 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
   .page-container {
     @apply max-w-5xl mx-auto px-4 pb-24 pt-4;
   }
-  
+
   .sidebar-container {
     @apply hidden lg:flex;
   }
-  
+
   .bottom-nav {
     @apply fixed bottom-0 inset-x-0 lg:hidden;
     padding-bottom: env(safe-area-inset-bottom);

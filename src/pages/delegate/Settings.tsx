@@ -16,7 +16,7 @@ export function Settings() {
 
   const [className, setClassName] = useState('');
   const [delegateName, setDelegateName] = useState('');
-  const [accentColor, setAccentColor] = useState('#6366f1');
+  const [accentColor, setAccentColor] = useState('#3b5ba6');
   const [homeInfo, setHomeInfo] = useState('');
 
   const [oldPassword, setOldPassword] = useState('');

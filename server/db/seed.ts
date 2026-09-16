@@ -33,7 +33,7 @@ export function seedDatabase(db: Database.Database = database, options: SeedOpti
     delegateName,
     linkToken,
     passwordHash,
-    accentColor: options.accentColor ?? '#6366f1',
+    accentColor: options.accentColor ?? '#3b5ba6',
     homeInfo: options.homeInfo ?? '',
   });
 }

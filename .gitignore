@@ -28,6 +28,7 @@ start-server.bat
 # OS files
 .DS_Store
 Thumbs.db
+.tmp-gh.mjs
 
 # Editor
 .vscode/

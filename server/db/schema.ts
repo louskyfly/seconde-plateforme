@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS settings (
   delegate_name TEXT DEFAULT 'Lucas',
   delegate_link_token TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  accent_color TEXT DEFAULT '#6366f1',
+  accent_color TEXT DEFAULT '#3b5ba6',
   home_info TEXT DEFAULT '',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

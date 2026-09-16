@@ -1,4 +1,4 @@
-const CACHE_NAME = "seconde-shell-v1";
+const CACHE_NAME = "seconde-shell-v2";
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
@@ -21,13 +21,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (request.method !== "GET") return;
+  if (url.origin !== location.origin) return;
 
-  if (url.pathname.startsWith("/api/")) {
-    event.respondWith(networkFirst(request));
-    return;
-  }
-
-  if (event.request.mode === "navigate") {
+  if (url.pathname.startsWith("/api/") || request.mode === "navigate") {
     event.respondWith(networkFirst(request));
     return;
   }

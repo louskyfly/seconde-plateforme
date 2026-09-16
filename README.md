@@ -99,20 +99,29 @@ SQLite (`data/seconde.db`) avec les tables :
 Le schéma est conçu pour **ajouter d'autres classes** facilement
 (colonne `class_id` à ajouter + route paramétrée `/gestion/{token}`).
 
-## ☁️ Déployer le site
+## ☁️ Déployer le site (Render — gratuit)
 
-**Option 1 — Serveur Node.js (Replit, Railway, Render, Fly.io, VPS)**
+Le projet est pré-configuré avec un **render.yaml** (Blueprint).
 
-```bash
-npm install && npm run build && npm start
-```
+### Étapes
+1. Créez un compte gratuit sur [render.com](https://render.com) (email + mot de passe)
+2. Dans le Dashboard → **New** → **Blueprint** → connectez votre compte GitHub
+3. Sélectionnez le dépôt `seconde-plateforme` (privé) — Render lit le `render.yaml` automatiquement
+4. Configurez les variables d'environnement secrètes dans le Dashboard Render (onglet **Environment**) :
+   - `SESSION_SECRET` = le Render le génère automatiquement ✅
+   - `ADMIN_LINK_TOKEN` = `cb29d732629c` (ou changez-le via les Paramètres après le 1er lancement)
+   - `ADMIN_PASSWORD` = `delegue2026` (ou changez-le via les Paramètres)
+5. Cliquez sur **Deploy** — le build prend ~2 min
+6. Une fois déployé, le site est accessible sur `https://seconde-plateforme.onrender.com/`
 
-Sur Railway/Render : build command `npm run build`, start command `npm start`.
-> ⚠️ Sur ces plateformes, montez un volume persistant pour `data/` (SQLite)
-> afin de conserver les données entre les redéploiements.
+### Accès
+- **Élèves** : `https://seconde-plateforme.onrender.com/`
+- **Délégué** : `https://seconde-plateforme.onrender.com/gestion/cb29d732629c/`
 
-**Option 2 — Bonne pratique production**: migrez vers **PostgreSQL**
-(architecture déjà séparée : modifiez les requêtes dans `server/db`).
+### Notes
+- Le QR code se génère automatiquement depuis la page **Paramètres** de l'espace délégué
+- Les données SQLite sont éphémères sur le plan gratuit (perdues au redéploiement)
+- En cas de crash : vérifiez les logs dans le Dashboard Render
 
 ## 🌐 Connecter un domaine court
 

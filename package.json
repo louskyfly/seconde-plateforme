@@ -4,12 +4,15 @@
   "version": "1.0.0",
   "type": "module",
   "description": "Plateforme des délégués de classe - Seconde",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
     "dev:client": "vite",
-    "dev:server": "tsc -p tsconfig.server.json && concurrently -k -n watch,node -c magenta,yellow \"tsc -p tsconfig.server.json --watch --preserveWatchOutput\" \"node --watch dist/server/server.js\"",
+    "dev:server": "tsc -p tsconfig.server.json && concurrently -k -n watch,node -c magenta,yellow \"tsc -p tsconfig.server.json --watch --preserveWatchOutput\" \"node --watch dist/server/index.js\"",
     "build": "tsc -p tsconfig.server.json && vite build",
-    "start": "node dist/server/server.js",
+    "start": "node dist/server/index.js",
     "db:seed": "node dist/server/scripts/seed.js"
   },
   "dependencies": {

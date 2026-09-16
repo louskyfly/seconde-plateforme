@@ -66,6 +66,10 @@ app.use('/api/projects', projectsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/stats', statsRoutes);
 
+app.get('/api/health', (_, res) => {
+  res.json({ status: 'ok' });
+});
+
 if (NODE_ENV === 'production') {
   const staticDir = path.join(__dirname, '..', '..', 'dist', 'public');
   app.get('*', (req, res) => {

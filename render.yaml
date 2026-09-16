@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: seconde-plateforme
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"
+      - key: CLASS_NAME
+        value: Seconde 9
+      - key: DELEGATE_NAME
+        value: Lucas
+      - key: ADMIN_PASSWORD
+        value: delegue2026
+      - key: DB_PATH
+        value: ./data/seconde.db
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_LINK_TOKEN
+        value: cb29d732629c

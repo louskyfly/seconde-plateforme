@@ -10,20 +10,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Seconde" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="theme-color" content="#2b4385" />
+    <meta name="theme-color" content="#0a1220" />
     <meta name="description" content="Plateforme des délégués de classe - Seconde" />
     <script>
-      (function () {
-        try {
-          var mq = window.matchMedia('(prefers-color-scheme: dark)');
-          var apply = function () {
-            document.documentElement.classList.toggle('dark', mq.matches);
-          };
-          apply();
-          if (mq.addEventListener) mq.addEventListener('change', apply);
-          else if (mq.addListener) mq.addListener(apply);
-        } catch (e) {}
-      })();
+      document.documentElement.classList.add('dark');
     </script>
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

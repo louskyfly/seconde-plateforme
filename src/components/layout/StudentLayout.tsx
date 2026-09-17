@@ -93,7 +93,9 @@ export function StudentLayout() {
       <main className="lg:ml-64">
         <div className="page-container">
           <PushBanner />
-          <Outlet />
+          <div key={location.pathname} className="page-transition">
+            <Outlet />
+          </div>
         </div>
         <footer className="pb-4 text-center text-[10px] text-gray-300 dark:text-gray-600">
           Créé et déployé par Lucas Sanchez

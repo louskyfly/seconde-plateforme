@@ -197,7 +197,7 @@ export function ManageIdeas() {
 
       {loading ? (
         <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-3 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+          <div className="w-8 h-8 border-[3px] border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="glass-card text-center py-12">

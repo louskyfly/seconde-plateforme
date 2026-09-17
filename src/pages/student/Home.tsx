@@ -5,47 +5,64 @@ import { useSettings } from '@/hooks/useSettings';
 import { formatDate, getRelativeTime, CATEGORIES_IDEA, PROJECT_STATUSES } from '@/lib/utils';
 import type { Announcement, Idea, Poll, Event, Resource, Project } from '@/types';
 
-interface WidgetProps {
+interface BubbleProps {
   to: string;
   emoji: string;
   title: string;
   meta?: string;
-  content: string;
-  empty: string;
-  className?: string;
 }
 
-function Widget({ to, emoji, title, meta, content, empty, className = '' }: WidgetProps) {
+function Bubble({ to, emoji, title, meta }: BubbleProps) {
+  return (
+    <Link
+      to={to}
+      className="glass group flex aspect-square flex-col items-center justify-center gap-1.5 rounded-full px-2 text-center no-underline text-inherit active:scale-95 transition-transform duration-200"
+    >
+      <span className="flex h-11 w-11 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-indigo-500/10 text-2xl sm:text-3xl transition-colors duration-200 group-hover:bg-indigo-500/20">
+        {emoji}
+      </span>
+      <span className="text-[11px] sm:text-xs font-bold leading-tight">{title}</span>
+      {meta && (
+        <span className="w-full truncate text-[10px] leading-none text-gray-400 dark:text-gray-500">
+          {meta}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function FeaturedBubble({
+  to,
+  emoji,
+  title,
+  meta,
+  content,
+  empty,
+}: BubbleProps & { content: string; empty: string }) {
   const hasContent = content.trim().length > 0;
   return (
     <Link
       to={to}
-      className={`glass-card group flex flex-col gap-3 no-underline text-inherit active:scale-[0.98] ${className}`}
+      className="glass group mt-3 flex items-center gap-3 rounded-full px-4 py-3 sm:px-6 sm:py-4 no-underline text-inherit active:scale-[0.98] transition-transform duration-200"
     >
-      <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-500/10 text-xl transition-colors duration-200 group-hover:bg-indigo-500/20">
-          {emoji}
-        </span>
-        <div className="min-w-0">
-          <h3 className="text-sm font-bold leading-tight">{title}</h3>
-          {meta && (
-            <p className="mt-0.5 text-[11px] font-medium text-gray-400 dark:text-gray-500">
-              {meta}
-            </p>
-          )}
-        </div>
+      <span className="flex h-11 w-11 sm:h-14 sm:w-14 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500/10 text-2xl sm:text-3xl transition-colors duration-200 group-hover:bg-indigo-500/20">
+        {emoji}
+      </span>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-bold">{title}</h3>
+        <p
+          className={`truncate text-xs ${
+            hasContent ? 'text-gray-600 dark:text-gray-300' : 'italic text-gray-400 dark:text-gray-500'
+          }`}
+        >
+          {hasContent ? content : empty}
+        </p>
       </div>
-      <p
-        className={`line-clamp-2 flex-1 text-xs leading-relaxed ${
-          hasContent
-            ? 'text-gray-600 dark:text-gray-300'
-            : 'italic text-gray-400 dark:text-gray-500'
-        }`}
-      >
-        {hasContent ? content : empty}
-      </p>
-      <span className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 transition-transform duration-200 group-hover:translate-x-0.5">
-        Ouvrir <span aria-hidden="true">→</span>
+      <div className="hidden sm:block text-right">
+        {meta && <span className="text-[10px] text-gray-400 dark:text-gray-500">{meta}</span>}
+      </div>
+      <span className="text-gray-400 transition-transform duration-200 group-hover:translate-x-1">
+        →
       </span>
     </Link>
   );
@@ -112,13 +129,11 @@ export default function Home() {
 
   return (
     <div className="animate-fadeIn">
-      <header className="mb-6">
+      <header className="mb-5">
         <h1 className="gradient-text-night text-2xl font-bold">
           {settings?.class_name || 'Seconde'}
         </h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          La plateforme de notre classe
-        </p>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">La plateforme de notre classe</p>
         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 capitalize">{today}</p>
       </header>
 
@@ -134,63 +149,45 @@ export default function Home() {
       )}
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="glass-card animate-pulse">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="h-10 w-10 rounded-2xl bg-gray-200 dark:bg-gray-700" />
-                <div className="h-4 w-28 rounded bg-gray-200 dark:bg-gray-700" />
-              </div>
-              <div className="h-3 w-full rounded bg-gray-200 dark:bg-gray-700 mb-2" />
-              <div className="h-3 w-2/3 rounded bg-gray-200 dark:bg-gray-700" />
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 sm:gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className="glass aspect-square rounded-full animate-pulse flex flex-col items-center justify-center gap-2"
+            >
+              <div className="h-11 w-11 sm:h-14 sm:w-14 rounded-full bg-gray-200 dark:bg-gray-700" />
+              <div className="h-3 w-16 rounded bg-gray-200 dark:bg-gray-700" />
             </div>
           ))}
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Widget
-              to="/informations"
-              emoji="📢"
-              title="Informations"
-              meta={latestAnnouncement ? getRelativeTime(latestAnnouncement.created_at) : ''}
-              content={latestAnnouncement ? latestAnnouncement.title : ''}
-              empty="Aucune annonce publiée pour le moment"
-              className="sm:col-span-2"
-            />
-            <Widget
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 sm:gap-4">
+            <Bubble
               to="/sondages"
               emoji="🗳️"
               title="Sondages"
               meta={activePoll ? `${activePoll.total_votes ?? 0} vote(s)` : ''}
-              content={activePoll ? activePoll.question : ''}
-              empty="Aucun sondage en cours"
             />
-            <Widget
+            <Bubble
               to="/calendrier"
               emoji="📅"
               title="Agenda"
-              meta={nextEvent?.time ?? ''}
-              content={nextEvent ? `${nextEvent.title} · ${formatDate(nextEvent.date)}` : ''}
-              empty="Aucun événement prévu"
+              meta={nextEvent ? formatDate(nextEvent.date) : ''}
             />
-            <Widget
+            <Bubble
               to="/idees"
               emoji="💡"
-              title="Boîte à idées"
+              title="Idées"
               meta={latestIdea ? CATEGORIES_IDEA[latestIdea.category] : ''}
-              content={latestIdea ? latestIdea.title : ''}
-              empty="Propose une idée pour la classe"
             />
-            <Widget
+            <Bubble
               to="/ressources"
               emoji="📚"
               title="Ressources"
-              meta={resources.length > 0 ? `${resources.length} ressource(s)` : ''}
-              content={resources.length > 0 ? resources[0].title : ''}
-              empty="Aucune ressource partagée"
+              meta={resources.length > 0 ? `${resources.length}` : ''}
             />
-            <Widget
+            <Bubble
               to="/projets"
               emoji="🚀"
               title="Projets"
@@ -199,21 +196,28 @@ export default function Home() {
                   ? PROJECT_STATUSES[latestProject.status].label
                   : ''
               }
-              content={latestProject ? latestProject.name : ''}
-              empty="Aucun projet en cours"
             />
           </div>
 
+          <FeaturedBubble
+            to="/informations"
+            emoji="📢"
+            title="Informations"
+            meta={latestAnnouncement ? getRelativeTime(latestAnnouncement.created_at) : ''}
+            content={latestAnnouncement ? latestAnnouncement.title : ''}
+            empty="Aucune annonce publiée pour le moment"
+          />
+
           <Link
             to="/messagerie"
-            className="glass-card group mt-3 flex items-center gap-4 no-underline text-inherit active:scale-[0.98]"
+            className="glass group mt-3 flex items-center gap-3 rounded-full px-4 py-3 sm:px-6 sm:py-4 no-underline text-inherit active:scale-[0.98] transition-transform duration-200"
           >
-            <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-500 text-2xl shadow-lg shadow-indigo-500/30">
+            <span className="flex h-11 w-11 sm:h-14 sm:w-14 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500 text-2xl shadow-lg shadow-indigo-500/30">
               💬
             </span>
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-bold">Parler au délégué</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="truncate text-xs text-gray-500 dark:text-gray-400">
                 Envoie un message en toute confidentialité
               </p>
             </div>

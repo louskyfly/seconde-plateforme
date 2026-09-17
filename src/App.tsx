@@ -1,58 +1,63 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { StudentLayout } from './components/layout/StudentLayout';
-import Home from './pages/student/Home';
-import Announcements from './pages/student/Announcements';
-import Ideas from './pages/student/Ideas';
-import MessageDelegate from './pages/student/MessageDelegate';
-import Polls from './pages/student/Polls';
-import Calendar from './pages/student/Calendar';
-import Resources from './pages/student/Resources';
-import Projects from './pages/student/Projects';
-import DelegateLogin from './pages/delegate/Login';
 import DelegateLayout from './components/layout/DelegateLayout';
-import DelegateDashboard from './pages/delegate/Dashboard';
-import DelegateMessages from './pages/delegate/ManageMessages';
-import DelegateIdeas from './pages/delegate/ManageIdeas';
-import DelegatePolls from './pages/delegate/ManagePolls';
-import DelegateAnnouncements from './pages/delegate/ManageAnnouncements';
-import DelegateCalendar from './pages/delegate/ManageCalendar';
-import DelegateResources from './pages/delegate/ManageResources';
-import DelegateProjects from './pages/delegate/ManageProjects';
-import DelegateSettings from './pages/delegate/Settings';
 import { AuthProvider } from './hooks/useAuth';
+import { PageLoader } from './components/ui/PageLoader';
+
+const Home = lazy(() => import('./pages/student/Home'));
+const Announcements = lazy(() => import('./pages/student/Announcements'));
+const Ideas = lazy(() => import('./pages/student/Ideas'));
+const MessageDelegate = lazy(() => import('./pages/student/MessageDelegate'));
+const Polls = lazy(() => import('./pages/student/Polls'));
+const Calendar = lazy(() => import('./pages/student/Calendar'));
+const Resources = lazy(() => import('./pages/student/Resources'));
+const Projects = lazy(() => import('./pages/student/Projects'));
+const DelegateLogin = lazy(() => import('./pages/delegate/Login'));
+const DelegateDashboard = lazy(() => import('./pages/delegate/Dashboard'));
+const DelegateMessages = lazy(() => import('./pages/delegate/ManageMessages'));
+const DelegateIdeas = lazy(() => import('./pages/delegate/ManageIdeas'));
+const DelegatePolls = lazy(() => import('./pages/delegate/ManagePolls'));
+const DelegateAnnouncements = lazy(() => import('./pages/delegate/ManageAnnouncements'));
+const DelegateCalendar = lazy(() => import('./pages/delegate/ManageCalendar'));
+const DelegateResources = lazy(() => import('./pages/delegate/ManageResources'));
+const DelegateProjects = lazy(() => import('./pages/delegate/ManageProjects'));
+const DelegateSettings = lazy(() => import('./pages/delegate/Settings'));
 
 export default function App() {
   return (
     <AuthProvider>
-      <Routes>
-        {/* Student space */}
-        <Route element={<StudentLayout />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/informations" element={<Announcements />} />
-          <Route path="/idees" element={<Ideas />} />
-          <Route path="/messagerie" element={<MessageDelegate />} />
-          <Route path="/sondages" element={<Polls />} />
-          <Route path="/calendrier" element={<Calendar />} />
-          <Route path="/ressources" element={<Resources />} />
-          <Route path="/projets" element={<Projects />} />
-        </Route>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {/* Student space */}
+          <Route element={<StudentLayout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/informations" element={<Announcements />} />
+            <Route path="/idees" element={<Ideas />} />
+            <Route path="/messagerie" element={<MessageDelegate />} />
+            <Route path="/sondages" element={<Polls />} />
+            <Route path="/calendrier" element={<Calendar />} />
+            <Route path="/ressources" element={<Resources />} />
+            <Route path="/projets" element={<Projects />} />
+          </Route>
 
-        {/* Delegate space */}
-        <Route path="/gestion" element={<DelegateLogin />} />
-        <Route path="/gestion/:token" element={<DelegateLayout />}>
-          <Route index element={<DelegateDashboard />} />
-          <Route path="messages" element={<DelegateMessages />} />
-          <Route path="idees" element={<DelegateIdeas />} />
-          <Route path="sondages" element={<DelegatePolls />} />
-          <Route path="annonces" element={<DelegateAnnouncements />} />
-          <Route path="calendrier" element={<DelegateCalendar />} />
-          <Route path="ressources" element={<DelegateResources />} />
-          <Route path="projets" element={<DelegateProjects />} />
-          <Route path="parametres" element={<DelegateSettings />} />
-        </Route>
+          {/* Delegate space */}
+          <Route path="/gestion" element={<DelegateLogin />} />
+          <Route path="/gestion/:token" element={<DelegateLayout />}>
+            <Route index element={<DelegateDashboard />} />
+            <Route path="messages" element={<DelegateMessages />} />
+            <Route path="idees" element={<DelegateIdeas />} />
+            <Route path="sondages" element={<DelegatePolls />} />
+            <Route path="annonces" element={<DelegateAnnouncements />} />
+            <Route path="calendrier" element={<DelegateCalendar />} />
+            <Route path="ressources" element={<DelegateResources />} />
+            <Route path="projets" element={<DelegateProjects />} />
+            <Route path="parametres" element={<DelegateSettings />} />
+          </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
     </AuthProvider>
   );
 }

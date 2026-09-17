@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { useSettings } from '@/hooks/useSettings';
+import { useSettings, refreshSettings } from '@/hooks/useSettings';
+import { applyAccent } from '@/lib/accent';
 import { Modal } from '@/components/ui/Modal';
 
 export function Settings() {
@@ -57,6 +58,8 @@ export function Settings() {
     setClassSuccess('');
     try {
       await api.updateSettings({ class_name: className, delegate_name: delegateName, accent_color: accentColor });
+      applyAccent(accentColor);
+      await refreshSettings().catch(() => {});
       setClassSuccess('Paramètres enregistrés');
     } catch (err: any) {
       setClassError(err.message || 'Erreur');
@@ -220,7 +223,10 @@ export function Settings() {
           <input
             type="color"
             value={accentColor}
-            onChange={(e) => setAccentColor(e.target.value)}
+            onChange={(e) => {
+              setAccentColor(e.target.value);
+              applyAccent(e.target.value);
+            }}
             className="w-14 h-11 rounded-xl bg-white/70 dark:bg-gray-800/70 border border-white/20 cursor-pointer"
           />
         </div>

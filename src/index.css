@@ -6,6 +6,17 @@
   :root {
     --accent: #3b5ba6;
     --accent-deep: #1b2f5c;
+    --i-50: 238 243 251;
+    --i-100: 220 230 247;
+    --i-200: 184 204 238;
+    --i-300: 141 170 224;
+    --i-400: 95 133 205;
+    --i-500: 59 91 166;
+    --i-600: 43 67 133;
+    --i-700: 27 47 92;
+    --i-800: 20 36 69;
+    --i-900: 14 27 53;
+    --i-950: 10 18 32;
   }
 
   html {
@@ -51,7 +62,7 @@
   content: '';
   position: absolute;
   border-radius: 9999px;
-  filter: blur(46px);
+  filter: blur(56px);
   will-change: transform;
 }
 
@@ -60,7 +71,7 @@
   height: 62vmax;
   left: -20vmax;
   top: -22vmax;
-  background: radial-gradient(circle, rgba(95, 133, 205, 0.55) 0%, rgba(95, 133, 205, 0) 62%);
+  background: radial-gradient(circle, rgba(95, 133, 205, 0.7) 0%, rgba(95, 133, 205, 0) 62%);
   animation: orb-drift 26s ease-in-out infinite alternate;
 }
 .liquid-bg::after {
@@ -68,7 +79,7 @@
   height: 54vmax;
   right: -18vmax;
   bottom: -20vmax;
-  background: radial-gradient(circle, rgba(141, 170, 224, 0.5) 0%, rgba(141, 170, 224, 0) 62%);
+  background: radial-gradient(circle, rgba(141, 170, 224, 0.62) 0%, rgba(141, 170, 224, 0) 62%);
   animation: orb-drift 34s ease-in-out infinite alternate-reverse;
 }
 .liquid-bg span {
@@ -77,18 +88,18 @@
   height: 48vmax;
   top: 32%;
   left: 46%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 60%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 60%);
   animation: orb-drift 22s ease-in-out infinite alternate;
 }
 
 .dark .liquid-bg::before {
-  background: radial-gradient(circle, rgba(43, 67, 133, 0.55) 0%, rgba(43, 67, 133, 0) 62%);
+  background: radial-gradient(circle, rgba(43, 67, 133, 0.6) 0%, rgba(43, 67, 133, 0) 62%);
 }
 .dark .liquid-bg::after {
-  background: radial-gradient(circle, rgba(95, 133, 205, 0.28) 0%, rgba(95, 133, 205, 0) 62%);
+  background: radial-gradient(circle, rgba(95, 133, 205, 0.4) 0%, rgba(95, 133, 205, 0) 62%);
 }
 .dark .liquid-bg span {
-  background: radial-gradient(circle, rgba(141, 170, 224, 0.16) 0%, rgba(141, 170, 224, 0) 60%);
+  background: radial-gradient(circle, rgba(141, 170, 224, 0.26) 0%, rgba(141, 170, 224, 0) 60%);
 }
 
 @keyframes orb-drift {
@@ -96,18 +107,34 @@
   to { transform: translate3d(6vmax, 4.5vmax, 0) scale(1.18); }
 }
 
+@keyframes sheen-glide {
+  0% { transform: translateX(-120%); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateX(120%); opacity: 0; }
+}
+
+@keyframes bubble-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.bubble-float {
+  animation: bubble-float 5s ease-in-out infinite;
+}
+
 @layer components {
   /* ===== Verre (Liquid Glass) ===== */
   .glass {
     position: relative;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.42) 100%);
-    backdrop-filter: blur(24px) saturate(185%);
-    -webkit-backdrop-filter: blur(24px) saturate(185%);
-    border: 1px solid rgba(255, 255, 255, 0.6);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0.45) 100%);
+    backdrop-filter: blur(30px) saturate(220%);
+    -webkit-backdrop-filter: blur(30px) saturate(220%);
+    border: 1px solid rgba(255, 255, 255, 0.65);
     box-shadow:
-      0 12px 40px rgba(20, 36, 69, 0.12),
-      inset 0 1px 0 rgba(255, 255, 255, 0.9),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+      0 16px 48px rgba(20, 36, 69, 0.14),
+      0 0 0 1px rgba(255, 255, 255, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.3),
+      inset 0 0 28px rgba(95, 133, 205, 0.1);
   }
   /* Reflet spéculaire + réfraction de la lumière sur la surface */
   .glass::after {
@@ -117,8 +144,24 @@
     border-radius: inherit;
     pointer-events: none;
     background:
-      linear-gradient(115deg, transparent 22%, rgba(255, 255, 255, 0.35) 46%, transparent 60%),
-      radial-gradient(130% 65% at 15% 0%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 45%);
+      linear-gradient(115deg, transparent 18%, rgba(255, 255, 255, 0.42) 44%, transparent 62%),
+      radial-gradient(130% 65% at 15% 0%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 45%),
+      radial-gradient(130% 72% at 92% 105%, rgba(141, 170, 224, 0.35) 0%, rgba(141, 170, 224, 0) 55%);
+  }
+  /* Glissement lumineux « liquid » au survol */
+  .glass::before {
+    content: '';
+    position: absolute;
+    inset: -30%;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(100deg, transparent 25%, rgba(255, 255, 255, 0.3) 50%, transparent 75%);
+    transform: translateX(-120%);
+  }
+  .glass:hover::before,
+  .glass:focus-within::before {
+    animation: sheen-glide 1.4s ease;
   }
   .dark .glass {
     background: linear-gradient(135deg, rgba(28, 40, 72, 0.72) 0%, rgba(11, 18, 36, 0.6) 100%);

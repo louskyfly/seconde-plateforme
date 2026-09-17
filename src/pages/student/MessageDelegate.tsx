@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { CATEGORIES_MESSAGE } from '@/lib/utils';
 
@@ -11,6 +11,13 @@ export default function MessageDelegate() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const handleSubmit = async () => {
     if (!content.trim()) return;
@@ -26,7 +33,7 @@ export default function MessageDelegate() {
       setCategory('question');
       setAnonymous(false);
       setSent(true);
-      setTimeout(() => setSent(false), 5000);
+      timerRef.current = window.setTimeout(() => setSent(false), 5000);
     } catch {
       setError("Erreur lors de l'envoi. Réessaie.");
     } finally {

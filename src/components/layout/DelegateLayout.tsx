@@ -1,8 +1,11 @@
+import { lazy } from 'react';
 import { Outlet, NavLink, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
-import Login from '@/pages/delegate/Login';
+import { PageLoader } from '@/components/ui/PageLoader';
 import { useEffect } from 'react';
+
+const Login = lazy(() => import('@/pages/delegate/Login'));
 
 const NAV_ITEMS = [
   { emoji: '📊', label: 'Tableau de bord', end: true },
@@ -130,13 +133,13 @@ function DelegateLayout() {
   const location = useLocation();
 
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo(0, 0);
   }, [location.pathname]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-3 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-[3px] border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
   }

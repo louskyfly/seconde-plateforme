@@ -126,6 +126,14 @@ export default function Announcements() {
                   </span>
                 </div>
 
+                {a.image && (
+                  <img
+                    src={a.image}
+                    alt=""
+                    className="mt-3 w-full max-h-72 object-cover rounded-2xl"
+                  />
+                )}
+
                 {expandedId === a.id && (
                   <div className="mt-3 pt-3 border-t border-white/10 dark:border-gray-700/20 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                     {a.description}

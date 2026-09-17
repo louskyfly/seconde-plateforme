@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings, refreshSettings } from '@/hooks/useSettings';
 import { applyAccent } from '@/lib/accent';
+import { fileToDataUri } from '@/lib/image';
 import { Modal } from '@/components/ui/Modal';
 
 export function Settings() {
@@ -19,6 +20,8 @@ export function Settings() {
   const [delegateName, setDelegateName] = useState('');
   const [accentColor, setAccentColor] = useState('#3b5ba6');
   const [homeInfo, setHomeInfo] = useState('');
+  const [homeImage, setHomeImage] = useState<string | null>(null);
+  const [homeImageBusy, setHomeImageBusy] = useState(false);
 
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -49,6 +52,7 @@ export function Settings() {
     setDelegateName(settings.delegate_name);
     setAccentColor(settings.accent_color);
     setHomeInfo(settings.home_info);
+    setHomeImage(settings.home_image ?? null);
   }, [settings]);
 
   const saveClass = async (e: FormEvent) => {
@@ -74,12 +78,27 @@ export function Settings() {
     setHomeError('');
     setHomeSuccess('');
     try {
-      await api.updateSettings({ home_info: homeInfo });
+      await api.updateSettings({ home_info: homeInfo, home_image: homeImage });
+      await refreshSettings().catch(() => {});
       setHomeSuccess("Texte d'accueil enregistré");
     } catch (err: any) {
       setHomeError(err.message || 'Erreur');
     } finally {
       setHomeBusy(false);
+    }
+  };
+
+  const pickHomeImage = async (file: File | undefined) => {
+    if (!file) return;
+    setHomeImageBusy(true);
+    setHomeError('');
+    try {
+      const dataUri = await fileToDataUri(file, 1200);
+      setHomeImage(dataUri);
+    } catch {
+      setHomeError("Impossible de charger l'image");
+    } finally {
+      setHomeImageBusy(false);
     }
   };
 
@@ -250,6 +269,33 @@ export function Settings() {
             className="glass-input resize-none"
             placeholder="Message affiché sur la page d'accueil de la classe..."
           />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+            Image d'accueil (optionnelle)
+          </label>
+          {homeImage ? (
+            <div className="relative overflow-hidden rounded-2xl">
+              <img src={homeImage} alt="Aperçu" className="w-full max-h-52 object-cover" />
+              <button
+                type="button"
+                onClick={() => setHomeImage(null)}
+                className="absolute top-2 right-2 glass-button px-3 py-1.5 text-xs bg-black/40 text-white border-white/20"
+              >
+                ✕ Retirer
+              </button>
+            </div>
+          ) : (
+            <label className="glass flex items-center justify-center gap-2 rounded-2xl px-4 py-4 text-xs text-gray-500 dark:text-gray-400 cursor-pointer min-h-[44px]">
+              {homeImageBusy ? 'Chargement...' : '🖼️ Choisir une image'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => pickHomeImage(e.target.files?.[0])}
+              />
+            </label>
+          )}
         </div>
         {homeSuccess && <p className="text-sm text-green-600 dark:text-green-400">{homeSuccess}</p>}
         {homeError && <p className="text-sm text-red-500">{homeError}</p>}

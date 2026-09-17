@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { sendPushToAll } from '../lib/push.js';
 
 const router = Router();
 
@@ -18,7 +19,7 @@ router.get('/', (req, res) => {
 
 router.post('/', requireAuth, (req, res) => {
   try {
-    const { title, description, category, importance, author, attachment_url } = req.body;
+    const { title, description, category, importance, author, attachment_url, image } = req.body;
     if (!title || typeof title !== 'string' || !description || typeof description !== 'string') {
       res.status(400).json({ error: 'Titre et description requis' });
       return;
@@ -26,8 +27,8 @@ router.post('/', requireAuth, (req, res) => {
 
     const result = db
       .prepare(
-        `INSERT INTO announcements (title, description, category, importance, author, attachment_url)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO announcements (title, description, category, importance, author, attachment_url, image)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         title.trim(),
@@ -35,12 +36,21 @@ router.post('/', requireAuth, (req, res) => {
         (category || 'general').trim(),
         (importance || 'normal').trim(),
         (author || 'Délégué').trim(),
-        attachment_url || null
+        attachment_url || null,
+        image || null
       );
 
     const announcement = db
       .prepare('SELECT * FROM announcements WHERE id = ?')
       .get(Number(result.lastInsertRowid));
+
+    if (announcement && (announcement as any).published === 1) {
+      sendPushToAll({
+        title: '📢 Nouvelle annonce',
+        body: (announcement as any).title,
+        url: '/informations',
+      });
+    }
 
     res.status(201).json(announcement);
   } catch (err) {
@@ -58,7 +68,7 @@ router.put('/:id', requireAuth, (req, res) => {
       return;
     }
 
-    const { title, description, category, importance, author, attachment_url, published } = req.body;
+    const { title, description, category, importance, author, attachment_url, image, published } = req.body;
     db.prepare(
       `UPDATE announcements SET
         title = COALESCE(?, title),
@@ -67,6 +77,7 @@ router.put('/:id', requireAuth, (req, res) => {
         importance = COALESCE(?, importance),
         author = COALESCE(?, author),
         attachment_url = ?,
+        image = ?,
         published = COALESCE(?, published),
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`
@@ -77,6 +88,7 @@ router.put('/:id', requireAuth, (req, res) => {
       importance?.trim() ?? null,
       author?.trim() ?? null,
       attachment_url !== undefined ? attachment_url : (existing as any).attachment_url,
+      image !== undefined ? image : (existing as any).image,
       published !== undefined ? published : null,
       id
     );

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS settings (
   password_hash TEXT NOT NULL,
   accent_color TEXT DEFAULT '#3b5ba6',
   home_info TEXT DEFAULT '',
+  home_image TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS announcements (
   importance TEXT NOT NULL DEFAULT 'normal',
   author TEXT DEFAULT 'Délégué',
   attachment_url TEXT,
+  image TEXT,
   published INTEGER DEFAULT 1,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -117,8 +119,27 @@ CREATE TABLE IF NOT EXISTS admin_login_attempts (
   attempted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   success INTEGER DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `;
+
+function ensureColumn(db: Database.Database, table: string, column: string, definition: string): void {
+  const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
+    (c) => c.name
+  );
+  if (!columns.includes(column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
 
 export function initDatabase(db: Database.Database): void {
   db.exec(SCHEMA_SQL);
+  ensureColumn(db, 'announcements', 'image', 'TEXT');
+  ensureColumn(db, 'settings', 'home_image', 'TEXT');
 }

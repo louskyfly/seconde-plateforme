@@ -3,6 +3,7 @@ export interface Settings {
   delegate_name: string;
   accent_color: string;
   home_info: string;
+  home_image: string | null;
 }
 
 export interface Announcement {
@@ -13,6 +14,7 @@ export interface Announcement {
   importance: string;
   author: string;
   attachment_url: string | null;
+  image: string | null;
   published: number;
   created_at: string;
   updated_at: string;

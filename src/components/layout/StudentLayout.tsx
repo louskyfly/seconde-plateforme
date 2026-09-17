@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useSettings } from '@/hooks/useSettings';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { BottomNav } from './BottomNav';
 import { useEffect } from 'react';
 
@@ -56,6 +57,29 @@ function Sidebar() {
   );
 }
 
+function PushBanner() {
+  const { shouldAsk, status, enable } = usePushNotifications();
+  if (!shouldAsk) return null;
+
+  return (
+    <div className="glass mb-4 flex items-center gap-3 rounded-full px-4 py-3 animate-slideUp">
+      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500/10 text-xl">
+        🔔
+      </span>
+      <p className="min-w-0 flex-1 text-xs text-gray-600 dark:text-gray-300">
+        Active les notifications pour être prévenu des nouvelles annonces et sondages.
+      </p>
+      <button
+        onClick={enable}
+        disabled={status === 'busy'}
+        className="glass-button-primary flex-shrink-0 px-4 py-2 text-xs"
+      >
+        {status === 'busy' ? '...' : 'Activer'}
+      </button>
+    </div>
+  );
+}
+
 export function StudentLayout() {
   const location = useLocation();
 
@@ -68,6 +92,7 @@ export function StudentLayout() {
       <Sidebar />
       <main className="lg:ml-64">
         <div className="page-container">
+          <PushBanner />
           <Outlet />
         </div>
         <footer className="pb-4 text-center text-[10px] text-gray-300 dark:text-gray-600">

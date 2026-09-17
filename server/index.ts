@@ -19,6 +19,7 @@ import resourcesRoutes from './routes/resources.js';
 import projectsRoutes from './routes/projects.js';
 import settingsRoutes from './routes/settings.js';
 import statsRoutes from './routes/stats.js';
+import pushRoutes from './routes/push.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,8 +33,8 @@ seedDatabase(db);
 
 app.set('trust proxy', process.env.TRUST_PROXY ? parseInt(process.env.TRUST_PROXY, 10) : false);
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 app.use(cookieParser());
 
 app.use(
@@ -65,6 +66,7 @@ app.use('/api/resources', resourcesRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/push', pushRoutes);
 
 app.get('/api/health', (_, res) => {
   res.json({ status: 'ok' });

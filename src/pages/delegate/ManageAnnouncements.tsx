@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import type { Announcement } from '@/types';
 import { formatDate, CATEGORIES_ANNOUNCEMENT } from '@/lib/utils';
+import { fileToDataUri } from '@/lib/image';
 import { Modal } from '@/components/ui/Modal';
 
 interface AnnouncementFormProps {
@@ -17,6 +18,8 @@ function AnnouncementForm({ announcement, isOpen, onClose, onSaved }: Announceme
   const [category, setCategory] = useState('general');
   const [importance, setImportance] = useState('normal');
   const [author, setAuthor] = useState('');
+  const [image, setImage] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
   const [published, setPublished] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -27,6 +30,7 @@ function AnnouncementForm({ announcement, isOpen, onClose, onSaved }: Announceme
     setCategory('general');
     setImportance('normal');
     setAuthor('');
+    setImage(null);
     setPublished(true);
     setError('');
   };
@@ -41,9 +45,24 @@ function AnnouncementForm({ announcement, isOpen, onClose, onSaved }: Announceme
     setCategory(announcement.category);
     setImportance(announcement.importance);
     setAuthor(announcement.author);
+    setImage(announcement.image ?? null);
     setPublished(announcement.published === 1);
     setError('');
   }, [announcement, isOpen]);
+
+  const pickImage = async (file: File | undefined) => {
+    if (!file) return;
+    setImageBusy(true);
+    setError('');
+    try {
+      const dataUri = await fileToDataUri(file);
+      setImage(dataUri);
+    } catch {
+      setError("Impossible de charger l'image");
+    } finally {
+      setImageBusy(false);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -55,6 +74,7 @@ function AnnouncementForm({ announcement, isOpen, onClose, onSaved }: Announceme
       category,
       importance,
       author,
+      image,
       published: published ? 1 : 0,
     };
     try {
@@ -94,6 +114,33 @@ function AnnouncementForm({ announcement, isOpen, onClose, onSaved }: Announceme
           className="glass-input resize-none"
           required
         />
+        <div>
+          <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+            Image (optionnelle)
+          </label>
+          {image ? (
+            <div className="relative overflow-hidden rounded-2xl">
+              <img src={image} alt="Aperçu" className="w-full max-h-52 object-cover" />
+              <button
+                type="button"
+                onClick={() => setImage(null)}
+                className="absolute top-2 right-2 glass-button px-3 py-1.5 text-xs bg-black/40 text-white border-white/20"
+              >
+                ✕ Retirer
+              </button>
+            </div>
+          ) : (
+            <label className="glass flex items-center justify-center gap-2 rounded-2xl px-4 py-4 text-xs text-gray-500 dark:text-gray-400 cursor-pointer min-h-[44px]">
+              {imageBusy ? 'Chargement...' : '🖼️ Choisir une image'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => pickImage(e.target.files?.[0])}
+              />
+            </label>
+          )}
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">
@@ -286,6 +333,10 @@ export function ManageAnnouncements() {
               </div>
 
               <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">{a.description}</p>
+
+              {a.image && (
+                <img src={a.image} alt="" className="mt-3 w-full max-h-40 object-cover rounded-xl" />
+              )}
 
               <div className="flex gap-2 flex-wrap mt-4">
                 <button

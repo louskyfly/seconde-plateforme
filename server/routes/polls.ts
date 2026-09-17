@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { sendPushToAll } from '../lib/push.js';
 
 const router = Router();
 
@@ -103,6 +104,12 @@ router.post('/', requireAuth, (req, res) => {
     const pollId = createPoll();
     const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as any;
     const pollOptions = db.prepare('SELECT * FROM poll_options WHERE poll_id = ?').all(pollId);
+
+    sendPushToAll({
+      title: '🗳️ Nouveau sondage',
+      body: poll.question,
+      url: '/sondages',
+    });
 
     res.status(201).json({ ...poll, options: pollOptions });
   } catch (err) {

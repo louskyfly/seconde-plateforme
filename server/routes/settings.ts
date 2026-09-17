@@ -8,7 +8,7 @@ const router = Router();
 router.get('/', (req, res) => {
   try {
     const settings = db
-      .prepare('SELECT class_name, delegate_name, accent_color, home_info FROM settings WHERE id = 1')
+      .prepare('SELECT class_name, delegate_name, accent_color, home_info, home_image FROM settings WHERE id = 1')
       .get();
     if (!settings) {
       res.status(404).json({ error: 'Configuration introuvable' });
@@ -23,24 +23,29 @@ router.get('/', (req, res) => {
 
 router.put('/', requireAuth, (req, res) => {
   try {
-    const { class_name, delegate_name, accent_color, home_info } = req.body;
+    const { class_name, delegate_name, accent_color, home_info, home_image } = req.body;
+    const existing = db
+      .prepare('SELECT class_name, delegate_name, accent_color, home_info, home_image FROM settings WHERE id = 1')
+      .get() as { home_image: string | null } | undefined;
     db.prepare(
       `UPDATE settings SET
         class_name = COALESCE(?, class_name),
         delegate_name = COALESCE(?, delegate_name),
         accent_color = COALESCE(?, accent_color),
         home_info = COALESCE(?, home_info),
+        home_image = ?,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = 1`
     ).run(
       class_name?.trim() ?? null,
       delegate_name?.trim() ?? null,
       accent_color?.trim() ?? null,
-      home_info?.trim() ?? null
+      home_info?.trim() ?? null,
+      home_image !== undefined ? home_image : (existing?.home_image ?? null)
     );
 
     const updated = db
-      .prepare('SELECT class_name, delegate_name, accent_color, home_info FROM settings WHERE id = 1')
+      .prepare('SELECT class_name, delegate_name, accent_color, home_info, home_image FROM settings WHERE id = 1')
       .get();
     res.json(updated);
   } catch (err) {

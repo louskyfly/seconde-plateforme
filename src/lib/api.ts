@@ -73,4 +73,9 @@ export const api = {
   
   // Stats
   getStats: () => request<Stats>('/stats'),
+
+  // Push notifications
+  getPushVapidKey: () => request<{ publicKey: string }>('/push/vapid-public-key'),
+  subscribePush: (subscription: any) => request<{ success: boolean }>('/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription }) }),
+  unsubscribePush: (endpoint: string) => request<{ success: boolean }>('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
 };

@@ -137,6 +137,16 @@ export default function Home() {
         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 capitalize">{today}</p>
       </header>
 
+      {settings?.home_image && (
+        <div className="mb-4 overflow-hidden rounded-3xl glass animate-slideUp">
+          <img
+            src={settings.home_image}
+            alt=""
+            className="w-full max-h-64 object-cover"
+          />
+        </div>
+      )}
+
       {settings?.home_info && (
         <div className="glass-card mb-4 animate-slideUp">
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">

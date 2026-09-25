@@ -18,6 +18,8 @@ export interface Announcement {
   published: number;
   created_at: string;
   updated_at: string;
+  reactions?: Record<string, number>;
+  my_reactions?: string[];
 }
 
 export interface Idea {

@@ -5,6 +5,13 @@ import { formatDate, CATEGORIES_ANNOUNCEMENT } from '@/lib/utils';
 import { fileToDataUri } from '@/lib/image';
 import { Modal } from '@/components/ui/Modal';
 
+const REACTIONS = [
+  { key: 'vu', emoji: '👍', label: "J'ai vu" },
+  { key: 'jaime', emoji: '❤️', label: "J'aime" },
+  { key: 'question', emoji: '❓', label: 'Question' },
+  { key: 'important', emoji: '⚠️', label: 'À retenir' },
+];
+
 interface AnnouncementFormProps {
   announcement: Announcement | null;
   isOpen: boolean;
@@ -337,6 +344,25 @@ export function ManageAnnouncements() {
               {a.image && (
                 <img src={a.image} alt="" className="mt-3 w-full max-h-40 object-cover rounded-xl" />
               )}
+
+              {(() => {
+                const entries = Object.entries(a.reactions || {}).filter(([, count]) => count > 0);
+                if (entries.length === 0) return null;
+                return (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {entries.map(([key, count]) => (
+                      <span
+                        key={key}
+                        title={REACTIONS.find((r) => r.key === key)?.label || key}
+                        className="glass flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-gray-600 dark:text-gray-300"
+                      >
+                        <span>{REACTIONS.find((r) => r.key === key)?.emoji || key}</span>
+                        <span>{count}</span>
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <div className="flex gap-2 flex-wrap mt-4">
                 <button

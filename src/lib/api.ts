@@ -28,10 +28,16 @@ export const api = {
   changePassword: (old_password: string, new_password: string) => request<{ success: boolean }>('/settings/change-password', { method: 'POST', body: JSON.stringify({ old_password, new_password }) }),
   
   // Announcements
-  getAnnouncements: () => request<Announcement[]>('/announcements'),
+  getAnnouncements: (fingerprint?: string) =>
+    request<Announcement[]>('/announcements' + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : '')),
   createAnnouncement: (data: any) => request<Announcement>('/announcements', { method: 'POST', body: JSON.stringify(data) }),
   updateAnnouncement: (id: number, data: any) => request<Announcement>(`/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteAnnouncement: (id: number) => request<{ success: boolean }>(`/announcements/${id}`, { method: 'DELETE' }),
+  reactToAnnouncement: (id: number, reaction: string, fingerprint: string) =>
+    request<{ reactions: Record<string, number>; my_reactions: string[] }>(`/announcements/${id}/react`, {
+      method: 'POST',
+      body: JSON.stringify({ reaction, fingerprint }),
+    }),
   
   // Ideas
   getIdeas: () => request<Idea[]>('/ideas'),

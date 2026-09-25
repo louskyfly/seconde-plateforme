@@ -127,6 +127,16 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   auth TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS announcement_reactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  announcement_id INTEGER NOT NULL,
+  reaction TEXT NOT NULL,
+  reactor_fingerprint TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(announcement_id, reaction, reactor_fingerprint),
+  FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE
+);
 `;
 
 function ensureColumn(db: Database.Database, table: string, column: string, definition: string): void {

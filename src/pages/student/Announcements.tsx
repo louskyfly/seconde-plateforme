@@ -1,9 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { getRelativeTime, CATEGORIES_ANNOUNCEMENT } from '@/lib/utils';
+import { getRelativeTime, CATEGORIES_ANNOUNCEMENT, generateFingerprint } from '@/lib/utils';
 import type { Announcement } from '@/types';
 
 const ALL_CATEGORIES = Object.keys(CATEGORIES_ANNOUNCEMENT);
+
+const REACTIONS = [
+  { key: 'vu', emoji: '👍', label: "J'ai vu" },
+  { key: 'jaime', emoji: '❤️', label: "J'aime" },
+  { key: 'question', emoji: '❓', label: 'Question' },
+  { key: 'important', emoji: '⚠️', label: 'À retenir' },
+];
 
 export default function Announcements() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
@@ -13,7 +20,7 @@ export default function Announcements() {
 
   useEffect(() => {
     api
-      .getAnnouncements()
+      .getAnnouncements(generateFingerprint())
       .then((data) =>
         setAnnouncements(
           data
@@ -31,6 +38,36 @@ export default function Announcements() {
 
   const toggle = useCallback((id: number) => {
     setExpandedId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const react = useCallback(async (a: Announcement, key: string) => {
+    const fingerprint = generateFingerprint();
+    setAnnouncements((prev) =>
+      prev.map((x) => {
+        if (x.id !== a.id) return x;
+        const reactions = { ...(x.reactions || {}) };
+        const mine = new Set(x.my_reactions || []);
+        if (mine.has(key)) {
+          mine.delete(key);
+          reactions[key] = Math.max(0, (reactions[key] || 0) - 1);
+          if (reactions[key] === 0) delete reactions[key];
+        } else {
+          mine.add(key);
+          reactions[key] = (reactions[key] || 0) + 1;
+        }
+        return { ...x, reactions, my_reactions: [...mine] };
+      })
+    );
+    try {
+      const res = await api.reactToAnnouncement(a.id, key, fingerprint);
+      setAnnouncements((prev) =>
+        prev.map((x) => (x.id === a.id ? { ...x, reactions: res.reactions, my_reactions: res.my_reactions } : x))
+      );
+    } catch {
+      setAnnouncements((prev) =>
+        prev.map((x) => (x.id === a.id ? { ...x, reactions: a.reactions, my_reactions: a.my_reactions } : x))
+      );
+    }
   }, []);
 
   return (
@@ -88,10 +125,18 @@ export default function Announcements() {
           {filtered.map((a) => {
             const isImportant = a.importance === 'important' || a.category === 'important';
             return (
-              <button
+              <div
                 key={a.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => toggle(a.id)}
-                className={`glass-card w-full text-left transition-all ${
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle(a.id);
+                  }
+                }}
+                className={`glass-card w-full cursor-pointer text-left transition-all ${
                   isImportant
                     ? 'border-l-4 border-l-amber-400 dark:border-l-amber-500'
                     : ''
@@ -150,7 +195,30 @@ export default function Announcements() {
                     )}
                   </div>
                 )}
-              </button>
+
+                <div className="mt-3 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                  {REACTIONS.map((r) => {
+                    const count = a.reactions?.[r.key] || 0;
+                    const active = (a.my_reactions || []).includes(r.key);
+                    return (
+                      <button
+                        key={r.key}
+                        type="button"
+                        title={r.label}
+                        onClick={() => react(a, r.key)}
+                        className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-all active:scale-95 ${
+                          active
+                            ? 'bg-indigo-500/25 text-indigo-600 ring-1 ring-indigo-500/40 dark:text-indigo-300'
+                            : 'glass text-gray-500 hover:bg-gray-100/50 dark:text-gray-400 dark:hover:bg-gray-700/30'
+                        }`}
+                      >
+                        <span>{r.emoji}</span>
+                        {count > 0 && <span>{count}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
         </div>

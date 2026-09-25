@@ -6,8 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import db from './db/index.js';
-import { initDatabase } from './db/schema.js';
+import { initDatabase, ensureDefaultChatGroup } from './db/schema.js';
 import { seedDatabase } from './db/seed.js';
+import { maintenanceGate } from './middleware/maintenance.js';
 
 import authRoutes from './routes/auth.js';
 import announcementsRoutes from './routes/announcements.js';
@@ -20,6 +21,10 @@ import projectsRoutes from './routes/projects.js';
 import settingsRoutes from './routes/settings.js';
 import statsRoutes from './routes/stats.js';
 import pushRoutes from './routes/push.js';
+import chatRoutes from './routes/chat.js';
+import sheetsRoutes from './routes/sheets.js';
+import maintenanceRoutes from './routes/maintenance.js';
+import adminRoutes from './routes/admin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +35,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 initDatabase(db);
 seedDatabase(db);
+ensureDefaultChatGroup(db);
 
 app.set('trust proxy', process.env.TRUST_PROXY ? parseInt(process.env.TRUST_PROXY, 10) : false);
 
@@ -56,6 +62,10 @@ if (NODE_ENV === 'production') {
   app.use(express.static(staticDir));
 }
 
+// Mode maintenance : contrôle serveur global, appliqué avant toutes les routes API.
+// Le délégué connecté n'est jamais bloqué, et /api/health reste accessible.
+app.use(maintenanceGate);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/announcements', announcementsRoutes);
 app.use('/api/ideas', ideasRoutes);
@@ -67,6 +77,10 @@ app.use('/api/projects', projectsRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/sheets', sheetsRoutes);
+app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (_, res) => {
   res.json({ status: 'ok' });

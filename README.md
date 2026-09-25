@@ -71,6 +71,50 @@ supprimez le fichier `data/seconde.db` et relancez `npm run db:seed`.
 - Les messages/idées anonymes ne révèlent jamais l'auteur
 - Validation des formulaires côté serveur, protection XSS (échappement des réponses)
 - Aucune donnée sensible dans le frontend (ni mot de passe ni hash)
+- **Mode maintenance contrôlé côté serveur** : toute l'API est bloquée (503), pas seulement l'affichage
+- **Fichés vérifiés par leurs magic bytes** (jamais le MIME du navigateur), taille et type limités, nom régénéré par le serveur, servis via l'API avec `nosniff` + `sandbox` (jamais de dossier public)
+- Chat : chaque élève n'accède qu'aux conversations dont il est membre, limitation à 8 messages / 30 s
+- Modération : le délégué supprime n'importe quel message ou photo, chaque action est journalisée
+
+## 🛑 Bouton d'arrêt d'urgence (mode maintenance)
+
+Tableau de bord délégué → carte « État du site » en haut de page.
+
+- **🛑 Arrêter le site** : confirmation explicite + **mot de passe redemandé** (anti-clic accidentel)
+- Les élèves voient une page de maintenance (message personnalisable) et **toutes les API renvoient 503** : impossible de contourner le mode en appelant directement une API
+- Le délégué n'est **jamais** bloqué et peut se reconnecter pendant la maintenance
+- **✅ Rouvrir le site** : le site revient tout seul, la page se réactualise automatiquement (15 s)
+- Chaque arrêt est horodaté et journalisé (qui, quand), visible dans l'historique
+
+## 💬 Chat de classe
+
+Un groupe unique où toute la classe échange (élèves + délégué).
+
+- Chaque élève choisit **un pseudo** (stocké sur son appareil, jamais d'email ni de nom)
+- Messages texte **et photos**, ordre chronologique, auteur + heure, indicateur de non-lu
+- Actualisation automatique toutes les 4 s + notification push à la réception d'un message
+- Le délégué **peut supprimer n'importe quel message ou photo** (action journalisée) ; un élève ne peut supprimer que les siens
+- Structure `conversations` / `membres` / `messages` : les conversations privées et les groupes pourront être ajoutés sans refonte
+
+## 📝 Fiches de révision
+
+Rubrique ouverte aux élèves : chacun dépose une image ou un PDF.
+
+- Titre, matière, classe/niveau, description facultative
+- Formats acceptés : **JPG, PNG, WEBP, GIF, PDF** — 3 Mo par image, 4 Mo par PDF
+- Contrôle du **type réel** du fichier côté serveur, nom de fichier régénéré, fichiers servis via l'API (jamais publiquement listables)
+- Recherche, filtre par matière, chargement progressif
+- Chaque élève supprime ses propres fiches ; le délégué peut masquer ou supprimer n'importe laquelle
+- Seuls le pseudo, la date et la matière sont affichés : aucune donnée personnelle
+
+## 🧪 Tests
+
+```bash
+npm test
+```
+
+ Lance le build puis 34 tests d'intégration sur une **base temporaire** (aucune donnée réelle touchée) :
+maintenance (activation, blocage, contournement API, accès délégué), chat (adhésion, envoi, réception, non-lus, isolation, suppression), fiches (dépôt, type refusé, taille refusée, masquage, suppression) et permissions.
 
 ## 📦 Structure du projet
 
@@ -78,14 +122,16 @@ supprimez le fichier `data/seconde.db` et relancez `npm run db:seed`.
 seconde-platform/
 ├── server/              # Backend Express + SQLite
 │   ├── db/              # Connexion, schéma, seed
-│   ├── routes/          # 10 routeurs API
-│   ├── middleware/      # Auth, rate limiting
+│   ├── routes/          # 14 routeurs API
+│   ├── middleware/      # Auth, rate limiting, maintenance
+│   ├── lib/             # Maintenance, validation de fichiers, push
 │   ├── utils/           # Bcrypt, tokens
+│   ├── tests/           # Tests d'intégration (node:test)
 │   └── scripts/         # Seed, génération icônes PWA
 ├── src/                 # Frontend React + TypeScript
-│   ├── components/      # Layouts (sidebar/bottom nav), Modal
-│   ├── pages/           # 8 pages élèves + 10 pages délégué
-│   ├── hooks/           # useAuth, useSettings
+│   ├── components/      # Layouts, chat, carte d'état du site, Modal
+│   ├── pages/           # 10 pages élèves + 12 pages délégué
+│   ├── hooks/           # useAuth, useSettings, useMaintenance, useChatUnread
 │   └── lib/             # Client API, utils, types
 └── public/              # PWA (manifest, sw.js, icônes)
 ```
@@ -94,10 +140,12 @@ seconde-platform/
 
 SQLite (`data/seconde.db`) avec les tables :
 `settings`, `announcements`, `ideas`, `messages`, `polls`, `poll_options`,
-`poll_votes`, `events`, `resources`, `projects`, `admin_login_attempts`.
+`poll_votes`, `events`, `resources`, `projects`, `admin_login_attempts`,
+`push_subscriptions`, `announcement_reactions`, `maintenance_log`, `admin_log`,
+`chat_users`, `chat_conversations`, `chat_members`, `chat_messages`, `sheets`.
 
-Le schéma est conçu pour **ajouter d'autres classes** facilement
-(colonne `class_id` à ajouter + route paramétrée `/gestion/{token}`).
+Les nouvelles tables sont créées automatiquement au démarrage (`CREATE TABLE IF NOT EXISTS`) :
+aucune migration manuelle n'est nécessaire.
 
 ## ☁️ Déployer le site (Render — gratuit)
 

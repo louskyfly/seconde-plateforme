@@ -137,6 +137,89 @@ CREATE TABLE IF NOT EXISTS announcement_reactions (
   UNIQUE(announcement_id, reaction, reactor_fingerprint),
   FOREIGN KEY (announcement_id) REFERENCES announcements(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS maintenance_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  active INTEGER NOT NULL,
+  message TEXT,
+  activated_by TEXT,
+  activated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deactivated_by TEXT,
+  deactivated_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS admin_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  action TEXT NOT NULL,
+  target_type TEXT,
+  target_id INTEGER,
+  detail TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chat_users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  display_name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'student',
+  fingerprint TEXT UNIQUE,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chat_conversations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT,
+  is_group INTEGER DEFAULT 1,
+  created_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_activity_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chat_members (
+  conversation_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  last_read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_read_message_id INTEGER DEFAULT 0,
+  joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (conversation_id, user_id),
+  FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES chat_users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id INTEGER NOT NULL,
+  sender_id INTEGER NOT NULL,
+  content TEXT DEFAULT '',
+  image TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  deleted_at DATETIME,
+  deleted_by TEXT,
+  FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
+  FOREIGN KEY (sender_id) REFERENCES chat_users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS sheets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  subject TEXT NOT NULL DEFAULT 'autre',
+  class_level TEXT,
+  description TEXT DEFAULT '',
+  author_name TEXT,
+  author_fingerprint TEXT,
+  file_data TEXT,
+  file_name TEXT,
+  mime_type TEXT,
+  file_size INTEGER DEFAULT 0,
+  kind TEXT NOT NULL DEFAULT 'image',
+  status TEXT NOT NULL DEFAULT 'active',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sheets_subject ON sheets(subject);
+CREATE INDEX IF NOT EXISTS idx_sheets_created ON sheets(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conv ON chat_messages(conversation_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_users_fp ON chat_users(fingerprint);
 `;
 
 function ensureColumn(db: Database.Database, table: string, column: string, definition: string): void {
@@ -152,4 +235,43 @@ export function initDatabase(db: Database.Database): void {
   db.exec(SCHEMA_SQL);
   ensureColumn(db, 'announcements', 'image', 'TEXT');
   ensureColumn(db, 'settings', 'home_image', 'TEXT');
+}
+
+/**
+ * Crée le groupe de classe unique et le compte du délégué.
+ * Le modèle (conversations + membres) reste prêt pour des conversations privées plus tard.
+ */
+export function ensureDefaultChatGroup(db: Database.Database): void {
+  const settings = db.prepare('SELECT class_name, delegate_name FROM settings WHERE id = 1').get() as
+    | { class_name: string; delegate_name: string }
+    | undefined;
+
+  const delegateName = settings?.delegate_name || 'Délégué';
+  const className = settings?.class_name || 'La classe';
+
+  let delegate = db.prepare(`SELECT id FROM chat_users WHERE kind = 'delegate'`).get() as
+    | { id: number }
+    | undefined;
+  if (!delegate) {
+    const inserted = db
+      .prepare(`INSERT INTO chat_users (display_name, kind, fingerprint) VALUES (?, 'delegate', NULL)`)
+      .run(delegateName);
+    delegate = { id: Number(inserted.lastInsertRowid) };
+  } else {
+    db.prepare('UPDATE chat_users SET display_name = ? WHERE id = ?').run(delegateName, delegate.id);
+  }
+
+  let conversation = db.prepare(`SELECT id FROM chat_conversations WHERE is_group = 1 LIMIT 1`).get() as
+    | { id: number }
+    | undefined;
+  if (!conversation) {
+    const inserted = db
+      .prepare(`INSERT INTO chat_conversations (title, is_group, created_by) VALUES (?, 1, ?)`)
+      .run(`${className} — Groupe`, delegate!.id);
+    conversation = { id: Number(inserted.lastInsertRowid) };
+  }
+
+  db.prepare(
+    `INSERT OR IGNORE INTO chat_members (conversation_id, user_id) VALUES (?, ?)`
+  ).run(conversation!.id, delegate!.id);
 }

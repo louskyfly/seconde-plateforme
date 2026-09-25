@@ -1,10 +1,13 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
+import { useChatUnread } from '@/hooks/useChatUnread';
 
 const NAV_ITEMS = [
   { to: '/', emoji: '🏠', label: 'Accueil' },
   { to: '/informations', emoji: '📢', label: 'Infos' },
+  { to: '/chat', emoji: '💬', label: 'Chat' },
   { to: '/idees', emoji: '💡', label: 'Idées' },
-  { to: '/messagerie', emoji: '💬', label: 'Messages' },
+  { to: '/messagerie', emoji: '📩', label: 'Délégué' },
+  { to: '/fiches', emoji: '📝', label: 'Fiches' },
   { to: '/sondages', emoji: '🗳️', label: 'Sondages' },
   { to: '/calendrier', emoji: '📅', label: 'Agenda' },
   { to: '/ressources', emoji: '📚', label: 'Ressources' },
@@ -12,6 +15,9 @@ const NAV_ITEMS = [
 ];
 
 export function BottomNav() {
+  const location = useLocation();
+  const unread = useChatUnread(location.pathname !== '/chat');
+
   return (
     <nav className="bottom-nav glass border-t border-white/20 dark:border-gray-700/30 z-40">
       <div className="flex overflow-x-auto scrollbar-none px-2 py-2 gap-1">
@@ -28,7 +34,12 @@ export function BottomNav() {
               }`
             }
           >
-            <span className="text-xl mb-0.5">{item.emoji}</span>
+            <span className="text-xl mb-0.5">
+              {item.emoji}
+              {item.to === '/chat' && unread > 0 && (
+                <span className="absolute ml-3 mt-0.5 w-2 h-2 rounded-full bg-red-500" />
+              )}
+            </span>
             <span className="truncate">{item.label}</span>
           </NavLink>
         ))}

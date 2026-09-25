@@ -1,4 +1,22 @@
-import type { Settings, Announcement, Idea, Message, Poll, Event, Resource, Project, Stats } from '../types';
+import type {
+  Settings,
+  Announcement,
+  Idea,
+  Message,
+  Poll,
+  Event,
+  Resource,
+  Project,
+  Stats,
+  MaintenanceState,
+  ChatUser,
+  ChatConversation,
+  ChatMessage,
+  Sheet,
+  SheetListResponse,
+  AdminLogEntry,
+  AdminOverview,
+} from '../types';
 
 const BASE = '/api';
 
@@ -84,4 +102,58 @@ export const api = {
   getPushVapidKey: () => request<{ publicKey: string }>('/push/vapid-public-key'),
   subscribePush: (subscription: any) => request<{ success: boolean }>('/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription }) }),
   unsubscribePush: (endpoint: string) => request<{ success: boolean }>('/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+
+  // Maintenance (bouton d'arrêt d'urgence)
+  getMaintenanceState: () => request<MaintenanceState & { is_admin: boolean }>('/maintenance/state'),
+  activateMaintenance: (password: string, message?: string) =>
+    request<MaintenanceState>('/maintenance/activate', { method: 'POST', body: JSON.stringify({ password, message }) }),
+  deactivateMaintenance: () => request<MaintenanceState>('/maintenance/deactivate', { method: 'POST' }),
+  getMaintenanceHistory: () => request<MaintenanceState[]>('/maintenance/history'),
+
+  // Chat
+  joinChat: (fingerprint: string, display_name: string) =>
+    request<{ user: ChatUser; conversation: ChatConversation }>('/chat/join', { method: 'POST', body: JSON.stringify({ fingerprint, display_name }) }),
+  getChatConversation: (fingerprint?: string) =>
+    request<{ conversation: ChatConversation; user: ChatUser | null; unread: number }>(
+      '/chat/conversation' + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : '')
+    ),
+  getChatMessages: (fingerprint: string | null, conversation_id: number, after = 0) =>
+    request<{ messages: ChatMessage[]; conversation_id: number }>(
+      `/chat/messages?conversation_id=${conversation_id}&after=${after}` +
+        (fingerprint ? `&fingerprint=${encodeURIComponent(fingerprint)}` : '')
+    ),
+  sendChatMessage: (data: { content: string; image?: string | null; conversation_id: number; fingerprint?: string }) =>
+    request<{ message: ChatMessage }>('/chat/messages', { method: 'POST', body: JSON.stringify(data) }),
+  markChatRead: (conversation_id: number, fingerprint?: string) =>
+    request<{ success: boolean }>('/chat/read', { method: 'POST', body: JSON.stringify({ conversation_id, fingerprint }) }),
+  getChatUnread: (fingerprint: string) =>
+    request<{ unread: number }>(`/chat/unread?fingerprint=${encodeURIComponent(fingerprint)}`),
+  chatImageUrl: (messageId: number, fingerprint: string | null) =>
+    `/api/chat/messages/${messageId}/image` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''),
+  deleteChatMessage: (id: number, fingerprint?: string) =>
+    request<{ success: boolean }>(`/chat/messages/${id}` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''), { method: 'DELETE' }),
+
+  // Fiches de révision
+  getSheets: (params: { subject?: string | null; q?: string | null; page?: number; fingerprint?: string | null; status?: string | null } = {}) => {
+    const search = new URLSearchParams();
+    if (params.subject) search.set('subject', params.subject);
+    if (params.q) search.set('q', params.q);
+    if (params.page) search.set('page', String(params.page));
+    if (params.fingerprint) search.set('fingerprint', params.fingerprint);
+    if (params.status) search.set('status', params.status);
+    const qs = search.toString();
+    return request<SheetListResponse>('/sheets' + (qs ? `?${qs}` : ''));
+  },
+  createSheet: (data: { title: string; subject: string; class_level?: string; description?: string; file: string; fingerprint?: string | null; author_name?: string }) =>
+    request<Sheet>('/sheets', { method: 'POST', body: JSON.stringify(data) }),
+  setSheetStatus: (id: number, status: 'active' | 'hidden') =>
+    request<{ success: boolean; status: string }>(`/sheets/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  deleteSheet: (id: number, fingerprint?: string | null) =>
+    request<{ success: boolean }>(`/sheets/${id}` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''), { method: 'DELETE' }),
+  sheetFileUrl: (id: number, inline = false) => `/api/sheets/${id}/file` + (inline ? '?inline=1' : ''),
+
+  // Administration
+  getChatUsers: () => request<ChatUser[]>('/admin/users'),
+  getAdminLog: (limit = 50) => request<AdminLogEntry[]>(`/admin/log?limit=${limit}`),
+  getAdminOverview: () => request<AdminOverview>('/admin/overview'),
 };

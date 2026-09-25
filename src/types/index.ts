@@ -106,3 +106,80 @@ export interface Stats {
   announcementsCount: number;
   upcomingEvents: number;
 }
+
+export interface MaintenanceState {
+  active: boolean;
+  message: string;
+  activated_by?: string | null;
+  activated_at?: string | null;
+  deactivated_by?: string | null;
+  deactivated_at?: string | null;
+}
+
+export interface ChatUser {
+  id: number;
+  display_name: string;
+  kind: string;
+  fingerprint?: string | null;
+  created_at?: string;
+  last_seen_at?: string;
+  message_count?: number;
+}
+
+export interface ChatConversation {
+  id: number;
+  title: string | null;
+  is_group: number;
+}
+
+export interface ChatMessage {
+  id: number;
+  conversation_id: number;
+  sender_id: number;
+  sender_name: string;
+  sender_kind: string;
+  content: string;
+  has_image: number;
+  created_at: string;
+}
+
+export interface Sheet {
+  id: number;
+  title: string;
+  subject: string;
+  class_level: string | null;
+  description: string;
+  author_name: string | null;
+  kind: string;
+  mime_type: string | null;
+  file_size: number;
+  has_file: number;
+  status: string;
+  created_at: string;
+  is_mine: boolean;
+}
+
+export interface SheetListResponse {
+  items: Sheet[];
+  total: number;
+  page: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface AdminLogEntry {
+  id: number;
+  action: string;
+  target_type: string | null;
+  target_id: number | null;
+  detail: string | null;
+  created_at: string;
+}
+
+export interface AdminOverview {
+  sheets: number;
+  hiddenSheets: number;
+  chatMessages: number;
+  chatUsers: number;
+  imagesPosted: number;
+}

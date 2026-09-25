@@ -1,14 +1,17 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useSettings } from '@/hooks/useSettings';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { useChatUnread } from '@/hooks/useChatUnread';
 import { BottomNav } from './BottomNav';
 import { useEffect } from 'react';
 
 const NAV_ITEMS = [
   { to: '/', emoji: '🏠', label: 'Accueil' },
   { to: '/informations', emoji: '📢', label: 'Informations' },
+  { to: '/chat', emoji: '💬', label: 'Chat de classe' },
   { to: '/idees', emoji: '💡', label: 'Boîte à idées' },
-  { to: '/messagerie', emoji: '💬', label: 'Parler au délégué' },
+  { to: '/messagerie', emoji: '📩', label: 'Parler au délégué' },
+  { to: '/fiches', emoji: '📝', label: 'Fiches de révision' },
   { to: '/sondages', emoji: '🗳️', label: 'Sondages' },
   { to: '/calendrier', emoji: '📅', label: 'Calendrier' },
   { to: '/ressources', emoji: '📚', label: 'Ressources' },
@@ -17,6 +20,8 @@ const NAV_ITEMS = [
 
 function Sidebar() {
   const { settings } = useSettings();
+  const location = useLocation();
+  const unread = useChatUnread(location.pathname !== '/chat');
 
   return (
     <aside className="fixed top-0 left-0 h-full w-64 glass border-r border-white/20 dark:border-gray-700/30 z-30 hidden lg:flex flex-col">
@@ -42,6 +47,11 @@ function Sidebar() {
           >
             <span className="text-lg flex-shrink-0">{item.emoji}</span>
             <span className="truncate">{item.label}</span>
+            {item.to === '/chat' && unread > 0 && (
+              <span className="ml-auto flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

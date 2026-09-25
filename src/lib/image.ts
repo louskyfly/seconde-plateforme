@@ -38,3 +38,16 @@ export function fileToDataUri(
     reader.readAsDataURL(file);
   });
 }
+
+/**
+ * Lit un fichier tel quel en data URI (PDF, documents).
+ * Le contrôle réel du type est refait côté serveur via les magic bytes.
+ */
+export function readAsDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Impossible de lire le fichier'));
+    reader.readAsDataURL(file);
+  });
+}

@@ -13,6 +13,7 @@
     "dev:server": "tsc -p tsconfig.server.json && concurrently -k -n watch,node -c magenta,yellow \"tsc -p tsconfig.server.json --watch --preserveWatchOutput\" \"node --watch dist/server/index.js\"",
     "build": "tsc -p tsconfig.server.json && vite build",
     "start": "node dist/server/index.js",
+    "test": "npm run build && node --test server/tests/api.test.js",
     "db:seed": "node dist/server/scripts/seed.js"
   },
   "dependencies": {

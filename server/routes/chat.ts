@@ -1,0 +1,427 @@
+import { Router } from 'express';
+import db from '../db/index.js';
+import { requireAuth } from '../middleware/auth.js';
+import { sendPushToAll } from '../lib/push.js';
+import { logAdminAction } from '../lib/maintenance.js';
+import { cleanText, toDataUri, validateDataUri } from '../lib/files.js';
+
+const router = Router();
+
+const MAX_CONTENT_LENGTH = 2000;
+const MAX_MESSAGES_IN_PAGE = 50;
+const SEND_WINDOW_MS = 30_000;
+const SEND_WINDOW_MAX = 8;
+const PUSH_THROTTLE_MS = 15_000;
+
+const sendWindows = new Map<number, number[]>();
+let lastPushAt = 0;
+
+interface ChatUser {
+  id: number;
+  display_name: string;
+  kind: string;
+  fingerprint: string | null;
+}
+
+interface Conversation {
+  id: number;
+  title: string | null;
+  is_group: number;
+}
+
+function getDelegateUser(): ChatUser {
+  let user = db.prepare(`SELECT id, display_name, kind, fingerprint FROM chat_users WHERE kind = 'delegate'`).get() as
+    | ChatUser
+    | undefined;
+  if (!user) {
+    const settings = db.prepare('SELECT delegate_name FROM settings WHERE id = 1').get() as
+      | { delegate_name: string }
+      | undefined;
+    const inserted = db
+      .prepare(`INSERT INTO chat_users (display_name, kind, fingerprint) VALUES (?, 'delegate', NULL)`)
+      .run(settings?.delegate_name || 'Délégué');
+    user = { id: Number(inserted.lastInsertRowid), display_name: settings?.delegate_name || 'Délégué', kind: 'delegate', fingerprint: null };
+  }
+  return user;
+}
+
+function getDefaultGroup(): Conversation | undefined {
+  return db
+    .prepare('SELECT id, title, is_group FROM chat_conversations WHERE is_group = 1 ORDER BY id LIMIT 1')
+    .get() as Conversation | undefined;
+}
+
+function isMember(conversationId: number, userId: number): boolean {
+  const row = db
+    .prepare('SELECT 1 AS ok FROM chat_members WHERE conversation_id = ? AND user_id = ?')
+    .get(conversationId, userId);
+  return !!row;
+}
+
+function cleanFingerprint(value: unknown): string {
+  return cleanText(value, 64);
+}
+
+/** Utilisateur de la requête : délégué via session, élève via empreinte appareil. */
+function findUser(req: any): ChatUser | null {
+  if (req.session?.authenticated === true) return getDelegateUser();
+  const fingerprint = cleanFingerprint(req.body?.fingerprint ?? req.query?.fingerprint);
+  if (fingerprint.length < 8) return null;
+  const user = db
+    .prepare('SELECT id, display_name, kind, fingerprint FROM chat_users WHERE fingerprint = ?')
+    .get(fingerprint) as ChatUser | undefined;
+  if (user) {
+    db.prepare('UPDATE chat_users SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+  }
+  return user || null;
+}
+
+function readBody(req: any): { fingerprint: string; display_name: string } {
+  return {
+    fingerprint: cleanFingerprint(req.body?.fingerprint),
+    display_name: cleanText(req.body?.display_name, 30),
+  };
+}
+
+function conversationFor(user: ChatUser, requestedId: unknown): Conversation | null {
+  const group = getDefaultGroup();
+  if (!group) return null;
+  const id = Number(requestedId) || group.id;
+  if (id !== group.id) return null;
+  if (!isMember(group.id, user.id)) return null;
+  return group;
+}
+
+function shapeMessage(row: any) {
+  return {
+    id: row.id,
+    conversation_id: row.conversation_id,
+    sender_id: row.sender_id,
+    sender_name: row.sender_name,
+    sender_kind: row.sender_kind,
+    content: row.content,
+    has_image: row.image ? 1 : 0,
+    created_at: row.created_at,
+  };
+}
+
+/** Inscription / mise à jour du pseudo de l'élève + ajout au groupe de classe. */
+router.post('/join', (req, res) => {
+  try {
+    const group = getDefaultGroup();
+    if (!group) {
+      res.status(500).json({ error: 'Conversation indisponible' });
+      return;
+    }
+
+    if (req.session?.authenticated === true) {
+      const delegate = getDelegateUser();
+      db.prepare('INSERT OR IGNORE INTO chat_members (conversation_id, user_id) VALUES (?, ?)').run(
+        group.id,
+        delegate.id
+      );
+      res.json({ user: { id: delegate.id, display_name: delegate.display_name, kind: delegate.kind }, conversation: group });
+      return;
+    }
+
+    const { fingerprint, display_name } = readBody(req);
+    if (fingerprint.length < 8) {
+      res.status(400).json({ error: 'Identifiant appareil manquant' });
+      return;
+    }
+
+    const existing = db
+      .prepare('SELECT id, display_name, kind, fingerprint FROM chat_users WHERE fingerprint = ?')
+      .get(fingerprint) as ChatUser | undefined;
+
+    if (!existing && (display_name.length < 2 || display_name.length > 30)) {
+      res.status(400).json({ error: 'Choisis un pseudo de 2 à 30 caractères' });
+      return;
+    }
+
+    let user: ChatUser;
+    if (existing) {
+      db.prepare(
+        `UPDATE chat_users SET display_name = COALESCE(NULLIF(?, ''), display_name), last_seen_at = CURRENT_TIMESTAMP WHERE id = ?`
+      ).run(display_name, existing.id);
+      user = { ...existing, display_name: display_name || existing.display_name };
+    } else {
+      const inserted = db
+        .prepare(
+          `INSERT INTO chat_users (display_name, kind, fingerprint) VALUES (?, 'student', ?)`
+        )
+        .run(display_name, fingerprint);
+      user = { id: Number(inserted.lastInsertRowid), display_name, kind: 'student', fingerprint };
+    }
+
+    db.prepare('INSERT OR IGNORE INTO chat_members (conversation_id, user_id) VALUES (?, ?)').run(
+      group.id,
+      user.id
+    );
+
+    res.json({
+      user: { id: user.id, display_name: user.display_name, kind: user.kind },
+      conversation: group,
+    });
+  } catch (err) {
+    console.error('Chat join error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+router.get('/conversation', (req, res) => {
+  try {
+    const group = getDefaultGroup();
+    if (!group) {
+      res.status(500).json({ error: 'Conversation indisponible' });
+      return;
+    }
+    const user = findUser(req);
+    const unread = user && isMember(group.id, user.id) ? countUnread(group.id, user.id) : 0;
+    res.json({ conversation: group, user: user ? { id: user.id, display_name: user.display_name, kind: user.kind } : null, unread });
+  } catch (err) {
+    console.error('Chat conversation error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+function countUnread(conversationId: number, userId: number): number {
+  const member = db
+    .prepare('SELECT last_read_message_id FROM chat_members WHERE conversation_id = ? AND user_id = ?')
+    .get(conversationId, userId) as { last_read_message_id: number | null } | undefined;
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM chat_messages
+       WHERE conversation_id = ? AND sender_id != ? AND id > COALESCE(?, 0)`
+    )
+    .get(conversationId, userId, member?.last_read_message_id ?? 0) as { count: number };
+  return row.count;
+}
+
+router.get('/unread', (req, res) => {
+  try {
+    const user = findUser(req);
+    const group = getDefaultGroup();
+    if (!user || !group || !isMember(group.id, user.id)) {
+      res.json({ unread: 0 });
+      return;
+    }
+    res.json({ unread: countUnread(group.id, user.id) });
+  } catch (err) {
+    console.error('Chat unread error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+router.get('/messages', (req, res) => {
+  try {
+    const user = findUser(req);
+    if (!user) {
+      res.status(403).json({ error: 'Profil inconnu', needs_profile: true });
+      return;
+    }
+    const conversation = conversationFor(user, req.query.conversation_id);
+    if (!conversation) {
+      res.status(403).json({ error: 'Accès refusé à cette conversation' });
+      return;
+    }
+
+    const limit = Math.min(Number(req.query.limit) || MAX_MESSAGES_IN_PAGE, MAX_MESSAGES_IN_PAGE);
+    const after = Number(req.query.after) || 0;
+
+    const rows = db
+      .prepare(
+        `SELECT m.id, m.conversation_id, m.sender_id, m.content, m.image, m.created_at,
+                u.display_name AS sender_name, u.kind AS sender_kind
+         FROM chat_messages m
+         JOIN chat_users u ON u.id = m.sender_id
+         WHERE m.conversation_id = ? AND m.id > ?
+         ORDER BY m.id DESC
+         LIMIT ?`
+      )
+      .all(conversation.id, after, limit) as any[];
+
+    res.json({ messages: rows.reverse().map(shapeMessage), conversation_id: conversation.id });
+  } catch (err) {
+    console.error('Get chat messages error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+router.post('/messages', (req, res) => {
+  try {
+    const user = findUser(req);
+    if (!user) {
+      res.status(403).json({ error: 'Profil inconnu', needs_profile: true });
+      return;
+    }
+    const conversation = conversationFor(user, req.body?.conversation_id);
+    if (!conversation) {
+      res.status(403).json({ error: 'Accès refusé à cette conversation' });
+      return;
+    }
+
+    const content = cleanText(req.body?.content, MAX_CONTENT_LENGTH);
+    let imageData: string | null = null;
+    if (req.body?.image) {
+      const check = validateDataUri(req.body.image, ['image']);
+      if (!check.ok) {
+        res.status(400).json({ error: check.error });
+        return;
+      }
+      imageData = toDataUri(check.file);
+    }
+    if (!content && !imageData) {
+      res.status(400).json({ error: 'Message vide' });
+      return;
+    }
+
+    const now = Date.now();
+    const window = (sendWindows.get(user.id) || []).filter((t) => now - t < SEND_WINDOW_MS);
+    if (window.length >= SEND_WINDOW_MAX) {
+      res.status(429).json({ error: 'Trop de messages d’affilée, ralentis un peu' });
+      return;
+    }
+    window.push(now);
+    sendWindows.set(user.id, window);
+
+    const inserted = db
+      .prepare(
+        `INSERT INTO chat_messages (conversation_id, sender_id, content, image) VALUES (?, ?, ?, ?)`
+      )
+      .run(conversation.id, user.id, content, imageData);
+    db.prepare('UPDATE chat_conversations SET last_activity_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      conversation.id
+    );
+
+    const message = {
+      id: Number(inserted.lastInsertRowid),
+      conversation_id: conversation.id,
+      sender_id: user.id,
+      sender_name: user.display_name,
+      sender_kind: user.kind,
+      content,
+      has_image: imageData ? 1 : 0,
+      created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    };
+
+    if (user.kind !== 'delegate' && now - lastPushAt > PUSH_THROTTLE_MS) {
+      lastPushAt = now;
+      sendPushToAll({
+        title: '💬 Nouveau message',
+        body: `${user.display_name} : ${(content || '📷 Photo').slice(0, 90)}`,
+        url: '/chat',
+      });
+    }
+
+    res.status(201).json({ message });
+  } catch (err) {
+    console.error('Send chat message error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+router.post('/read', (req, res) => {
+  try {
+    const user = findUser(req);
+    const group = getDefaultGroup();
+    if (!user || !group || !isMember(group.id, user.id)) {
+      res.status(403).json({ error: 'Accès refusé' });
+      return;
+    }
+    const last = db
+      .prepare('SELECT COALESCE(MAX(id), 0) AS id FROM chat_messages WHERE conversation_id = ?')
+      .get(group.id) as { id: number };
+    db.prepare(
+      `UPDATE chat_members SET last_read_at = CURRENT_TIMESTAMP, last_read_message_id = ?
+       WHERE conversation_id = ? AND user_id = ?`
+    ).run(last.id, group.id, user.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Mark chat read error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+/** Image d'un message : servie par l'API (jamais un fichier public), avec en-têtes durcis. */
+router.get('/messages/:id/image', (req, res) => {
+  try {
+    const user = findUser(req);
+    if (!user) {
+      res.status(403).json({ error: 'Accès refusé' });
+      return;
+    }
+    const row = db
+      .prepare(
+        `SELECT m.image, m.conversation_id FROM chat_messages m WHERE m.id = ?`
+      )
+      .get(req.params.id) as { image: string | null; conversation_id: number } | undefined;
+    if (!row || !row.image) {
+      res.status(404).json({ error: 'Image introuvable' });
+      return;
+    }
+    if (!isMember(row.conversation_id, user.id)) {
+      res.status(403).json({ error: 'Accès refusé' });
+      return;
+    }
+
+    const check = validateDataUri(row.image, ['image']);
+    if (!check.ok) {
+      res.status(415).json({ error: 'Image invalide' });
+      return;
+    }
+    res.setHeader('Content-Type', check.file.mime);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(check.file.buffer);
+  } catch (err) {
+    console.error('Get chat image error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+/**
+ * Suppression d'un message : par son auteur, ou par le délégué (modération).
+ * Dans les deux cas l'action est inscrite au journal d'administration.
+ */
+router.delete('/messages/:id', (req, res) => {
+  try {
+    const isAdmin = req.session?.authenticated === true;
+    const messageId = Number(req.params.id);
+
+    const row = db
+      .prepare(
+        `SELECT m.id, m.conversation_id, m.sender_id, u.display_name AS sender_name
+         FROM chat_messages m JOIN chat_users u ON u.id = m.sender_id WHERE m.id = ?`
+      )
+      .get(messageId) as
+      | { id: number; conversation_id: number; sender_id: number; sender_name: string }
+      | undefined;
+
+    if (!row) {
+      res.status(404).json({ error: 'Message introuvable' });
+      return;
+    }
+
+    if (isAdmin) {
+      db.prepare('DELETE FROM chat_messages WHERE id = ?').run(messageId);
+      logAdminAction(db, 'chat_message_delete', 'chat_message', messageId, `Message de ${row.sender_name} supprimé`);
+      res.json({ success: true });
+      return;
+    }
+
+    const user = findUser(req);
+    if (!user || user.id !== row.sender_id) {
+      res.status(403).json({ error: 'Suppression autorisée' });
+      return;
+    }
+    db.prepare('DELETE FROM chat_messages WHERE id = ?').run(messageId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete chat message error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+export default router;

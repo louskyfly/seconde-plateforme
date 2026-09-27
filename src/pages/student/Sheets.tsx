@@ -6,7 +6,7 @@ import type { Sheet } from '@/types';
 import { Modal } from '@/components/ui/Modal';
 
 const ALL_SUBJECTS = Object.keys(SUBJECTS);
-const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
 const PAGE_SIZE = 24;
 
@@ -98,7 +98,7 @@ export default function Sheets() {
       return;
     }
     if (isImage && selected.size > MAX_IMAGE_BYTES) {
-      setFileError('Image trop volumineuse (3 Mo maximum)');
+      setFileError('Image trop volumineuse (15 Mo maximum)');
       return;
     }
 

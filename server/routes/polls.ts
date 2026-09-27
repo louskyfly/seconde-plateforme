@@ -5,8 +5,30 @@ import { sendPushToAll } from '../lib/push.js';
 
 const router = Router();
 
+/**
+ * Le client envoie 0/1, mais un appel direct peut envoyer false, '0' ou null.
+ * `value !== false` traitait 0 comme vrai : les résultats restaient toujours
+ * visibles. On normalise donc explicitement.
+ */
+function toFlag(value: unknown, defaultValue: 0 | 1): 0 | 1 {
+  if (value === undefined || value === null || value === '') return defaultValue;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return value ? 1 : 0;
+  const text = String(value).toLowerCase();
+  if (text === 'false' || text === '0' || text === 'non' || text === 'off') return 0;
+  return 1;
+}
+
 router.get('/', (req, res) => {
   try {
+    // Le fingerprint permet de savoir si l'élève a déjà voté : sans cela,
+    // l'interface affichait un sondage comme votable alors que le serveur
+    // refuse ensuite le vote (« Vous avez déjà voté ») et rien ne se passait.
+    const fingerprint = (req.query.fingerprint as string) || '';
+    const votedStmt = fingerprint
+      ? db.prepare('SELECT COUNT(*) AS count FROM poll_votes WHERE poll_id = ? AND voter_fingerprint = ?')
+      : null;
+
     const polls = db
       .prepare('SELECT * FROM polls WHERE active = 1 ORDER BY created_at DESC')
       .all() as any[];
@@ -23,7 +45,11 @@ router.get('/', (req, res) => {
         return { ...opt, vote_count: voteRow.count };
       });
 
-      return { ...poll, options: optionsWithCounts };
+      const hasVoted = votedStmt
+        ? ((votedStmt.get(poll.id, fingerprint) as { count: number }).count > 0)
+        : false;
+
+      return { ...poll, options: optionsWithCounts, has_voted: hasVoted };
     });
 
     res.json(result);
@@ -85,9 +111,9 @@ router.post('/', requireAuth, (req, res) => {
         )
         .run(
           question.trim(),
-          allow_multiple ? 1 : 0,
-          show_results !== false ? 1 : 0,
-          anonymous !== false ? 1 : 0
+          toFlag(allow_multiple, 0),
+          toFlag(show_results, 1),
+          toFlag(anonymous, 1)
         );
 
       const pollId = Number(pollResult.lastInsertRowid);
@@ -202,9 +228,9 @@ router.put('/:id', requireAuth, (req, res) => {
        WHERE id = ?`
     ).run(
       active !== undefined ? (active ? 1 : 0) : null,
-      allow_multiple !== undefined ? (allow_multiple ? 1 : 0) : null,
-      show_results !== undefined ? (show_results ? 1 : 0) : null,
-      anonymous !== undefined ? (anonymous ? 1 : 0) : null,
+        allow_multiple !== undefined ? toFlag(allow_multiple, 0) : null,
+        show_results !== undefined ? toFlag(show_results, 0) : null,
+        anonymous !== undefined ? toFlag(anonymous, 0) : null,
       active !== undefined ? (active ? 1 : 0) : null,
       id
     );

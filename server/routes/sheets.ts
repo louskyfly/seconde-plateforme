@@ -2,7 +2,7 @@ import { Router } from 'express';
 import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { logAdminAction } from '../lib/maintenance.js';
-import { cleanText, safeFileName, toDataUri, validateDataUri } from '../lib/files.js';
+import { cleanText, safeFileName, toDataUri, validateDataUri, MAX_SHEET_IMAGE_BYTES } from '../lib/files.js';
 
 const router = Router();
 
@@ -100,7 +100,9 @@ router.get('/:id/file', (req, res) => {
       return;
     }
 
-    const check = validateDataUri(row.file_data, ['image', 'document']);
+    const check = validateDataUri(row.file_data, ['image', 'document'], {
+    maxImageBytes: MAX_SHEET_IMAGE_BYTES,
+  });
     if (!check.ok) {
       res.status(415).json({ error: 'Fichier illisible' });
       return;
@@ -153,7 +155,10 @@ router.post('/', (req, res) => {
       return;
     }
 
-    const check = validateDataUri(req.body?.file, ['image', 'document']);
+    // Les fiches acceptent des images jusqu'à 15 Mo (le chat reste à 3 Mo).
+  const check = validateDataUri(req.body?.file, ['image', 'document'], {
+    maxImageBytes: MAX_SHEET_IMAGE_BYTES,
+  });
     if (!check.ok) {
       res.status(400).json({ error: check.error });
       return;

@@ -101,11 +101,28 @@ Un groupe unique où toute la classe échange (élèves + délégué).
 Rubrique ouverte aux élèves : chacun dépose une image ou un PDF.
 
 - Titre, matière, classe/niveau, description facultative
-- Formats acceptés : **JPG, PNG, WEBP, GIF, PDF** — 3 Mo par image, 4 Mo par PDF
+- Formats acceptés : **JPG, PNG, WEBP, GIF, PDF** — 15 Mo par image, 4 Mo par PDF (le chat reste à 3 Mo)
 - Contrôle du **type réel** du fichier côté serveur, nom de fichier régénéré, fichiers servis via l'API (jamais publiquement listables)
 - Recherche, filtre par matière, chargement progressif
 - Chaque élève supprime ses propres fiches ; le délégué peut masquer ou supprimer n'importe laquelle
 - Seuls le pseudo, la date et la matière sont affichés : aucune donnée personnelle
+
+## 🎃 Thèmes de saison (Halloween / Noël)
+
+Depuis **Paramètres → Thème de la plateforme**, le délégué décore toute l'application en un clic.
+
+- **Normal** / **Halloween** (orange & violet) / **Noël** (rouge & vert)
+- Activation et désactivation **immédiates**, pour toute la classe : fond, halos et cartes en verre changent de couleur en douceur
+- Le thème est **mémorisé en base** : il revient tout seul au chargement, sur tous les postes
+- Les élèves voient un petit message de saison sur leur accueil (ex. « Joyeux Halloween à toute la classe ! »)
+- Bascule sans risque : revenir sur **Normal** retire la décoration d'origine
+
+## 📊 Sondages
+
+- Un sondage par le délégué, avec une ou plusieurs réponses possibles
+- **Un seul vote par élève** : après le vote, l'élève ne peut plus changer d'avis (message explicite)
+- Les résultats restent cliquables même quand ils sont affichés en direct
+- Une **pastille sur l'icône Sondages** (barre latérale sur ordinateur, barre du bas sur mobile) indique le nombre de sondages en attente
 
 ## 🧪 Tests
 
@@ -113,8 +130,8 @@ Rubrique ouverte aux élèves : chacun dépose une image ou un PDF.
 npm test
 ```
 
- Lance le build puis 34 tests d'intégration sur une **base temporaire** (aucune donnée réelle touchée) :
-maintenance (activation, blocage, contournement API, accès délégué), chat (adhésion, envoi, réception, non-lus, isolation, suppression), fiches (dépôt, type refusé, taille refusée, masquage, suppression) et permissions.
+Lance le build puis 47 tests d'intégration sur une **base temporaire** (aucune donnée réelle touchée) :
+maintenance (activation, blocage, contournement API, accès délégué), chat (adhésion, envoi, réception, non-lus, isolation, suppression, limite 3 Mo), fiches (dépôt, image de plus de 3 Mo acceptée, type refusé, taille refusée, masquage, suppression), sondages (droits de création, `has_voted`, double vote refusé, résultats visibles), thèmes de saison (défaut, activation, refus d'un élève, valeur invalide) et permissions.
 
 ## 📦 Structure du projet
 

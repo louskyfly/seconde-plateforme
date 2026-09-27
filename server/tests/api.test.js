@@ -60,6 +60,14 @@ const other = makeClient();
 const PNG_1PX =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
+// Faux PNG de `sizeBytes` octets : la validation du serveur contrôle la signature
+// (8 premiers octets), pas le décodage complet de l'image.
+function pngOfSize(sizeBytes) {
+  const buffer = Buffer.alloc(sizeBytes, 0);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(buffer, 0);
+  return `data:image/png;base64,${buffer.toString('base64')}`;
+}
+
 async function waitForServer() {
   for (let i = 0; i < 60; i++) {
     try {
@@ -90,9 +98,23 @@ before(async () => {
   await waitForServer();
 });
 
-after(() => {
-  if (server) server.kill();
-  if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+after(async () => {
+  // Sur Windows, le fichier SQLite reste verrouillé tant que le serveur n'a pas
+  // quitté : on attend sa fin avant de supprimer la base temporaire.
+  if (server && server.exitCode === null) {
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        server.kill('SIGKILL');
+        resolve();
+      }, 3000);
+      server.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      server.kill();
+    });
+  }
+  if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 describe('Permissions administrateur', () => {
@@ -131,6 +153,17 @@ describe('Chat', () => {
   test('pseudo trop court refusé', async () => {
     const res = await other('POST', '/api/chat/join', { fingerprint: BOB, display_name: 'a' });
     assert.equal(res.status, 400);
+  });
+
+  test('le chat garde sa limite de 3 Mo par image', async () => {
+    const res = await student('POST', '/api/chat/messages', {
+      fingerprint: ALICE,
+      conversation_id: 1,
+      content: 'Gros fichier',
+      image: pngOfSize(6 * 1024 * 1024),
+    });
+    assert.equal(res.status, 400);
+    assert.match(res.data.error, /volumineux/i);
   });
 
   test('envoi et réception d’un message', async () => {
@@ -291,7 +324,8 @@ describe('Fiches de révision', () => {
   });
 
   test('fichier trop volumineux refusé', async () => {
-    const huge = 'data:image/png;base64,' + 'A'.repeat(6 * 1024 * 1024);
+    // Au-delà de la limite des fiches (15 Mo)
+    const huge = 'data:image/png;base64,' + 'A'.repeat(21 * 1024 * 1024);
     const res = await student('POST', '/api/sheets', {
       title: 'Trop gros',
       subject: 'maths',
@@ -301,6 +335,19 @@ describe('Fiches de révision', () => {
     });
     assert.equal(res.status, 400);
     assert.match(res.data.error, /volumineux/i);
+  });
+
+  test('une image de plus de 3 Mo est acceptée', async () => {
+    // 6 Mo : refusé avant l'augmentation de la limite, accepté aujourd'hui
+    const res = await student('POST', '/api/sheets', {
+      title: 'Photo de cours',
+      subject: 'maths',
+      file: pngOfSize(6 * 1024 * 1024),
+      fingerprint: ALICE,
+      author_name: 'Alice',
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.kind, 'image');
   });
 
   test('le fichier est servi par l’API, jamais en exécutable', async () => {
@@ -463,5 +510,105 @@ describe('Mode maintenance', () => {
     const log = await admin('GET', '/api/admin/log');
     assert.ok(log.data.some((entry) => entry.action === 'maintenance_on'));
     assert.ok(log.data.some((entry) => entry.action === 'maintenance_off'));
+  });
+});
+
+describe('Sondages', () => {
+  let pollId = 0;
+  let optionId = 0;
+
+  test('création d’un sondage avec résultats visibles', async () => {
+    const res = await admin('POST', '/api/polls', {
+      question: 'Quelle est la couleur de la classe ?',
+      options: ['Orange', 'Violet'],
+      show_results: 1,
+      allow_multiple: 0,
+    });
+    assert.equal(res.status, 201);
+    pollId = res.data.id;
+    optionId = res.data.options[0].id;
+  });
+
+  test('"Afficher les résultats" décoché est bien enregistré', async () => {
+    const res = await admin('POST', '/api/polls', {
+      question: 'Sortie en fin d’année ?',
+      options: ['Oui', 'Non'],
+      show_results: 0,
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.show_results, 0, 'le serveur ne doit pas forcer les résultats visibles');
+    await admin('DELETE', `/api/polls/${res.data.id}`);
+  });
+
+  test('un élève ne peut pas créer de sondage', async () => {
+    const res = await student('POST', '/api/polls', { question: 'Pirate', options: ['Oui', 'Non'] });
+    assert.equal(res.status, 401);
+  });
+
+  test('has_voted passe de false à true après le vote', async () => {
+    const before = await student('GET', `/api/polls?fingerprint=${ALICE}`);
+    const poll = before.data.find((p) => p.id === pollId);
+    assert.equal(poll.has_voted, false);
+    assert.equal(poll.show_results, 1, 'les résultats doivent rester visibles');
+
+    const vote = await student('POST', `/api/polls/${pollId}/vote`, {
+      option_ids: [optionId],
+      fingerprint: ALICE,
+    });
+    assert.equal(vote.status, 200);
+
+    const after = await student('GET', `/api/polls?fingerprint=${ALICE}`);
+    assert.equal(after.data.find((p) => p.id === pollId).has_voted, true);
+  });
+
+  test('un second vote du même élève est refusé', async () => {
+    const res = await student('POST', `/api/polls/${pollId}/vote`, {
+      option_ids: [optionId],
+      fingerprint: ALICE,
+    });
+    assert.equal(res.status, 400);
+    assert.match(res.data.error, /déjà voté/i);
+  });
+
+  test('le décompte des résultats est visible pour tous', async () => {
+    const res = await other('GET', `/api/polls?fingerprint=${BOB}`);
+    const poll = res.data.find((p) => p.id === pollId);
+    assert.equal(poll.has_voted, false);
+    assert.ok(poll.options.find((o) => o.id === optionId).vote_count >= 1);
+  });
+});
+
+describe('Paramètres et thème de saison', () => {
+  test('le thème vaut "aucun" par défaut', async () => {
+    const res = await student('GET', '/api/settings');
+    assert.equal(res.status, 200);
+    assert.equal(res.data.season_theme, 'aucun');
+  });
+
+  test('le délégué active le thème Halloween', async () => {
+    const res = await admin('PUT', '/api/settings', { season_theme: 'halloween' });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.season_theme, 'halloween');
+    assert.equal((await student('GET', '/api/settings')).data.season_theme, 'halloween');
+  });
+
+  test('un élève ne peut pas changer le thème', async () => {
+    const res = await student('PUT', '/api/settings', { season_theme: 'noel' });
+    assert.equal(res.status, 401);
+    assert.equal((await student('GET', '/api/settings')).data.season_theme, 'halloween');
+  });
+
+  test('thème inconnu refusé', async () => {
+    const res = await admin('PUT', '/api/settings', { season_theme: 'pirate' });
+    assert.equal(res.status, 400);
+    assert.equal((await student('GET', '/api/settings')).data.season_theme, 'halloween');
+  });
+
+  test('retour au thème normal sans toucher aux autres réglages', async () => {
+    await admin('PUT', '/api/settings', { class_name: 'Seconde 9' });
+    const res = await admin('PUT', '/api/settings', { season_theme: 'aucun' });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.season_theme, 'aucun');
+    assert.equal(res.data.class_name, 'Seconde 9');
   });
 });

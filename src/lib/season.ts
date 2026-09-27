@@ -1,0 +1,38 @@
+/**
+ * Thèmes de saison : changent la décoration et les couleurs de l'application.
+ * Le thème est stocké en base (paramètres du délégué) et s'applique à toute
+ * l'application via l'attribut `data-season` sur <html>.
+ */
+
+export type SeasonTheme = 'aucun' | 'halloween' | 'noel';
+
+const SEASONS: SeasonTheme[] = ['aucun', 'halloween', 'noel'];
+
+export function normalizeSeasonTheme(value: unknown): SeasonTheme {
+  const theme = String(value ?? '').toLowerCase().trim();
+  return (SEASONS as string[]).includes(theme) ? (theme as SeasonTheme) : 'aucun';
+}
+
+/** Applique (ou retire) la décoration sur l'ensemble de l'application. */
+export function applySeason(theme: unknown): SeasonTheme {
+  const value = normalizeSeasonTheme(theme);
+  const root = document.documentElement;
+  if (value === 'aucun') {
+    delete root.dataset.season;
+  } else {
+    root.dataset.season = value;
+  }
+  // Couleur de la barre système (PWA installée) accordée au thème
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) {
+    const color = value === 'halloween' ? '#2b1b3d' : value === 'noel' ? '#3a1220' : '#0a1220';
+    meta.setAttribute('content', color);
+  }
+  return value;
+}
+
+export const SEASON_THEMES: { value: SeasonTheme; label: string; emoji: string; hint: string }[] = [
+  { value: 'aucun', label: 'Normal', emoji: '🎨', hint: 'Le thème actuel' },
+  { value: 'halloween', label: 'Halloween', emoji: '🎃', hint: 'Orange et violet' },
+  { value: 'noel', label: 'Noël', emoji: '🎄', hint: 'Rouge et vert' },
+];

@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useChatUnread } from '@/hooks/useChatUnread';
+import { usePendingPolls } from '@/hooks/usePendingPolls';
 
 const NAV_ITEMS = [
   { to: '/', emoji: '🏠', label: 'Accueil' },
@@ -17,6 +18,7 @@ const NAV_ITEMS = [
 export function BottomNav() {
   const location = useLocation();
   const unread = useChatUnread(location.pathname !== '/chat');
+  const pendingPolls = usePendingPolls(location.pathname !== '/sondages');
 
   return (
     <nav className="bottom-nav glass border-t border-white/20 dark:border-gray-700/30 z-40">
@@ -34,10 +36,15 @@ export function BottomNav() {
               }`
             }
           >
-            <span className="text-xl mb-0.5">
+            <span className="relative text-xl mb-0.5 inline-block">
               {item.emoji}
               {item.to === '/chat' && unread > 0 && (
-                <span className="absolute ml-3 mt-0.5 w-2 h-2 rounded-full bg-red-500" />
+                <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-red-500" />
+              )}
+              {item.to === '/sondages' && pendingPolls > 0 && (
+                <span className="absolute -top-0.5 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-indigo-500 text-white text-[9px] font-bold flex items-center justify-center">
+                  {pendingPolls > 9 ? '9+' : pendingPolls}
+                </span>
               )}
             </span>
             <span className="truncate">{item.label}</span>

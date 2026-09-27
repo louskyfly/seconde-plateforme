@@ -2,8 +2,15 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useSettings } from '@/hooks/useSettings';
+import { normalizeSeasonTheme, type SeasonTheme } from '@/lib/season';
 import { formatDate, getRelativeTime, CATEGORIES_IDEA, PROJECT_STATUSES } from '@/lib/utils';
 import type { Announcement, Idea, Poll, Event, Resource, Project } from '@/types';
+
+const SEASON_GREETING: Record<SeasonTheme, string> = {
+  aucun: '',
+  halloween: '🎃 Joyeux Halloween à toute la classe !',
+  noel: '🎄 Joyeuses fêtes de fin d’année !',
+};
 
 interface BubbleProps {
   to: string;
@@ -70,6 +77,7 @@ function FeaturedBubble({
 
 export default function Home() {
   const { settings } = useSettings();
+const season = normalizeSeasonTheme(settings?.season_theme);
   const [loading, setLoading] = useState(true);
   const [latestAnnouncement, setLatestAnnouncement] = useState<Announcement | null>(null);
   const [nextEvent, setNextEvent] = useState<Event | null>(null);
@@ -135,6 +143,9 @@ export default function Home() {
         </h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">La plateforme de notre classe</p>
         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 capitalize">{today}</p>
+        {season !== 'aucun' && (
+          <p className="season-greeting mt-2 text-sm font-semibold">{SEASON_GREETING[season]}</p>
+        )}
       </header>
 
       {settings?.home_image && (

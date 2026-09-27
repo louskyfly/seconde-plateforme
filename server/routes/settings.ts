@@ -5,10 +5,20 @@ import { hashPassword, verifyPassword, generateToken } from '../utils/password.j
 
 const router = Router();
 
+const SEASON_THEMES = ['aucun', 'halloween', 'noel'] as const;
+
+function normalizeSeason(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  const theme = String(value).toLowerCase().trim();
+  return (SEASON_THEMES as readonly string[]).includes(theme) ? theme : null;
+}
+
 router.get('/', (req, res) => {
   try {
     const settings = db
-      .prepare('SELECT class_name, delegate_name, accent_color, home_info, home_image FROM settings WHERE id = 1')
+      .prepare(
+        'SELECT class_name, delegate_name, accent_color, home_info, home_image, season_theme FROM settings WHERE id = 1'
+      )
       .get();
     if (!settings) {
       res.status(404).json({ error: 'Configuration introuvable' });
@@ -23,9 +33,16 @@ router.get('/', (req, res) => {
 
 router.put('/', requireAuth, (req, res) => {
   try {
-    const { class_name, delegate_name, accent_color, home_info, home_image } = req.body;
+    const { class_name, delegate_name, accent_color, home_info, home_image, season_theme } = req.body;
+    const season = normalizeSeason(season_theme);
+    if (season_theme !== undefined && season === null) {
+      res.status(400).json({ error: 'Thème de saison invalide' });
+      return;
+    }
     const existing = db
-      .prepare('SELECT class_name, delegate_name, accent_color, home_info, home_image FROM settings WHERE id = 1')
+      .prepare(
+        'SELECT class_name, delegate_name, accent_color, home_info, home_image FROM settings WHERE id = 1'
+      )
       .get() as { home_image: string | null } | undefined;
     db.prepare(
       `UPDATE settings SET
@@ -33,6 +50,7 @@ router.put('/', requireAuth, (req, res) => {
         delegate_name = COALESCE(?, delegate_name),
         accent_color = COALESCE(?, accent_color),
         home_info = COALESCE(?, home_info),
+        season_theme = COALESCE(?, season_theme),
         home_image = ?,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = 1`
@@ -41,11 +59,14 @@ router.put('/', requireAuth, (req, res) => {
       delegate_name?.trim() ?? null,
       accent_color?.trim() ?? null,
       home_info?.trim() ?? null,
+      season,
       home_image !== undefined ? home_image : (existing?.home_image ?? null)
     );
 
     const updated = db
-      .prepare('SELECT class_name, delegate_name, accent_color, home_info, home_image FROM settings WHERE id = 1')
+      .prepare(
+        'SELECT class_name, delegate_name, accent_color, home_info, home_image, season_theme FROM settings WHERE id = 1'
+      )
       .get();
     res.json(updated);
   } catch (err) {

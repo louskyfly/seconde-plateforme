@@ -70,7 +70,8 @@ export const api = {
   deleteMessage: (id: number) => request<{ success: boolean }>(`/messages/${id}`, { method: 'DELETE' }),
   
   // Polls
-  getPolls: () => request<Poll[]>('/polls'),
+      getPolls: (fingerprint?: string) =>
+        request<Poll[]>(`/polls${fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''}`),
   getPoll: (id: number) => request<Poll>(`/polls/single/${id}`),
   createPoll: (data: any) => request<Poll>('/polls', { method: 'POST', body: JSON.stringify(data) }),
   votePoll: (id: number, option_ids: number[], fingerprint: string) => request<any>(`/polls/${id}/vote`, { method: 'POST', body: JSON.stringify({ option_ids, fingerprint }) }),

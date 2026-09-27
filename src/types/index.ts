@@ -4,6 +4,8 @@ export interface Settings {
   accent_color: string;
   home_info: string;
   home_image: string | null;
+  /** Thème de saison : 'aucun' | 'halloween' | 'noel' */
+  season_theme?: string;
 }
 
 export interface Announcement {
@@ -57,6 +59,8 @@ export interface Poll {
   closed_at: string | null;
   options?: PollOption[];
   total_votes?: number;
+  /** L'élève a déjà voté sur ce sondage (renvoyé si le fingerprint est fourni) */
+  has_voted?: boolean;
 }
 
 export interface PollOption {

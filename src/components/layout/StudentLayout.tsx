@@ -2,6 +2,7 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useSettings } from '@/hooks/useSettings';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useChatUnread } from '@/hooks/useChatUnread';
+import { usePendingPolls } from '@/hooks/usePendingPolls';
 import { BottomNav } from './BottomNav';
 import { useEffect } from 'react';
 
@@ -22,6 +23,7 @@ function Sidebar() {
   const { settings } = useSettings();
   const location = useLocation();
   const unread = useChatUnread(location.pathname !== '/chat');
+  const pendingPolls = usePendingPolls(location.pathname !== '/sondages');
 
   return (
     <aside className="fixed top-0 left-0 h-full w-64 glass border-r border-white/20 dark:border-gray-700/30 z-30 hidden lg:flex flex-col">
@@ -50,6 +52,11 @@ function Sidebar() {
             {item.to === '/chat' && unread > 0 && (
               <span className="ml-auto flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                 {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+            {item.to === '/sondages' && pendingPolls > 0 && (
+              <span className="ml-auto flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {pendingPolls > 99 ? '99+' : pendingPolls}
               </span>
             )}
           </NavLink>

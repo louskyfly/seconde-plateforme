@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { generateFingerprint } from '@/lib/utils';
+import { generateFingerprint, parseServerDate } from '@/lib/utils';
 import type { Poll } from '@/types';
 
 export default function Polls() {
@@ -9,21 +9,19 @@ export default function Polls() {
   const [selectedOptions, setSelectedOptions] = useState<Record<number, number[]>>({});
   const [votedPolls, setVotedPolls] = useState<Set<number>>(new Set());
   const [voting, setVoting] = useState<number | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     api
-      .getPolls()
+      .getPolls(generateFingerprint())
       .then((data) => {
         const sorted = data.sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          (a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime()
         );
         setPolls(sorted);
-
-        const voted = new Set<number>();
-        sorted.forEach((p) => {
-          if (!p.active) voted.add(p.id);
-        });
-        setVotedPolls(voted);
+        // Le serveur indique si l'élève a déjà voté (et non « tout sondage
+        // fermé »), sinon le bouton « Voter » restait actif pour rien.
+        setVotedPolls(new Set(sorted.filter((p) => p.has_voted).map((p) => p.id)));
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -42,34 +40,42 @@ export default function Polls() {
     });
   }, []);
 
-  const submitVote = useCallback(async (poll: Poll) => {
-    const options = selectedOptions[poll.id];
-    if (!options || options.length === 0) return;
-    setVoting(poll.id);
-    try {
-      await api.votePoll(poll.id, options, generateFingerprint());
-      setVotedPolls((prev) => new Set(prev).add(poll.id));
-      setPolls((prev) =>
-        prev.map((p) => {
-          if (p.id !== poll.id) return p;
-          const updatedOptions = p.options?.map((opt) => ({
-            ...opt,
-            vote_count: options.includes(opt.id) ? (opt.vote_count || 0) + 1 : opt.vote_count,
-          }));
-          return {
-            ...p,
-            active: 0,
-            show_results: 1,
-            options: updatedOptions,
-            total_votes: (p.total_votes || 0) + 1,
-          };
-        })
-      );
-    } catch {
-    } finally {
-      setVoting(null);
-    }
-  }, [selectedOptions]);
+  const submitVote = useCallback(
+    async (poll: Poll) => {
+      const options = selectedOptions[poll.id];
+      if (!options || options.length === 0) return;
+      setVoting(poll.id);
+      setError('');
+      try {
+        await api.votePoll(poll.id, options, generateFingerprint());
+        setVotedPolls((prev) => new Set(prev).add(poll.id));
+        setPolls((prev) =>
+          prev.map((p) => {
+            if (p.id !== poll.id) return p;
+            const updatedOptions = p.options?.map((opt) => ({
+              ...opt,
+              vote_count: options.includes(opt.id) ? (opt.vote_count || 0) + 1 : opt.vote_count,
+            }));
+            return {
+              ...p,
+              active: 0,
+              show_results: 1,
+              has_voted: true,
+              options: updatedOptions,
+              total_votes: (p.total_votes || 0) + 1,
+            };
+          })
+        );
+      } catch (err: any) {
+        // Le message d'erreur est affiché : auparavant il était ignoré et le
+        // bouton « Voter » ne semblait faire strictement rien.
+        setError(err?.message || 'Vote impossible');
+      } finally {
+        setVoting(null);
+      }
+    },
+    [selectedOptions]
+  );
 
   const activePolls = polls.filter((p) => p.active);
   const closedPolls = polls.filter((p) => !p.active);
@@ -77,9 +83,10 @@ export default function Polls() {
   const renderPoll = (poll: Poll, isClosed: boolean) => {
     const options = poll.options || [];
     const total = options.reduce((sum, o) => sum + (o.vote_count || 0), 0);
-    const showResults = isClosed || votedPolls.has(poll.id) || poll.show_results === 1;
+    const hasVoted = votedPolls.has(poll.id);
+    const showResults = isClosed || hasVoted || poll.show_results === 1;
     const selected = selectedOptions[poll.id] || [];
-    const canVote = poll.active && !votedPolls.has(poll.id);
+    const canVote = poll.active === 1 && !hasVoted && !isClosed;
 
     return (
       <div key={poll.id} className="glass-card">
@@ -90,35 +97,35 @@ export default function Polls() {
             const pct = total > 0 ? Math.round(((opt.vote_count || 0) / total) * 100) : 0;
             const isSelected = selected.includes(opt.id);
 
-            if (showResults) {
-              return (
-                <div key={opt.id} className="relative rounded-xl overflow-hidden">
-                  <div
-                    className="absolute inset-0 bg-indigo-400/20 dark:bg-indigo-500/20 transition-all duration-500"
+            // L'option reste un bouton même quand les résultats sont visibles :
+            // auparavant, un sondage créé avec « résultats immédiats » (par
+            // défaut) s'affichait en barres statiques, donc impossible à cliquer.
+            const Row = canVote ? 'button' : 'div';
+            return (
+              <Row
+                key={opt.id}
+                {...(canVote
+                  ? { type: 'button' as const, onClick: () => toggleOption(poll.id, opt.id, poll.allow_multiple === 1) }
+                  : {})}
+                className={`relative w-full overflow-hidden rounded-xl text-left transition-all ${
+                  canVote ? 'hover:bg-gray-100/50 dark:hover:bg-gray-700/30 cursor-pointer' : ''
+                } ${isSelected ? 'ring-2 ring-indigo-500/50' : ''} ${
+                  showResults ? '' : 'glass'
+                } ${isSelected ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400' : ''}`}
+              >
+                {showResults && (
+                  <span
+                    className="absolute inset-y-0 left-0 bg-indigo-400/20 dark:bg-indigo-500/20 transition-all duration-500 pointer-events-none"
                     style={{ width: `${pct}%` }}
                   />
-                  <div className="relative flex items-center justify-between px-3 py-2.5">
-                    <span className="text-xs font-medium">{opt.text}</span>
-                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">
-                      {pct}%
-                    </span>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <button
-                key={opt.id}
-                onClick={() => toggleOption(poll.id, opt.id, poll.allow_multiple === 1)}
-                className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
-                  isSelected
-                    ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 ring-2 ring-indigo-500/50'
-                    : 'glass hover:bg-gray-100/50 dark:hover:bg-gray-700/30'
-                }`}
-              >
-                {opt.text}
-              </button>
+                )}
+                <span className="relative flex items-center justify-between px-3 py-2.5">
+                  <span className="text-xs font-medium">{opt.text}</span>
+                  {showResults && (
+                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{pct}%</span>
+                  )}
+                </span>
+              </Row>
             );
           })}
         </div>
@@ -126,8 +133,11 @@ export default function Polls() {
         {showResults && (
           <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2">
             {total} vote{total > 1 ? 's' : ''}
+            {hasVoted && !isClosed ? ' · tu as voté' : ''}
           </p>
         )}
+
+        {error && <p className="text-[11px] text-red-500 dark:text-red-400 mt-2">{error}</p>}
 
         {canVote && (
           <button

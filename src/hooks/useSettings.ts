@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { applyAccent } from '@/lib/accent';
+import { applySeason } from '@/lib/season';
 import type { Settings } from '@/types';
 
 let settingsCache: Settings | null = null;
@@ -41,6 +42,7 @@ export function useSettings() {
         if (!alive) return;
         setSettings(s);
         applyAccent(s.accent_color);
+        applySeason(s.season_theme);
       })
       .catch(() => {})
       .finally(() => alive && setLoading(false));

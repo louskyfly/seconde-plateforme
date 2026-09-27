@@ -39,8 +39,10 @@ ensureDefaultChatGroup(db);
 
 app.set('trust proxy', process.env.TRUST_PROXY ? parseInt(process.env.TRUST_PROXY, 10) : false);
 
-app.use(express.json({ limit: '8mb' }));
-app.use(express.urlencoded({ extended: true, limit: '8mb' }));
+// 24 Mo : les fiches de révision acceptent des images jusqu'à 15 Mo, converties
+// en base64 par le navigateur (~20 Mo de texte JSON).
+app.use(express.json({ limit: '24mb' }));
+app.use(express.urlencoded({ extended: true, limit: '24mb' }));
 app.use(cookieParser());
 
 app.use(

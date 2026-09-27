@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings, refreshSettings } from '@/hooks/useSettings';
 import { applyAccent } from '@/lib/accent';
+import { applySeason, normalizeSeasonTheme, SEASON_THEMES, type SeasonTheme } from '@/lib/season';
 import { fileToDataUri } from '@/lib/image';
 import { Modal } from '@/components/ui/Modal';
 
@@ -42,6 +43,10 @@ export function Settings() {
   const [newToken, setNewToken] = useState('');
   const [regenBusy, setRegenBusy] = useState(false);
 
+  const [season, setSeason] = useState<SeasonTheme>('aucun');
+  const [seasonBusy, setSeasonBusy] = useState<SeasonTheme | null>(null);
+  const [seasonMessage, setSeasonMessage] = useState('');
+
   const [copied, setCopied] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [qrBusy, setQrBusy] = useState(false);
@@ -53,7 +58,27 @@ export function Settings() {
     setAccentColor(settings.accent_color);
     setHomeInfo(settings.home_info);
     setHomeImage(settings.home_image ?? null);
+    setSeason(normalizeSeasonTheme(settings.season_theme));
   }, [settings]);
+
+  /** Active ou désactive immédiatement un thème de saison, pour toute la classe. */
+  const chooseSeason = async (theme: SeasonTheme) => {
+    setSeason(theme);
+    applySeason(theme);
+    setSeasonBusy(theme);
+    setSeasonMessage('');
+    try {
+      await api.updateSettings({ season_theme: theme });
+      await refreshSettings().catch(() => {});
+      setSeasonMessage(theme === 'aucun' ? 'Thème normal appliqué' : `Thème ${SEASON_THEMES.find((t) => t.value === theme)?.label} appliqué à toute la classe`);
+    } catch (err: any) {
+      setSeason(normalizeSeasonTheme(settings?.season_theme));
+      applySeason(settings?.season_theme);
+      setSeasonMessage(err.message || 'Erreur');
+    } finally {
+      setSeasonBusy(null);
+    }
+  };
 
   const saveClass = async (e: FormEvent) => {
     e.preventDefault();
@@ -174,6 +199,41 @@ export function Settings() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Paramètres</h1>
+
+      <div className="glass-card space-y-4">
+        <div>
+          <h2 className="font-semibold">Thème de la plateforme</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Décore toute l'application pour les élèves. Activation et désactivation immédiates.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {SEASON_THEMES.map((theme) => {
+            const active = season === theme.value;
+            return (
+              <button
+                key={theme.value}
+                type="button"
+                onClick={() => chooseSeason(theme.value)}
+                disabled={seasonBusy !== null}
+                className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all ${
+                  active
+                    ? 'ring-2 ring-indigo-500/60 bg-indigo-500/15'
+                    : 'glass hover:bg-gray-100/50 dark:hover:bg-gray-700/30'
+                } ${seasonBusy !== null ? 'opacity-60' : ''}`}
+              >
+                <span className="text-2xl">{theme.emoji}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{theme.label}</span>
+                  <span className="block text-[11px] text-gray-500 dark:text-gray-400">{theme.hint}</span>
+                </span>
+                {active && <span className="ml-auto text-sm">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+        {seasonMessage && <p className="text-xs text-gray-500 dark:text-gray-400">{seasonMessage}</p>}
+      </div>
 
       <div className="glass-card space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">

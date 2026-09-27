@@ -6,6 +6,8 @@
 
 export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
 export const MAX_DOCUMENT_BYTES = 4 * 1024 * 1024;
+/** Fiches de révision : photos plus lourdes (scan de cours, photo nette haute résolution). */
+export const MAX_SHEET_IMAGE_BYTES = 15 * 1024 * 1024;
 
 export type FileKind = 'image' | 'document';
 
@@ -82,11 +84,26 @@ export type ValidationResult =
   | { ok: true; file: ValidatedFile }
   | { ok: false; error: string };
 
-export function validateDataUri(input: unknown, allowed: FileKind[] = ['image', 'document']): ValidationResult {
+export interface ValidateOptions {
+  /** Limite spécifique à la section (fiches de révision : 15 Mo par image). */
+  maxImageBytes?: number;
+}
+
+export function validateDataUri(
+  input: unknown,
+  allowed: FileKind[] = ['image', 'document'],
+  options: ValidateOptions = {}
+): ValidationResult {
+  const maxImageBytes = options.maxImageBytes ?? MAX_IMAGE_BYTES;
+  const maxDocumentBytes = MAX_DOCUMENT_BYTES;
+
   if (typeof input !== 'string' || input.length === 0) {
     return { ok: false, error: 'Aucun fichier reçu' };
   }
-  if (input.length > 12 * 1024 * 1024) {
+  // Garde-fou sur la longueur de la chaîne (base64 ≈ +33 %), dimensionné sur la
+  // plus grande limite possible pour ne pas rejeter un fichier valide.
+  const maxPayloadChars = Math.ceil((Math.max(maxImageBytes, maxDocumentBytes) * 4) / 3) + 1024;
+  if (input.length > maxPayloadChars) {
     return { ok: false, error: 'Fichier trop volumineux' };
   }
 
@@ -107,7 +124,7 @@ export function validateDataUri(input: unknown, allowed: FileKind[] = ['image', 
 
   // Contrôle de taille avant décodage pour éviter de charger de gros buffers.
   const estimatedBytes = Math.floor((payload.length * 3) / 4);
-  const maxBytes = Math.max(MAX_IMAGE_BYTES, MAX_DOCUMENT_BYTES);
+  const maxBytes = Math.max(maxImageBytes, maxDocumentBytes);
   if (estimatedBytes > maxBytes) {
     return { ok: false, error: `Fichier trop volumineux (max ${formatSize(maxBytes)})` };
   }
@@ -131,7 +148,7 @@ export function validateDataUri(input: unknown, allowed: FileKind[] = ['image', 
     };
   }
 
-  const limit = signature.kind === 'image' ? MAX_IMAGE_BYTES : MAX_DOCUMENT_BYTES;
+  const limit = signature.kind === 'image' ? maxImageBytes : maxDocumentBytes;
   if (buffer.length > limit) {
     return {
       ok: false,

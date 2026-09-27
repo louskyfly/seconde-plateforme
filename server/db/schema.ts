@@ -235,6 +235,9 @@ export function initDatabase(db: Database.Database): void {
   db.exec(SCHEMA_SQL);
   ensureColumn(db, 'announcements', 'image', 'TEXT');
   ensureColumn(db, 'settings', 'home_image', 'TEXT');
+  // Thème de saison (aucun / halloween / noel) activable dans les paramètres
+  // du délégué : décore l'ensemble de l'application.
+  ensureColumn(db, 'settings', 'season_theme', "TEXT DEFAULT 'aucun'");
 }
 
 /**

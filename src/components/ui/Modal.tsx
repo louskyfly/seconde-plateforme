@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   isOpen: boolean;
@@ -11,14 +12,24 @@ interface ModalProps {
 export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
+  // Verrouille le défilement de la page entière (html + body) et compense la
+  // largeur de la barre de défilement pour éviter un décalage à l'ouverture.
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
+    if (!isOpen) return;
+    const { body, documentElement } = document;
+    const previous = {
+      body: body.style.overflow,
+      html: documentElement.style.overflow,
+      padding: body.style.paddingRight,
+    };
+    const scrollbar = window.innerWidth - documentElement.clientWidth;
+    body.style.overflow = 'hidden';
+    documentElement.style.overflow = 'hidden';
+    if (scrollbar > 0) body.style.paddingRight = `${scrollbar}px`;
     return () => {
-      document.body.style.overflow = '';
+      body.style.overflow = previous.body;
+      documentElement.style.overflow = previous.html;
+      body.style.paddingRight = previous.padding;
     };
   }, [isOpen]);
 
@@ -32,15 +43,24 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
 
   if (!isOpen) return null;
 
-  return (
+  // Rendu via un portail sur <body> : sans cela, le popup était positionné par
+  // rapport au conteneur .page-transition (filter) ou .glass (backdrop-filter),
+  // qui deviennent le référent des éléments `position: fixed` -> overlay
+  // raccourci et popup décentré. Le portail garantit un centrage sur l'écran.
+  return createPortal(
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden overscroll-contain bg-black/40 p-4 backdrop-blur-sm"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className={`modal-animate glass-card ${maxWidth} w-full max-h-[85vh] overflow-y-auto`}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`modal-animate glass-card ${maxWidth} w-full max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain md:max-h-[85vh]`}
+      >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold">{title}</h2>
           <button
@@ -53,6 +73,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-lg' 
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

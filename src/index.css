@@ -26,15 +26,106 @@
   }
 
   body {
-    @apply text-gray-900 min-h-screen;
+    @apply text-gray-900;
+    min-height: 100vh;
+    min-height: 100dvh; /* 100vh > zone visible sur mobile : provoque un scroll dans le vide */
     background-color: #e9eff9;
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
+    /* Empêche le débordement horizontal parasite (halos .glass) */
+    overflow-x: hidden;
   }
 
   .dark body {
     @apply text-gray-100;
     background-color: #0a1220;
+  }
+
+  /* ===== Champs de saisie : texte toujours lisible =====
+     Le mode sombre est appliqué sur <html> et le navigateur donne par défaut
+     un fond BLANC aux <input>/<textarea> : sans ces règles, ils héritent
+     `color: gray-100` de `.dark body` => texte blanc sur fond blanc (invisible).
+     On définit donc explicitement une couleur de texte ET un fond assortis,
+     quel que soit le mode, avec curseur et placeholder visibles. */
+  input,
+  textarea,
+  select {
+    color: #111827;
+    caret-color: #111827;
+    background-color: #ffffff;
+    -webkit-text-fill-color: currentColor;
+  }
+
+  .dark input,
+  .dark textarea,
+  .dark select {
+    color: #e5e7eb;
+    caret-color: #e5e7eb;
+    background-color: #0f172a;
+  }
+
+  /* Listes déroulantes natives (non colorables via Tailwind) */
+  .dark option,
+  .dark optgroup {
+    background-color: #0f172a;
+    color: #e5e7eb;
+  }
+
+  input::placeholder,
+  textarea::placeholder,
+  select::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+  }
+
+  /* La couleur ne doit pas changer au focus ni à la sélection */
+  input:focus,
+  textarea:focus,
+  select:focus,
+  input:focus::placeholder,
+  textarea:focus::placeholder {
+    color: inherit;
+    caret-color: currentColor;
+  }
+  input:focus,
+  textarea:focus,
+  select:focus {
+    color: #111827;
+  }
+  .dark input:focus,
+  .dark textarea:focus,
+  .dark select:focus {
+    color: #e5e7eb;
+  }
+  input::selection,
+  textarea::selection {
+    background-color: #3b5ba6;
+    color: #ffffff;
+  }
+
+  /* Remplissage auto du navigateur : sinon il réimpose son propre blanc/bleu
+     et son propre couleur de texte (texte invisible sur les champs de connexion) */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  textarea:-webkit-autofill:hover,
+  textarea:-webkit-autofill:focus {
+    -webkit-text-fill-color: #111827;
+    caret-color: #111827;
+    -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+    box-shadow: 0 0 0 1000px #ffffff inset;
+  }
+  .dark input:-webkit-autofill,
+  .dark input:-webkit-autofill:hover,
+  .dark input:-webkit-autofill:focus,
+  .dark textarea:-webkit-autofill,
+  .dark textarea:-webkit-autofill:hover,
+  .dark textarea:-webkit-autofill:focus {
+    -webkit-text-fill-color: #e5e7eb;
+    caret-color: #e5e7eb;
+    -webkit-box-shadow: 0 0 0 1000px #0f172a inset;
+    box-shadow: 0 0 0 1000px #0f172a inset;
   }
 }
 
@@ -125,6 +216,10 @@
   /* ===== Verre (Liquid Glass) ===== */
   .glass {
     position: relative;
+    /* `overflow: clip` : le reflet ::before déborde de 30% de la carte ; sans
+       clip il crée une zone scrollable fantôme autour de chaque carte (scroll
+       dans le vide). `clip` ne crée pas de conteneur de défilement. */
+    overflow: clip;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0.45) 100%);
     backdrop-filter: blur(30px) saturate(220%);
     -webkit-backdrop-filter: blur(30px) saturate(220%);
@@ -163,6 +258,13 @@
   .glass:focus-within::before {
     animation: sheen-glide 1.4s ease;
   }
+  /* Sur tactile, un tap laisse l'état :hover actif : le reflet se rejouait et
+     les cartes se décalaient de 2px (popup visiblement non centré). */
+  @media (hover: hover) and (pointer: fine) {
+    .glass:hover::before {
+      animation: sheen-glide 1.4s ease;
+    }
+  }
   .dark .glass {
     background: linear-gradient(135deg, rgba(28, 40, 72, 0.72) 0%, rgba(11, 18, 36, 0.6) 100%);
     border-color: rgba(255, 255, 255, 0.12);
@@ -179,12 +281,14 @@
   .glass-card {
     @apply rounded-3xl p-5 transition-all duration-200;
   }
-  .glass-card:hover {
-    transform: translateY(-2px) scale(1.01);
-    box-shadow:
-      0 20px 48px rgba(20, 36, 69, 0.16),
-      inset 0 1px 0 rgba(255, 255, 255, 0.9),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+  @media (hover: hover) and (pointer: fine) {
+    .glass-card:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow:
+        0 20px 48px rgba(20, 36, 69, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+    }
   }
 
   .glass-button {

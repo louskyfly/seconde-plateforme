@@ -13,7 +13,7 @@ export default function Maintenance({ message }: { message: string }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-5">
+    <div className="min-h-[100dvh] flex items-center justify-center px-5">
       <div className="glass-card max-w-lg w-full text-center py-10 px-6 animate-slideUp">
         <div className="w-16 h-16 mx-auto mb-5 rounded-full bg-amber-500/15 flex items-center justify-center text-3xl">
           🔧

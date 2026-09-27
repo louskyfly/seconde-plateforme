@@ -51,7 +51,7 @@ function Login({ token = '' }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-[100dvh] flex items-center justify-center p-4">
       <div className="glass-card w-full max-w-sm text-center">
         <div className="text-5xl mb-4">🔐</div>
         <h1 className="text-2xl font-bold mb-1">Espace Délégué</h1>

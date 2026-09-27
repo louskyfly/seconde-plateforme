@@ -274,7 +274,7 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
       )}
 
       <div
-        className="flex-1 overflow-y-auto space-y-2 pr-1"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-2 pr-1"
         onScroll={handleScroll}
       >
         {messages.length === 0 && (

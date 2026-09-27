@@ -98,7 +98,7 @@ export function StudentLayout() {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-[100dvh]">
       <Sidebar />
       <main className="lg:ml-64">
         <div className="page-container">

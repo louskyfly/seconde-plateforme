@@ -311,6 +311,7 @@ router.post('/messages', (req, res) => {
         title: '💬 Nouveau message',
         body: `${user.display_name} : ${(content || '📷 Photo').slice(0, 90)}`,
         url: '/chat',
+        tag: 'chat',
       });
     }
 

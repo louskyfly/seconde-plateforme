@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { fileToDataUri } from '@/lib/image';
-import { getRelativeTime } from '@/lib/utils';
+import { getRelativeTime, setAppBadge } from '@/lib/utils';
 import type { ChatConversation, ChatMessage, ChatUser } from '@/types';
 
-const POLL_MS = 4000;
+const POLL_MS = 3000;
 const MAX_IMAGE_INPUT_BYTES = 12 * 1024 * 1024;
 
 interface ChatViewProps {
@@ -35,6 +35,16 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const stickToBottom = useRef(true);
+  /**
+   * Dernier id connu, tenu dans une ref : le rafraîchissement ne dépend ainsi
+   * plus du tableau `messages` (avant, la fonction était figée au premier rendu
+   * et le bouton « Actualiser » pouvait être nécessaire pour voir les messages).
+   */
+  const lastIdRef = useRef(0);
+
+  useEffect(() => {
+    lastIdRef.current = messages.length ? messages[messages.length - 1].id : 0;
+  }, [messages]);
 
   const scrollToBottom = useCallback((smooth = false) => {
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
@@ -66,11 +76,11 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
     };
   }, [fingerprint]);
 
-  /* Rafraîchissement périodique des nouveaux messages */
+  /* Rafraîchissement des nouveaux messages */
   const refresh = useCallback(
     async (silent = true) => {
       if (!conversation) return;
-      const after = messages.length ? messages[messages.length - 1].id : 0;
+      const after = lastIdRef.current;
       try {
         const data = await api.getChatMessages(fingerprint, conversation.id, after);
         if (data.messages.length === 0) {
@@ -88,7 +98,7 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
         if (err?.message === 'Profil inconnu') setNeedsProfile(true);
       }
     },
-    [conversation, fingerprint, messages.length]
+    [conversation, fingerprint]
   );
 
   useEffect(() => {
@@ -116,16 +126,18 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
       mounted = false;
       clearInterval(id);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversation, needsProfile]);
+  }, [conversation, needsProfile, fingerprint, refresh, scrollToBottom]);
 
-  /* Marquer comme lu quand la page est visible */
+  /* Marquer comme lu quand la page est visible, et RAFRAICHIR dès que
+     l'utilisateur revient sur l'application (plus besoin de « Actualiser ») */
   useEffect(() => {
     if (!conversation || needsProfile) return;
     const mark = () => {
       if (document.visibilityState === 'visible') {
         api.markChatRead(conversation.id, fingerprint || undefined).catch(() => {});
         setNewCount(0);
+        setAppBadge(0);
+        refresh();
       }
     };
     mark();
@@ -135,7 +147,7 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
       document.removeEventListener('visibilitychange', mark);
       window.removeEventListener('focus', mark);
     };
-  }, [conversation, needsProfile, fingerprint, messages.length]);
+  }, [conversation, needsProfile, fingerprint, messages.length, refresh]);
 
   const join = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,8 +204,13 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
       setContent('');
       setPendingImage(null);
       stickToBottom.current = true;
+      setNewCount(0);
       requestAnimationFrame(() => scrollToBottom(true));
+      // Reconcilie avec le serveur (horodatage officiel) et récupère les
+      // messages venus entre-temps : l'affichage se met à jour tout seul.
+      refresh();
       api.markChatRead(conversation.id, fingerprint || undefined).catch(() => {});
+      setAppBadge(0);
     } catch (err: any) {
       setError(err.message || 'Message non envoyé');
     } finally {

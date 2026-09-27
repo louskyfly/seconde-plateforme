@@ -1,16 +1,35 @@
+/**
+ * Les horodatages du serveur (SQLite) sont enregistrés en UTC mais SANS
+ * fuseau : "2026-09-27 14:32:05". Or `new Date("2026-09-27 14:32:05")` est
+ * interprété en heure LOCALE par le navigateur : en France (UTC+2) un message
+ * envoyé à l'instant s'affichait « il y a 2h ». On interprète donc explicitement
+ * ces chaînes sans fuseau comme de l'UTC.
+ */
+export function parseServerDate(dateStr: string): Date {
+  if (!dateStr) return new Date(NaN);
+  // Fuseau déjà explicite (ISO "Z" ou "+02:00") : on ne touche à rien.
+  if (/(Z|[+-]\d{2}:?\d{2})$/i.test(dateStr.trim())) return new Date(dateStr);
+  const m = dateStr.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!m) return new Date(dateStr);
+  const [, year, month, day, hour, minute, second] = m;
+  // Date seule ("2026-10-15") : minuit local, pour éviter un décalage de jour.
+  if (hour === undefined) return new Date(+year, +month - 1, +day);
+  return new Date(Date.UTC(+year, +month - 1, +day, +hour, +minute, +(second || 0)));
+}
+
 export function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseServerDate(dateStr);
   return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export function formatDateTime(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseServerDate(dateStr);
   return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 export function getRelativeTime(dateStr: string): string {
   const now = new Date();
-  const date = new Date(dateStr);
+  const date = parseServerDate(dateStr);
   const diff = now.getTime() - date.getTime();
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
@@ -20,6 +39,23 @@ export function getRelativeTime(dateStr: string): string {
   if (hours < 24) return `Il y a ${hours}h`;
   if (days < 7) return `Il y a ${days}j`;
   return formatDate(dateStr);
+}
+
+/** Pastille numérique sur l'icône de l'application (PWA installée). */
+export function setAppBadge(count: number): void {
+  const nav = navigator as Navigator & {
+    setAppBadge?: (n?: number) => Promise<void>;
+    clearAppBadge?: () => Promise<void>;
+  };
+  try {
+    if (count > 0 && typeof nav.setAppBadge === 'function') {
+      nav.setAppBadge(count).catch(() => {});
+    } else if (count <= 0 && typeof nav.clearAppBadge === 'function') {
+      nav.clearAppBadge().catch(() => {});
+    }
+  } catch {
+    /* Badging API non supportée : la pastille dans l'application reste visible */
+  }
 }
 
 export function generateFingerprint(): string {

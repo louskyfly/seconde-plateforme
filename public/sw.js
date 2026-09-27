@@ -65,12 +65,28 @@ self.addEventListener("push", (event) => {
     if (event.data) data.body = event.data.text();
   }
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/favicon.svg",
-      badge: "/favicon.svg",
-      data: { url: data.url || "/" },
-    })
+    (async () => {
+      // Pastille numérique sur l'icône de l'application (Android / PWA installée)
+      if (self.registration.setAppBadge) {
+        try {
+          const current = self.registration.getAppBadge ? (await self.registration.getAppBadge()) || 0 : 0;
+          await self.registration.setAppBadge(current + 1);
+        } catch (e) {
+          /* API non supportée */
+        }
+      }
+      await self.registration.showNotification(data.title, {
+        body: data.body,
+        icon: "/favicon.svg",
+        badge: "/favicon.svg",
+        // Remplace la notification précédente au lieu d'empiler, et la
+        // redemande à chaque nouveau message (vibration si autorisée)
+        tag: data.tag || "seconde",
+        renotify: true,
+        vibrate: [40, 30, 40],
+        data: { url: data.url || "/" },
+      });
+    })()
   );
 });
 
@@ -78,16 +94,22 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || "/";
   event.waitUntil(
-    self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clientList) => {
-        for (const client of clientList) {
-          if ("focus" in client) {
-            client.navigate(url);
-            return client.focus();
-          }
+    (async () => {
+      if (self.registration.clearAppBadge) {
+        try {
+          await self.registration.clearAppBadge();
+        } catch (e) {
+          /* API non supportée */
         }
-        return self.clients.openWindow(url);
-      })
+      }
+      const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of clientList) {
+        if ("focus" in client) {
+          if ("navigate" in client) client.navigate(url);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    })()
   );
 });

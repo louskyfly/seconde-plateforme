@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { generateFingerprint } from '@/lib/utils';
+import { generateFingerprint, setAppBadge } from '@/lib/utils';
 
-/** Pastille « non lu » sur l'icône du chat, rafraîchie en arrière-plan. */
-export function useChatUnread(enabled = true, pollMs = 20000): number {
+/** Pastille « non lu » sur l'icône du chat + sur l'icône de l'application. */
+export function useChatUnread(enabled = true, pollMs = 10000): number {
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
@@ -26,6 +26,12 @@ export function useChatUnread(enabled = true, pollMs = 20000): number {
       clearInterval(id);
     };
   }, [enabled, pollMs]);
+
+  /* Reprend le nombre de non-lus sur l'icône de l'application (PWA installée) */
+  useEffect(() => {
+    if (!enabled) return;
+    setAppBadge(unread);
+  }, [unread, enabled]);
 
   return unread;
 }

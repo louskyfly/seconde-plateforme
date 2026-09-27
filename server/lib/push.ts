@@ -12,6 +12,8 @@ export interface PushPayload {
   title: string;
   body: string;
   url?: string;
+  /** Remplace la notification précédente (empêche l'empilement) */
+  tag?: string;
 }
 
 export function getVapidPublicKey(): string {

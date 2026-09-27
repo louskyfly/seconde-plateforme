@@ -104,7 +104,10 @@ export function validateDataUri(
   // plus grande limite possible pour ne pas rejeter un fichier valide.
   const maxPayloadChars = Math.ceil((Math.max(maxImageBytes, maxDocumentBytes) * 4) / 3) + 1024;
   if (input.length > maxPayloadChars) {
-    return { ok: false, error: 'Fichier trop volumineux' };
+    return {
+      ok: false,
+      error: `Fichier trop volumineux (max ${formatSize(maxImageBytes)} pour une image, ${formatSize(maxDocumentBytes)} pour un PDF)`,
+    };
   }
 
   const commaIndex = input.indexOf(',');

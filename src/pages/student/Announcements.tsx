@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { getRelativeTime, CATEGORIES_ANNOUNCEMENT, generateFingerprint } from '@/lib/utils';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { Announcement } from '@/types';
 
 const ALL_CATEGORIES = Object.keys(CATEGORIES_ANNOUNCEMENT);
@@ -18,19 +19,26 @@ export default function Announcements() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
-  useEffect(() => {
-    api
-      .getAnnouncements(generateFingerprint())
-      .then((data) =>
-        setAnnouncements(
-          data
-            .filter((a) => a.published)
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        )
-      )
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      const data = await api.getAnnouncements(generateFingerprint());
+      setAnnouncements(
+        data
+          .filter((a) => a.published)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      );
+    } catch {
+      /* on garde les données déjà affichées */
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useAutoRefresh(load);
 
   const filtered = activeCategory
     ? announcements.filter((a) => a.category === activeCategory)

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { api } from '@/lib/api';
 import { fileToDataUri, readAsDataUri } from '@/lib/image';
 import { getRelativeTime, SUBJECTS, generateFingerprint } from '@/lib/utils';
@@ -81,6 +82,10 @@ export default function Sheets() {
   useEffect(() => {
     load(1, false);
   }, [load]);
+
+  // Une fiche partagée par le délégué n'apparaissait qu'après rechargement
+  // complet de l'onglet.
+  useAutoRefresh(() => load(1, false));
 
   const pickFile = async (selected: File | undefined) => {
     setFileError('');

@@ -1,21 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { formatDate, PROJECT_STATUSES } from '@/lib/utils';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { Project } from '@/types';
 
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api
-      .getProjects()
-      .then((data) =>
-        setProjects(data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
-      )
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      const data = await api.getProjects();
+      setProjects(data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    } catch {
+      /* on garde les données déjà affichées */
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useAutoRefresh(load);
 
   return (
     <div className="animate-fadeIn">

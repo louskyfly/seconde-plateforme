@@ -46,6 +46,10 @@ export interface Message {
   status: string;
   created_at: string;
   updated_at: string;
+  /** Réponse du délégué, visible uniquement par l'élève concerné. */
+  delegate_reply?: string | null;
+  replied_at?: string | null;
+  delegate_name?: string | null;
 }
 
 export interface Poll {
@@ -58,7 +62,10 @@ export interface Poll {
   created_at: string;
   closed_at: string | null;
   options?: PollOption[];
+  /** Nombre de réponses enregistrées (choix multiple : plus grand que le nombre d'élèves) */
   total_votes?: number;
+  /** Nombre d'élèves distincts ayant voté */
+  total_voters?: number;
   /** L'élève a déjà voté sur ce sondage (renvoyé si le fingerprint est fourni) */
   has_voted?: boolean;
 }

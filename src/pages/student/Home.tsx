@@ -1,9 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useSettings } from '@/hooks/useSettings';
+import { usePendingPolls } from '@/hooks/usePendingPolls';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { normalizeSeasonTheme, type SeasonTheme } from '@/lib/season';
-import { formatDate, getRelativeTime, CATEGORIES_IDEA, PROJECT_STATUSES } from '@/lib/utils';
+import {
+  formatDate,
+  generateFingerprint,
+  getRelativeTime,
+  parseServerDate,
+  CATEGORIES_IDEA,
+  PROJECT_STATUSES,
+} from '@/lib/utils';
 import type { Announcement, Idea, Poll, Event, Resource, Project } from '@/types';
 
 const SEASON_GREETING: Record<SeasonTheme, string> = {
@@ -77,57 +86,97 @@ function FeaturedBubble({
 
 export default function Home() {
   const { settings } = useSettings();
-const season = normalizeSeasonTheme(settings?.season_theme);
+  const season = normalizeSeasonTheme(settings?.season_theme);
+  const pendingPolls = usePendingPolls();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [offline, setOffline] = useState(!navigator.onLine);
   const [latestAnnouncement, setLatestAnnouncement] = useState<Announcement | null>(null);
   const [nextEvent, setNextEvent] = useState<Event | null>(null);
   const [latestIdea, setLatestIdea] = useState<Idea | null>(null);
   const [activePoll, setActivePoll] = useState<Poll | null>(null);
   const [resources, setResources] = useState<Resource[]>([]);
   const [latestProject, setLatestProject] = useState<Project | null>(null);
+  const cancelled = useRef(false);
+
+  // Une seule fonction de chargement, réutilisée au montage, au retour sur
+  // l'application et par le bouton « Réessayer » : avant, l'accueil ne se
+  // rafraîchissait jamais et une coupure réseau affichait des bulles vides.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    setError('');
+    try {
+      const [announcements, events, ideas, polls, resourcesList, projects] = await Promise.all([
+        api.getAnnouncements(),
+        api.getEvents(),
+        api.getIdeas(),
+        api.getPolls(generateFingerprint()),
+        api.getResources(),
+        api.getProjects(),
+      ]);
+      if (!cancelled.current) setOffline(false);
+
+      const published = announcements
+        .filter((a) => a.published)
+        .sort((a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime());
+      setLatestAnnouncement(published[0] ?? null);
+
+      // parseServerDate : une date seule ("2026-09-27") vaut minuit local.
+      // new Date("2026-09-27") valait minuit UTC, soit 2 h à Paris : les
+      // événements du jour passaient pour terminés.
+      const now = new Date();
+      const upcoming = events
+        .filter((e) => parseServerDate(e.date).getTime() >= now.getTime() - 60_000)
+        .sort((a, b) => parseServerDate(a.date).getTime() - parseServerDate(b.date).getTime());
+      setNextEvent(upcoming[0] ?? null);
+
+      const ideasSorted = [...ideas].sort(
+        (a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime()
+      );
+      setLatestIdea(ideasSorted[0] ?? null);
+
+      setActivePoll(
+        polls
+          .filter((p) => p.active === 1)
+          .sort((a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime())[0] ??
+          null
+      );
+
+      setResources(resourcesList);
+
+      const projectsSorted = [...projects].sort(
+        (a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime()
+      );
+      setLatestProject(projectsSorted[0] ?? null);
+    } catch (err: any) {
+      setOffline(!navigator.onLine);
+      setError(err?.message || 'Impossible de charger la classe');
+    } finally {
+      if (!cancelled.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    Promise.all([
-      api.getAnnouncements().catch(() => [] as Announcement[]),
-      api.getEvents().catch(() => [] as Event[]),
-      api.getIdeas().catch(() => [] as Idea[]),
-      api.getPolls().catch(() => [] as Poll[]),
-      api.getResources().catch(() => [] as Resource[]),
-      api.getProjects().catch(() => [] as Project[]),
-    ])
-      .then(([announcements, events, ideas, polls, resources, projects]) => {
-        const published = announcements
-          .filter((a) => a.published)
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        if (published.length > 0) setLatestAnnouncement(published[0]);
+    cancelled.current = false;
+    load();
 
-        const now = new Date();
-        const upcoming = events
-          .filter((e) => new Date(e.date) >= now)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        if (upcoming.length > 0) setNextEvent(upcoming[0]);
+    const onOnline = () => {
+      setOffline(false);
+      load(true);
+    };
+    const onOffline = () => setOffline(true);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      cancelled.current = true;
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, [load]);
 
-        const ideasSorted = [...ideas].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        if (ideasSorted.length > 0) setLatestIdea(ideasSorted[0]);
-
-        const active =
-          polls
-            .filter((p) => p.active === 1)
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ??
-          null;
-        setActivePoll(active);
-
-        setResources(resources);
-
-        const projectsSorted = [...projects].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        if (projectsSorted.length > 0) setLatestProject(projectsSorted[0]);
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  // Rafraîchit quand l'élève revient sur l'application (onglet ouvert en
+  // arrière-plan) : une annonce publiée entre-temps devient visible.
+  useAutoRefresh(() => load(true));
 
   const today = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long',
@@ -169,6 +218,22 @@ const season = normalizeSeasonTheme(settings?.season_theme);
         </div>
       )}
 
+      {(error || offline) && (
+        <div className="glass-card mb-4 flex items-center gap-3 border-amber-500/40">
+          <span className="text-xl" aria-hidden="true">
+            {offline ? '📡' : '⚠️'}
+          </span>
+          <p className="text-xs text-gray-600 dark:text-gray-300 flex-1">
+            {offline
+              ? 'Pas de connexion : les dernières infos sont peut-être obsolètes.'
+              : error || 'Chargement impossible.'}
+          </p>
+          <button onClick={() => load()} className="glass-button text-xs px-4 py-2 shrink-0">
+            Réessayer
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 sm:gap-4">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -188,7 +253,13 @@ const season = normalizeSeasonTheme(settings?.season_theme);
               to="/sondages"
               emoji="🗳️"
               title="Sondages"
-              meta={activePoll ? `${activePoll.total_votes ?? 0} vote(s)` : ''}
+              meta={
+                pendingPolls > 0
+                  ? `${pendingPolls} à répondre`
+                  : activePoll
+                  ? `${activePoll.total_voters ?? 0} réponse(s)`
+                  : ''
+              }
             />
             <Bubble
               to="/calendrier"

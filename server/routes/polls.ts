@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendPushToAll } from '../lib/push.js';
+import { cleanText } from '../lib/files.js';
 
 const router = Router();
 
@@ -25,31 +26,68 @@ router.get('/', (req, res) => {
     // l'interface affichait un sondage comme votable alors que le serveur
     // refuse ensuite le vote (« Vous avez déjà voté ») et rien ne se passait.
     const fingerprint = (req.query.fingerprint as string) || '';
-    const votedStmt = fingerprint
-      ? db.prepare('SELECT COUNT(*) AS count FROM poll_votes WHERE poll_id = ? AND voter_fingerprint = ?')
-      : null;
 
     const polls = db
       .prepare('SELECT * FROM polls WHERE active = 1 ORDER BY created_at DESC')
       .all() as any[];
 
+    if (polls.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    // Tous les comptages en 3 requêtes au lieu d'une par option (N+1) : la page
+    // de l'élève affiche le nombre de vraies réponses et de vrais votants.
+    const ids = polls.map((p) => p.id);
+    const placeholders = ids.map(() => '?').join(',');
+
+    const optionsByPoll = new Map<number, any[]>();
+    const allOptions = db
+      .prepare(
+        `SELECT o.*,
+                (SELECT COUNT(*) FROM poll_votes v WHERE v.option_id = o.id) AS vote_count
+           FROM poll_options o
+          WHERE o.poll_id IN (${placeholders})
+          ORDER BY COALESCE(o.position, o.id), o.id`
+      )
+      .all(...ids) as any[];
+    for (const opt of allOptions) {
+      const list = optionsByPoll.get(opt.poll_id) || [];
+      list.push(opt);
+      optionsByPoll.set(opt.poll_id, list);
+    }
+
+    const totalsByPoll = new Map<number, { votes: number; voters: number }>();
+    const totals = db
+      .prepare(
+        `SELECT poll_id, COUNT(*) AS votes, COUNT(DISTINCT voter_fingerprint) AS voters
+           FROM poll_votes
+          WHERE poll_id IN (${placeholders})
+          GROUP BY poll_id`
+      )
+      .all(...ids) as any[];
+    for (const row of totals) totalsByPoll.set(row.poll_id, { votes: row.votes, voters: row.voters });
+
+    const votedIds = new Set<number>();
+    if (fingerprint) {
+      const voted = db
+        .prepare(
+          `SELECT DISTINCT poll_id FROM poll_votes
+            WHERE voter_fingerprint = ? AND poll_id IN (${placeholders})`
+        )
+        .all(fingerprint, ...ids) as any[];
+      for (const row of voted) votedIds.add(row.poll_id);
+    }
+
     const result = polls.map((poll) => {
-      const options = db
-        .prepare('SELECT * FROM poll_options WHERE poll_id = ?')
-        .all(poll.id) as any[];
-
-      const optionsWithCounts = options.map((opt) => {
-        const voteRow = db
-          .prepare('SELECT COUNT(*) AS count FROM poll_votes WHERE option_id = ?')
-          .get(opt.id) as { count: number };
-        return { ...opt, vote_count: voteRow.count };
-      });
-
-      const hasVoted = votedStmt
-        ? ((votedStmt.get(poll.id, fingerprint) as { count: number }).count > 0)
-        : false;
-
-      return { ...poll, options: optionsWithCounts, has_voted: hasVoted };
+      const totals = totalsByPoll.get(poll.id) || { votes: 0, voters: 0 };
+      return {
+        ...poll,
+        options: optionsByPoll.get(poll.id) || [],
+        total_votes: totals.votes,
+        total_voters: totals.voters,
+        has_voted: votedIds.has(poll.id),
+      };
     });
 
     res.json(result);
@@ -117,10 +155,13 @@ router.post('/', requireAuth, (req, res) => {
         );
 
       const pollId = Number(pollResult.lastInsertRowid);
-      const insertOption = db.prepare('INSERT INTO poll_options (poll_id, text) VALUES (?, ?)');
+      const insertOption = db.prepare(
+        'INSERT INTO poll_options (poll_id, text, position) VALUES (?, ?, ?)'
+      );
+      let position = 0;
       for (const opt of options) {
         if (typeof opt === 'string' && opt.trim()) {
-          insertOption.run(pollId, opt.trim());
+          insertOption.run(pollId, opt.trim(), position++);
         }
       }
 
@@ -211,29 +252,93 @@ router.post('/:id/vote', (req, res) => {
 router.put('/:id', requireAuth, (req, res) => {
   try {
     const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM polls WHERE id = ?').get(id);
+    const existing = db.prepare('SELECT * FROM polls WHERE id = ?').get(id) as any;
     if (!existing) {
       res.status(404).json({ error: 'Sondage introuvable' });
       return;
     }
 
-    const { active, allow_multiple, show_results, anonymous } = req.body;
-    db.prepare(
-      `UPDATE polls SET
-        active = COALESCE(?, active),
-        allow_multiple = COALESCE(?, allow_multiple),
-        show_results = COALESCE(?, show_results),
-        anonymous = COALESCE(?, anonymous),
-        closed_at = CASE WHEN ? = 0 THEN CURRENT_TIMESTAMP ELSE closed_at END
-       WHERE id = ?`
-    ).run(
-      active !== undefined ? (active ? 1 : 0) : null,
+    const { active, allow_multiple, show_results, anonymous, question, options } = req.body;
+
+    // Édition du texte : l'API le proposait déjà mais l'interface n'y donnait
+    // pas accès, donc une faute de frappe imposait de supprimer le sondage —
+    // et donc de perdre tous les votes déjà enregistrés.
+    const nextQuestion = question !== undefined ? cleanText(question, 200) : '';
+    if (question !== undefined && nextQuestion.length < 3) {
+      res.status(400).json({ error: 'Question trop courte (3 caractères minimum)' });
+      return;
+    }
+
+    let optionError = '';
+    const editOptions = db.transaction(() => {
+      if (Array.isArray(options)) {
+        const current = db.prepare('SELECT id, text FROM poll_options WHERE poll_id = ? ORDER BY COALESCE(position, id), id').all(id) as any[];
+        const incoming = options
+          .map((o: unknown, index: number) => ({ id: Number((o as any)?.id) || 0, text: cleanText(String((o as any)?.text ?? ''), 80), position: index }))
+          .filter((o) => o.text.length > 0);
+        if (incoming.length < 2) {
+          optionError = 'Au moins 2 options sont nécessaires';
+          return;
+        }
+
+        for (const opt of incoming) {
+          if (opt.id && current.some((c) => c.id === opt.id)) {
+            db.prepare('UPDATE poll_options SET text = ?, position = ? WHERE id = ? AND poll_id = ?').run(
+              opt.text,
+              opt.position,
+              opt.id,
+              id
+            );
+          } else if (!opt.id) {
+            db.prepare('INSERT INTO poll_options (poll_id, text, position) VALUES (?, ?, ?)').run(
+              id,
+              opt.text,
+              opt.position
+            );
+          }
+        }
+
+        // Suppression : uniquement des options sans vote, pour ne jamais
+        // effacer les réponses d'un élève sans qu'il le sache.
+        const keptIds = incoming.filter((o) => o.id).map((o) => o.id);
+        for (const opt of current) {
+          if (keptIds.includes(opt.id)) continue;
+          const votes = (db.prepare('SELECT COUNT(*) AS count FROM poll_votes WHERE option_id = ?').get(opt.id) as any).count;
+          if (votes > 0) {
+            optionError = `L'option « ${opt.text} » a déjà reçu des votes : elle ne peut pas être supprimée. Renomme-la si besoin.`;
+          } else {
+            db.prepare('DELETE FROM poll_options WHERE id = ? AND poll_id = ?').run(opt.id, id);
+          }
+        }
+      }
+
+      db.prepare(
+        `UPDATE polls SET
+          question = COALESCE(?, question),
+          active = COALESCE(?, active),
+          allow_multiple = COALESCE(?, allow_multiple),
+          show_results = COALESCE(?, show_results),
+          anonymous = COALESCE(?, anonymous),
+          closed_at = CASE WHEN ? = 1 AND active = 1 THEN CURRENT_TIMESTAMP
+                           WHEN ? = 0 THEN NULL ELSE closed_at END
+         WHERE id = ?`
+      ).run(
+        nextQuestion || null,
+        active !== undefined ? (active ? 1 : 0) : null,
         allow_multiple !== undefined ? toFlag(allow_multiple, 0) : null,
         show_results !== undefined ? toFlag(show_results, 0) : null,
         anonymous !== undefined ? toFlag(anonymous, 0) : null,
-      active !== undefined ? (active ? 1 : 0) : null,
-      id
-    );
+        active !== undefined && !active ? 1 : 0,
+        active !== undefined && active ? 1 : 0,
+        id
+      );
+    });
+
+    editOptions();
+    if (optionError) {
+      res.status(400).json({ error: optionError });
+      return;
+    }
 
     const updated = db.prepare('SELECT * FROM polls WHERE id = ?').get(id);
     res.json(updated);

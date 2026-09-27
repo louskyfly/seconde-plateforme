@@ -66,6 +66,8 @@ export const api = {
   // Messages
   getMessages: () => request<Message[]>('/messages'),
   sendMessage: (data: any) => request<Message>('/messages', { method: 'POST', body: JSON.stringify(data) }),
+  getMyMessages: (fingerprint: string) =>
+    request<Message[]>(`/messages/mine?fingerprint=${encodeURIComponent(fingerprint)}`),
   updateMessage: (id: number, data: any) => request<Message>(`/messages/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteMessage: (id: number) => request<{ success: boolean }>(`/messages/${id}`, { method: 'DELETE' }),
   

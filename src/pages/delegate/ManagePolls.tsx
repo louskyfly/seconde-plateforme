@@ -8,9 +8,11 @@ interface PollFormProps {
   isOpen: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /** Sondage en cours d'édition : le formulaire passe en mode modification. */
+  editing?: Poll | null;
 }
 
-function PollForm({ isOpen, onClose, onSaved }: PollFormProps) {
+function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState<string[]>(['', '']);
   const [allowMultiple, setAllowMultiple] = useState(false);
@@ -18,6 +20,8 @@ function PollForm({ isOpen, onClose, onSaved }: PollFormProps) {
   const [anonymous, setAnonymous] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  const isEdit = !!editing;
 
   const reset = () => {
     setQuestion('');
@@ -27,6 +31,22 @@ function PollForm({ isOpen, onClose, onSaved }: PollFormProps) {
     setAnonymous(false);
     setError('');
   };
+
+  // Un sondage à modifier est pré-rempli à l'ouverture du formulaire.
+  useEffect(() => {
+    if (!isOpen) return;
+    setError('');
+    if (editing) {
+      setQuestion(editing.question);
+      setOptions((editing.options || []).map((o) => o.text));
+      setAllowMultiple(editing.allow_multiple === 1);
+      setShowResults(editing.show_results === 1);
+      setAnonymous(editing.anonymous === 1);
+    } else {
+      reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editing]);
 
   const close = () => {
     reset();
@@ -44,13 +64,27 @@ function PollForm({ isOpen, onClose, onSaved }: PollFormProps) {
     setBusy(true);
     setError('');
     try {
-      await api.createPoll({
-        question,
-        options: options.map((o) => o.trim()).filter(Boolean),
-        allow_multiple: allowMultiple ? 1 : 0,
-        show_results: showResults ? 1 : 0,
-        anonymous: anonymous ? 1 : 0,
-      });
+      if (editing) {
+        // Les identifiants d'options sont renvoyés : le serveur renomme les
+        // options existantes et garde les votes déjà enregistrés.
+        await api.updatePoll(editing.id, {
+          question,
+          options: options
+            .map((text, index) => ({ id: editing.options?.[index]?.id, text: text.trim() }))
+            .filter((o) => o.text),
+          allow_multiple: allowMultiple ? 1 : 0,
+          show_results: showResults ? 1 : 0,
+          anonymous: anonymous ? 1 : 0,
+        });
+      } else {
+        await api.createPoll({
+          question,
+          options: options.map((o) => o.trim()).filter(Boolean),
+          allow_multiple: allowMultiple ? 1 : 0,
+          show_results: showResults ? 1 : 0,
+          anonymous: anonymous ? 1 : 0,
+        });
+      }
       reset();
       onSaved();
       onClose();
@@ -64,8 +98,18 @@ function PollForm({ isOpen, onClose, onSaved }: PollFormProps) {
   const valid = question.trim() && options.filter((o) => o.trim()).length >= 2;
 
   return (
-    <Modal isOpen={isOpen} onClose={close} title="Créer un sondage">
+    <Modal
+      isOpen={isOpen}
+      onClose={close}
+      title={isEdit ? 'Modifier le sondage' : 'Créer un sondage'}
+    >
       <form onSubmit={submit} className="space-y-4">
+        {isEdit && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Les votes déjà enregistrés sont conservés. Tu peux renommer les options, en
+            ajouter, ou retirer une option qui n'a encore reçu aucun vote.
+          </p>
+        )}
         <input
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
@@ -131,7 +175,7 @@ function PollForm({ isOpen, onClose, onSaved }: PollFormProps) {
           disabled={busy || !valid}
           className="glass-button-primary w-full disabled:opacity-50"
         >
-          {busy ? 'Création...' : 'Créer le sondage'}
+          {busy ? (isEdit ? 'Enregistrement...' : 'Création...') : isEdit ? 'Enregistrer' : 'Créer le sondage'}
         </button>
       </form>
     </Modal>
@@ -170,8 +214,10 @@ export function ManagePolls() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<Poll | null>(null);
   const [toDelete, setToDelete] = useState<Poll | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [flash, setFlash] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -183,13 +229,22 @@ export function ManagePolls() {
 
   useEffect(load, []);
 
+  // Confirme que l'action a réussi : sans ça, l'interface secontentait de
+  // recharger la liste et rien ne prouvait que l'enregistrement avait eu lieu.
+  const notify = (message: string) => {
+    setFlash(message);
+    setTimeout(() => setFlash(''), 4000);
+  };
+
   const active = polls.filter((p) => p.active === 1);
   const closed = polls.filter((p) => p.active === 0);
 
   const toggleActive = async (poll: Poll) => {
     setBusyId(poll.id);
+    setError('');
     try {
       await api.updatePoll(poll.id, { active: poll.active === 1 ? 0 : 1 });
+      notify(poll.active === 1 ? 'Sondage clôturé' : 'Sondage rouvert');
       load();
     } catch (err: any) {
       setError(err.message || 'Erreur');
@@ -203,6 +258,7 @@ export function ManagePolls() {
     try {
       await api.deletePoll(toDelete.id);
       setToDelete(null);
+      notify('Sondage supprimé');
       load();
     } catch (err: any) {
       setError(err.message || 'Erreur');
@@ -253,9 +309,20 @@ export function ManagePolls() {
 
       <div className="flex items-center justify-between gap-2 flex-wrap mt-4">
         <span className="text-xs text-gray-500 dark:text-gray-400">
-          {totalVotes(poll.options)} vote(s) · créé le {formatDate(poll.created_at)}
+          {poll.total_voters ?? 0} élève(s) · {totalVotes(poll.options)} vote(s) · créé le{' '}
+          {formatDate(poll.created_at)}
         </span>
         <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setEditing(poll);
+              setShowCreate(true);
+            }}
+            className="glass-button text-xs px-3 py-2"
+            aria-label={`Modifier le sondage ${poll.question}`}
+          >
+            Modifier
+          </button>
           <button
             disabled={busyId === poll.id}
             onClick={() => toggleActive(poll)}
@@ -284,6 +351,15 @@ export function ManagePolls() {
           + Créer un sondage
         </button>
       </div>
+
+      {flash && (
+        <div
+          role="status"
+          className="glass-card border-l-4 border-l-green-400 text-green-700 dark:text-green-400 text-sm"
+        >
+          ✅ {flash}
+        </div>
+      )}
 
       {error && (
         <div className="glass-card border-red-300/40 text-red-600 dark:text-red-400 text-sm">
@@ -327,8 +403,15 @@ export function ManagePolls() {
 
       <PollForm
         isOpen={showCreate}
-        onClose={() => setShowCreate(false)}
-        onSaved={load}
+        editing={editing}
+        onClose={() => {
+          setShowCreate(false);
+          setEditing(null);
+        }}
+        onSaved={() => {
+          load();
+          notify(editing ? 'Sondage modifié, les votes sont conservés' : 'Sondage créé');
+        }}
       />
       <ConfirmDialog
         poll={toDelete}

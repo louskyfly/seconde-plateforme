@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { api } from '@/lib/api';
-import { getRelativeTime, CATEGORIES_IDEA, IDEA_STATUSES } from '@/lib/utils';
+import { getRelativeTime, parseServerDate, CATEGORIES_IDEA, IDEA_STATUSES } from '@/lib/utils';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { Modal } from '@/components/ui/Modal';
 import type { Idea } from '@/types';
 
@@ -18,14 +19,19 @@ export default function Ideas() {
   const [formCat, setFormCat] = useState('classe');
   const [formAnon, setFormAnon] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [loadError, setLoadError] = useState('');
 
   const fetchIdeas = useCallback(() => {
+    setLoadError('');
     api
       .getIdeas()
       .then((data) =>
-        setIdeas(data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
+        setIdeas(data.sort((a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime()))
       )
-      .catch(() => {})
+      // Avant, l'échec était avalé : la page affichait « Aucune idée » comme
+      // si la classe n'en avait jamais proposé.
+      .catch((err: any) => setLoadError(err?.message || 'Impossible de charger les idées'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -33,16 +39,24 @@ export default function Ideas() {
     fetchIdeas();
   }, [fetchIdeas]);
 
+  useAutoRefresh(fetchIdeas);
+
   const resetForm = () => {
     setFormTitle('');
     setFormDesc('');
     setFormCat('classe');
     setFormAnon(false);
+    setFormError('');
   };
 
-  const handleSubmit = async () => {
-    if (!formTitle.trim()) return;
+  const handleSubmit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!formTitle.trim()) {
+      setFormError('Écris un titre pour ton idée.');
+      return;
+    }
     setSubmitting(true);
+    setFormError('');
     try {
       await api.createIdea({
         title: formTitle.trim(),
@@ -55,7 +69,10 @@ export default function Ideas() {
       setSuccessMsg('Votre idée a été envoyée !');
       fetchIdeas();
       setTimeout(() => setSuccessMsg(''), 4000);
-    } catch {
+    } catch (err: any) {
+      // L'élève doit savoir ce qui s'est passé : sans ce message, l'envoi
+      // échouait en silence et le modal restait ouvert sans explication.
+      setFormError(err?.message || "L'envoi a échoué. Vérifie ta connexion et réessaie.");
     } finally {
       setSubmitting(false);
     }
@@ -115,7 +132,16 @@ export default function Ideas() {
         </div>
       )}
 
-      {!loading && filtered.length === 0 && (
+      {loadError && (
+        <div className="glass-card mb-4 border-l-4 border-l-amber-400 text-sm flex items-center gap-3">
+          <span className="text-amber-600 dark:text-amber-400 flex-1">⚠️ {loadError}</span>
+          <button onClick={fetchIdeas} className="glass-button text-xs px-4 py-2">
+            Réessayer
+          </button>
+        </div>
+      )}
+
+      {!loading && filtered.length === 0 && !loadError && (
         <div className="glass-card text-center py-10">
           <p className="text-3xl mb-3">💡</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
@@ -176,12 +202,18 @@ export default function Ideas() {
       )}
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Proposer une idée">
-        <div className="space-y-4">
+        {/* form : la touche Entrée envoie l'idée, et les champs sont liés à
+            leur label pour les lecteurs d'écran */}
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+            <label
+              htmlFor="idea-title"
+              className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1"
+            >
               Titre *
             </label>
             <input
+              id="idea-title"
               type="text"
               value={formTitle}
               onChange={(e) => setFormTitle(e.target.value)}
@@ -191,10 +223,14 @@ export default function Ideas() {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+            <label
+              htmlFor="idea-desc"
+              className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1"
+            >
               Description
             </label>
             <textarea
+              id="idea-desc"
               value={formDesc}
               onChange={(e) => setFormDesc(e.target.value)}
               placeholder="Décris ton idée en détail..."
@@ -203,10 +239,14 @@ export default function Ideas() {
             />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+            <label
+              htmlFor="idea-cat"
+              className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1"
+            >
               Catégorie
             </label>
             <select
+              id="idea-cat"
               value={formCat}
               onChange={(e) => setFormCat(e.target.value)}
               className="glass-input"
@@ -218,8 +258,9 @@ export default function Ideas() {
               ))}
             </select>
           </div>
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label htmlFor="idea-anon" className="flex items-center gap-2 cursor-pointer">
             <input
+              id="idea-anon"
               type="checkbox"
               checked={formAnon}
               onChange={(e) => setFormAnon(e.target.checked)}
@@ -227,14 +268,19 @@ export default function Ideas() {
             />
             <span className="text-sm text-gray-600 dark:text-gray-400">Rester anonyme</span>
           </label>
+          {formError && (
+            <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+              {formError}
+            </p>
+          )}
           <button
-            onClick={handleSubmit}
+            type="submit"
             disabled={!formTitle.trim() || submitting}
             className="glass-button-primary w-full disabled:opacity-50"
           >
             {submitting ? 'Envoi...' : 'Envoyer mon idée'}
           </button>
-        </div>
+        </form>
       </Modal>
     </div>
   );

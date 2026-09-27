@@ -576,6 +576,105 @@ describe('Sondages', () => {
     assert.equal(poll.has_voted, false);
     assert.ok(poll.options.find((o) => o.id === optionId).vote_count >= 1);
   });
+
+  test('le sondage expose le nombre de votants et de votes', async () => {
+    const res = await other('GET', `/api/polls?fingerprint=${BOB}`);
+    const poll = res.data.find((p) => p.id === pollId);
+    // Sans ces compteurs, l'accueil affichait « 0 réponse » même après un vote.
+    assert.equal(typeof poll.total_voters, 'number');
+    assert.equal(typeof poll.total_votes, 'number');
+    assert.ok(poll.total_voters >= 1, 'le votant doit être compté');
+    assert.ok(poll.total_votes >= 1, 'le vote doit être compté');
+  });
+
+  test('modifier un sondage renomme la question et l’option sans perdre les votes', async () => {
+    const res = await admin('PUT', `/api/polls/${pollId}`, {
+      question: 'Quelle est la couleur de la classe ? (corrigé)',
+      options: [{ id: optionId, text: 'Orange' }, { id: 0, text: 'Bleu' }],
+    });
+    assert.equal(res.status, 200);
+    assert.match(res.data.question, /corrigé/);
+
+    const check = await other('GET', `/api/polls?fingerprint=${BOB}`);
+    const poll = check.data.find((p) => p.id === pollId);
+    assert.ok(
+      poll.options.find((o) => o.id === optionId).vote_count >= 1,
+      'le vote déjà enregistré doit survivre à l’édition'
+    );
+    assert.ok(
+      poll.options.some((o) => o.text === 'Bleu'),
+      'la nouvelle option doit exister'
+    );
+  });
+
+  test('une option ayant déjà reçu des votes ne peut pas être supprimée', async () => {
+    const res = await admin('PUT', `/api/polls/${pollId}`, {
+      options: [{ id: 0, text: 'Nouvelle seule option' }, { id: 0, text: 'Autre' }],
+    });
+    assert.equal(res.status, 400);
+    assert.match(res.data.error, /votes/i);
+  });
+
+  test('un élève ne peut pas modifier un sondage', async () => {
+    const res = await student('PUT', `/api/polls/${pollId}`, { question: 'Pirate' });
+    assert.equal(res.status, 401);
+  });
+});
+
+describe('Messages au délégué', () => {
+  let messageId = 0;
+
+  test('un élève envoie un message et le retrouve dans son fil', async () => {
+    const sent = await student('POST', '/api/messages', {
+      content: 'Question de test',
+      category: 'question',
+      anonymous: 0,
+      author_name: 'Alice',
+      fingerprint: ALICE,
+    });
+    assert.equal(sent.status, 201);
+    assert.equal(sent.data.fingerprint, undefined, 'le fingerprint ne doit pas fuiter');
+    messageId = sent.data.id;
+
+    const mine = await student('GET', `/api/messages/mine?fingerprint=${ALICE}`);
+    assert.equal(mine.status, 200);
+    assert.ok(mine.data.some((m) => m.id === messageId));
+  });
+
+  test('un élève ne voit pas les messages des autres', async () => {
+    const mine = await other('GET', `/api/messages/mine?fingerprint=${BOB}`);
+    assert.equal(mine.status, 200);
+    assert.equal(
+      mine.data.some((m) => m.id === messageId),
+      false,
+      'le fil doit être limité au fingerprint demandé'
+    );
+  });
+
+  test('le délégué répond et le statut passe à « repondu »', async () => {
+    const res = await admin('PUT', `/api/messages/${messageId}`, {
+      reply: 'Oui, je regarde ça demain.',
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.delegate_reply, 'Oui, je regarde ça demain.');
+    assert.ok(res.data.replied_at, 'replied_at doit être renseigné');
+
+    const status = await admin('PUT', `/api/messages/${messageId}`, { status: 'repondu' });
+    assert.equal(status.data.status, 'repondu');
+
+    const mine = await student('GET', `/api/messages/mine?fingerprint=${ALICE}`);
+    const msg = mine.data.find((m) => m.id === messageId);
+    assert.equal(msg.delegate_reply, 'Oui, je regarde ça demain.');
+    assert.equal(msg.status, 'repondu');
+  });
+
+  test('un élève ne peut pas répondre lui-même', async () => {
+    const res = await student('PUT', `/api/messages/${messageId}`, { reply: 'Fausse réponse' });
+    assert.equal(res.status, 401);
+
+    const mine = await student('GET', `/api/messages/mine?fingerprint=${ALICE}`);
+    assert.equal(mine.data.find((m) => m.id === messageId).delegate_reply, 'Oui, je regarde ça demain.');
+  });
 });
 
 describe('Paramètres et thème de saison', () => {

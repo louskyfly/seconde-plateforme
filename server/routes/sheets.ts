@@ -15,6 +15,15 @@ function isAdmin(req: any): boolean {
   return req.session?.authenticated === true;
 }
 
+/**
+ * Colonnes utilisées pour la LISTE et les réponses JSON.
+ * `file_data` est volontairement exclu : c'est un data URI qui peut peser 15 Mo,
+ * et un `SELECT *` sur 24 lignes saturation la RAM de l'instance (512 Mo) et fait
+ * tomber le site. Le fichier n'est chargé que sur `GET /:id/file`.
+ */
+const SHEET_LIST_COLUMNS = `id, title, subject, class_level, description, author_name,
+  author_fingerprint, kind, mime_type, file_size, file_name, status, created_at`;
+
 function shapeSheet(row: any) {
   return {
     id: row.id,
@@ -26,7 +35,8 @@ function shapeSheet(row: any) {
     kind: row.kind,
     mime_type: row.mime_type,
     file_size: row.file_size,
-    has_file: row.file_data ? 1 : 0,
+    // `file_data` n'est pas chargé dans les listes : on se fie à la taille.
+    has_file: (row.file_data !== undefined ? row.file_data : row.file_size) ? 1 : 0,
     status: row.status,
     created_at: row.created_at,
     is_mine: row.author_fingerprint ? row.__mine === 1 : false,
@@ -66,7 +76,7 @@ router.get('/', (req, res) => {
 
     const rows = db
       .prepare(
-        `SELECT * FROM sheets ${clause} ORDER BY id DESC LIMIT ? OFFSET ?`
+        `SELECT ${SHEET_LIST_COLUMNS} FROM sheets ${clause} ORDER BY id DESC LIMIT ? OFFSET ?`
       )
       .all(...params, limit, (page - 1) * limit) as any[];
 
@@ -185,7 +195,9 @@ router.post('/', (req, res) => {
         check.file.kind
       );
 
-    const created = db.prepare('SELECT * FROM sheets WHERE id = ?').get(Number(inserted.lastInsertRowid)) as any;
+    const created = db
+      .prepare(`SELECT ${SHEET_LIST_COLUMNS} FROM sheets WHERE id = ?`)
+      .get(Number(inserted.lastInsertRowid)) as any;
     res.status(201).json(shapeSheet({ ...created, __mine: 1 }));
   } catch (err) {
     console.error('Create sheet error:', err);
@@ -196,7 +208,9 @@ router.post('/', (req, res) => {
 /** Modération : masquer / remettre en ligne une fiche. */
 router.patch('/:id', requireAuth, (req, res) => {
   try {
-    const row = db.prepare('SELECT * FROM sheets WHERE id = ?').get(req.params.id) as any;
+    const row = db
+      .prepare(`SELECT ${SHEET_LIST_COLUMNS} FROM sheets WHERE id = ?`)
+      .get(req.params.id) as any;
     if (!row) {
       res.status(404).json({ error: 'Fiche introuvable' });
       return;
@@ -218,7 +232,9 @@ router.patch('/:id', requireAuth, (req, res) => {
 /** Suppression : par l'auteur de la fiche ou par le délégué. Le fichier part avec la ligne. */
 router.delete('/:id', (req, res) => {
   try {
-    const row = db.prepare('SELECT * FROM sheets WHERE id = ?').get(req.params.id) as any;
+    const row = db
+      .prepare(`SELECT ${SHEET_LIST_COLUMNS} FROM sheets WHERE id = ?`)
+      .get(req.params.id) as any;
     if (!row) {
       res.status(404).json({ error: 'Fiche introuvable' });
       return;

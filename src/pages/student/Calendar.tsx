@@ -1,21 +1,29 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { formatDate, EVENT_CATEGORIES } from '@/lib/utils';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { Event } from '@/types';
 
 export default function Calendar() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api
-      .getEvents()
-      .then((data) =>
-        setEvents(data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()))
-      )
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      const data = await api.getEvents();
+      setEvents(data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+    } catch {
+      /* on garde les données déjà affichées */
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useAutoRefresh(load);
 
   const now = new Date();
 

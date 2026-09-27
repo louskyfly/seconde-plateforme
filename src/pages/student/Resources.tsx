@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { SUBJECTS } from '@/lib/utils';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { Resource } from '@/types';
 
 const ALL_SUBJECTS = Object.keys(SUBJECTS);
@@ -10,15 +11,22 @@ export default function Resources() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
 
-  useEffect(() => {
-    api
-      .getResources()
-      .then((data) =>
-        setResources(data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()))
-      )
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      const data = await api.getResources();
+      setResources(data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+    } catch {
+      /* on garde les données déjà affichées */
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useAutoRefresh(load);
 
   const filtered = filter ? resources.filter((r) => r.subject === filter) : resources;
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import type { Message } from '@/types';
 import { formatDateTime, MESSAGE_STATUSES, CATEGORIES_MESSAGE } from '@/lib/utils';
@@ -33,6 +33,97 @@ function ConfirmDialog({ message, onCancel, onConfirm }: ConfirmDialogProps) {
   );
 }
 
+interface ReplyDialogProps {
+  message: Message | null;
+  onClose: () => void;
+  onSent: () => void;
+}
+
+function ReplyDialog({ message, onClose, onSent }: ReplyDialogProps) {
+  const [reply, setReply] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (message) {
+      setReply(message.delegate_reply || '');
+      setError('');
+    }
+  }, [message]);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!message || !reply.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.updateMessage(message.id, { reply: reply.trim() });
+      onSent();
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Erreur');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={!!message}
+      onClose={onClose}
+      title={message?.delegate_reply ? 'Modifier la réponse' : 'Répondre à l’élève'}
+    >
+      <form onSubmit={submit} className="space-y-4">
+        {message && (
+          <div className="glass-card text-sm">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              {message.anonymous ? 'Anonyme' : message.author_name || 'Inconnu'} ·{' '}
+              {formatDateTime(message.created_at)}
+            </p>
+            <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+              {message.content}
+            </p>
+          </div>
+        )}
+
+        <div>
+          <label htmlFor="reply-content" className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+            Ta réponse
+          </label>
+          <textarea
+            id="reply-content"
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            placeholder="Ta réponse sera visible uniquement par l’élève qui a écrit ce message."
+            className="glass-input min-h-[140px] resize-y"
+            rows={6}
+            maxLength={1000}
+            autoFocus
+          />
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-right mt-1">
+            {reply.length}/1000
+          </p>
+        </div>
+
+        {error && <p className="text-sm text-red-500">{error}</p>}
+
+        <div className="flex gap-3">
+          <button type="button" onClick={onClose} className="glass-button flex-1">
+            Annuler
+          </button>
+          <button
+            type="submit"
+            disabled={busy || !reply.trim()}
+            className="glass-button-primary flex-1 disabled:opacity-50"
+          >
+            {busy ? 'Envoi...' : 'Envoyer la réponse'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function ManageMessages() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +131,9 @@ export function ManageMessages() {
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [toDelete, setToDelete] = useState<Message | null>(null);
+  const [toReply, setToReply] = useState<Message | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [flash, setFlash] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -51,6 +144,11 @@ export function ManageMessages() {
   };
 
   useEffect(load, []);
+
+  const notify = (message: string) => {
+    setFlash(message);
+    setTimeout(() => setFlash(''), 4000);
+  };
 
   const filtered = useMemo(() => {
     if (filter === 'all') return messages;
@@ -81,6 +179,7 @@ export function ManageMessages() {
     try {
       await api.deleteMessage(toDelete.id);
       setToDelete(null);
+      notify('Message supprimé');
       load();
     } catch (err: any) {
       setError(err.message || 'Erreur');
@@ -99,6 +198,15 @@ export function ManageMessages() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Messages</h1>
       </div>
+
+      {flash && (
+        <div
+          role="status"
+          className="glass-card border-l-4 border-l-green-400 text-green-700 dark:text-green-400 text-sm"
+        >
+          ✅ {flash}
+        </div>
+      )}
 
       {error && (
         <div className="glass-card border-red-300/40 text-red-600 dark:text-red-400 text-sm">
@@ -173,8 +281,29 @@ export function ManageMessages() {
                   {m.content}
                 </p>
 
+                {m.delegate_reply && (
+                  <div className="mt-3 ml-2 pl-3 border-l-2 border-indigo-400 bg-indigo-500/5 rounded-r-lg py-2 pr-3">
+                    <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                      Ta réponse · envoyée le {formatDateTime(m.replied_at || m.updated_at)}
+                    </p>
+                    <p className="text-sm mt-1 text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">
+                      {m.delegate_reply}
+                    </p>
+                  </div>
+                )}
+
                 {isExpanded && (
                   <div className="flex gap-2 flex-wrap mt-4">
+                    <button
+                      disabled={busyId === m.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setToReply(m);
+                      }}
+                      className="glass-button text-xs px-3 py-2"
+                    >
+                      {m.delegate_reply ? 'Modifier la réponse' : 'Répondre'}
+                    </button>
                     {m.status === 'nouveau' && (
                       <button
                         disabled={busyId === m.id}
@@ -220,6 +349,14 @@ export function ManageMessages() {
         message={toDelete}
         onCancel={() => setToDelete(null)}
         onConfirm={handleDelete}
+      />
+      <ReplyDialog
+        message={toReply}
+        onClose={() => setToReply(null)}
+        onSent={() => {
+          load();
+          notify('Réponse envoyée à l’élève');
+        }}
       />
     </div>
   );

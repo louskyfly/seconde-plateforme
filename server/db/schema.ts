@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS messages (
   anonymous INTEGER DEFAULT 0,
   author_name TEXT,
   status TEXT DEFAULT 'nouveau',
+  fingerprint TEXT,
+  delegate_reply TEXT,
+  replied_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -67,6 +70,7 @@ CREATE TABLE IF NOT EXISTS poll_options (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   poll_id INTEGER NOT NULL,
   text TEXT NOT NULL,
+  position INTEGER,
   FOREIGN KEY (poll_id) REFERENCES polls(id) ON DELETE CASCADE
 );
 
@@ -238,6 +242,16 @@ export function initDatabase(db: Database.Database): void {
   // Thème de saison (aucun / halloween / noel) activable dans les paramètres
   // du délégué : décore l'ensemble de l'application.
   ensureColumn(db, 'settings', 'season_theme', "TEXT DEFAULT 'aucun'");
+  // Fil d'arbitrage : permet à l'élève de retrouver ses propres messages et
+  // la réponse du délégué. Le modèle d'identité reste le fingerprint client,
+  // identique au reste de l'application.
+  ensureColumn(db, 'messages', 'fingerprint', 'TEXT');
+  ensureColumn(db, 'messages', 'delegate_reply', 'TEXT');
+  ensureColumn(db, 'messages', 'replied_at', 'DATETIME');
+  // Ordre d'affichage des options de sondage, indispensable pour renommer une
+  // option sans la déplacer. Les lignes existantes retombent sur leur id.
+  ensureColumn(db, 'poll_options', 'position', 'INTEGER');
+  db.prepare('UPDATE poll_options SET position = id WHERE position IS NULL').run();
 }
 
 /**

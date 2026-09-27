@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { generateFingerprint, parseServerDate } from '@/lib/utils';
+import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import type { Poll } from '@/types';
 
 export default function Polls() {
@@ -11,21 +12,28 @@ export default function Polls() {
   const [voting, setVoting] = useState<number | null>(null);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    api
-      .getPolls(generateFingerprint())
-      .then((data) => {
-        const sorted = data.sort(
-          (a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime()
-        );
-        setPolls(sorted);
-        // Le serveur indique si l'élève a déjà voté (et non « tout sondage
-        // fermé »), sinon le bouton « Voter » restait actif pour rien.
-        setVotedPolls(new Set(sorted.filter((p) => p.has_voted).map((p) => p.id)));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    try {
+      const data = await api.getPolls(generateFingerprint());
+      const sorted = data.sort(
+        (a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime()
+      );
+      setPolls(sorted);
+      // Le serveur indique si l'élève a déjà voté (et non « tout sondage
+      // fermé »), sinon le bouton « Voter » restait actif pour rien.
+      setVotedPolls(new Set(sorted.filter((p) => p.has_voted).map((p) => p.id)));
+    } catch {
+      /* on garde les données déjà affichées */
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useAutoRefresh(load);
 
   const toggleOption = useCallback((pollId: number, optionId: number, allowMultiple: boolean) => {
     setSelectedOptions((prev) => {

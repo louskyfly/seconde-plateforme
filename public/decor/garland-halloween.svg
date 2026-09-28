@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 26" width="120" height="26">
+  <!--
+    Guirlande style Dia de los Muertos : papier picado (banderoles decoupees
+    avec une encoche en V) accroche a un fil, ponctue de cempasuchil
+    (oeillets orange), la fleur des morts.
+
+    Le motif fait 120px de large et se repete en largeur. Le fil part et arrive
+    a la meme hauteur (y = 2) et les deux extremites des banderoles sont
+    identiques, donc la repetition n'a aucune couture visible.
+  -->
+  <g>
+    <!-- le fil -->
+    <path d="M0 2C60 11 60 11 120 2" fill="none" stroke="#6b4a2a" stroke-width="1" stroke-linecap="round" />
+  </g>
+
+  <!-- cempasuchil, entre les banderoles -->
+  <g>
+    <circle cx="30" cy="5.4" r="2.2" fill="#f9a825" />
+    <circle cx="30" cy="5.4" r="0.9" fill="#e65100" />
+    <circle cx="60" cy="6.5" r="2.2" fill="#f9a825" />
+    <circle cx="60" cy="6.5" r="0.9" fill="#e65100" />
+    <circle cx="90" cy="5.4" r="2.2" fill="#f9a825" />
+    <circle cx="90" cy="5.4" r="0.9" fill="#e65100" />
+  </g>
+
+  <!-- banderoles de papier picado, avec calavera -->
+  <g>
+    <path d="M6 4.3H24V19.3L15 13.3L6 19.3Z" fill="#d81b60" />
+    <circle cx="15" cy="10.3" r="2.6" fill="#fff8e7" />
+    <circle cx="14.1" cy="9.6" r="0.8" fill="#2b1b3d" />
+    <circle cx="15.9" cy="9.6" r="0.8" fill="#2b1b3d" />
+
+    <path d="M36 6.2H54V21.2L45 15.2L36 21.2Z" fill="#00acc1" />
+    <circle cx="45" cy="12.2" r="2.6" fill="#fff8e7" />
+    <circle cx="44.1" cy="11.5" r="0.8" fill="#2b1b3d" />
+    <circle cx="45.9" cy="11.5" r="0.8" fill="#2b1b3d" />
+
+    <path d="M66 6.2H84V21.2L75 15.2L66 21.2Z" fill="#f9a825" />
+    <circle cx="75" cy="12.2" r="2.6" fill="#fff8e7" />
+    <circle cx="74.1" cy="11.5" r="0.8" fill="#2b1b3d" />
+    <circle cx="75.9" cy="11.5" r="0.8" fill="#2b1b3d" />
+
+    <path d="M96 4.3H114V19.3L105 13.3L96 19.3Z" fill="#8e24aa" />
+    <circle cx="105" cy="10.3" r="2.6" fill="#fff8e7" />
+    <circle cx="104.1" cy="9.6" r="0.8" fill="#2b1b3d" />
+    <circle cx="105.9" cy="9.6" r="0.8" fill="#2b1b3d" />
+  </g>
+</svg>

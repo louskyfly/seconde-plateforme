@@ -599,6 +599,30 @@ html[data-season='noel'] .season-greeting {
 /* Aucun décor sur les boutons : le nettoyage des vagues (orange pour Halloween,
    neige pour Noël) a été retiré, donc on ne touche plus du tout à leur rendu. */
 
+/* Guirlande en haut de l'écran. ::before arrive avant les autres calques dans
+   l'ordre de peinture, donc la guirlande reste en dessous, comme le reste.
+
+   Le ?v=1 est important : le service worker sert les fichiers statiques en
+   cache-first, donc sans version le navigateur garderait l'ancienne image
+   indefiniment. Il faut incrementer ce numero a chaque modification. */
+html[data-season='halloween'] .season-decor::before,
+html[data-season='noel'] .season-decor::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  background-repeat: repeat-x;
+  background-size: 120px 26px;
+}
+html[data-season='halloween'] .season-decor::before {
+  background-image: url('/decor/garland-halloween.svg?v=1');
+}
+html[data-season='noel'] .season-decor::before {
+  background-image: url('/decor/garland-noel.svg?v=1');
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

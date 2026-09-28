@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 26" width="120" height="26">
+  <!--
+    Guirlande de Noel : meme construction que la version Dia de los Muertos
+    (fil, banderoles a encoche, 120px de large repete en largeur sans couture),
+    avec des couleurs de Noel et des etoiles dorees entre les fanions.
+  -->
+  <g>
+    <!-- le lierre, deux tons pour avoir du relief -->
+    <path d="M0 2C60 11 60 11 120 2" fill="none" stroke="#1f5c34" stroke-width="2.6" stroke-linecap="round" />
+    <path d="M0 3.4C60 12.4 60 12.4 120 3.4" fill="none" stroke="#2f7d4f" stroke-width="1.1" stroke-linecap="round" />
+  </g>
+
+  <!-- etoiles dorees entre les fanions -->
+  <g fill="#e8c547">
+    <path d="M30 1.6L31.2 4.2L33.8 5.4L31.2 6.6L30 9.2L28.8 6.6L26.2 5.4L28.8 4.2Z" />
+    <path d="M60 2.7L61.2 5.3L63.8 6.5L61.2 7.7L60 10.3L58.8 7.7L56.2 6.5L58.8 5.3Z" />
+    <path d="M90 1.6L91.2 4.2L93.8 5.4L91.2 6.6L90 9.2L88.8 6.6L86.2 5.4L88.8 4.2Z" />
+  </g>
+
+  <!-- fanions -->
+  <g>
+    <path d="M6 4.3H24V19.3L15 13.3L6 19.3Z" fill="#c0273a" />
+    <path d="M36 6.2H54V21.2L45 15.2L36 21.2Z" fill="#1f7a3d" />
+    <path d="M66 6.2H84V21.2L75 15.2L66 21.2Z" fill="#f2e3b8" />
+    <path d="M96 4.3H114V19.3L105 13.3L96 19.3Z" fill="#c9a227" />
+  </g>
+
+  <!-- une boucle sur le premier et le troisieme fanion -->
+  <g fill="none" stroke="#f2e3b8" stroke-width="1.2">
+    <path d="M15 8.2c-3 -2.6 -5 1.4 -1.6 2.2M15 8.2c3 -2.6 5 1.4 1.6 2.2" />
+    <path d="M75 10.1c-3 -2.6 -5 1.4 -1.6 2.2M75 10.1c3 -2.6 5 1.4 1.6 2.2" />
+  </g>
+</svg>

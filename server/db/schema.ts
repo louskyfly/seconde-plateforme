@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS messages (
   fingerprint TEXT,
   delegate_reply TEXT,
   replied_at DATETIME,
+  response_read_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -248,6 +249,10 @@ export function initDatabase(db: Database.Database): void {
   ensureColumn(db, 'messages', 'fingerprint', 'TEXT');
   ensureColumn(db, 'messages', 'delegate_reply', 'TEXT');
   ensureColumn(db, 'messages', 'replied_at', 'DATETIME');
+  // Date à laquelle l'élève a ouvert la réponse du délégué. Alimente le
+  // compteur « messages à lire » de l'accueil : sans cette colonne, rien ne
+  // distinguait une réponse jamais ouverte d'une réponse déjà lue.
+  ensureColumn(db, 'messages', 'response_read_at', 'DATETIME');
   // Ordre d'affichage des options de sondage, indispensable pour renommer une
   // option sans la déplacer. Les lignes existantes retombent sur leur id.
   ensureColumn(db, 'poll_options', 'position', 'INTEGER');

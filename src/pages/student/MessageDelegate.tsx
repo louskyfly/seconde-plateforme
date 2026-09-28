@@ -35,12 +35,34 @@ export default function MessageDelegate() {
 
   // L'élève pouvait envoyer un message mais n'avait aucun moyen de savoir si
   // le délégué l'avait lu ou répondu : la réponse disparaissait définitivement.
-  const loadHistory = useCallback(async () => {
+  //
+  // `markRead` n'est vrai que sur une ouverture volontaire de la page : le
+  // rafraîchissement automatique doit rafraîchir la liste sans consommer la
+  // pastille « messages à lire » de l'accueil.
+  const loadHistory = useCallback(async (markRead = false) => {
     setLoadingHistory(true);
     setLoadError('');
+    const fingerprint = generateFingerprint();
     try {
-      const data = await api.getMyMessages(generateFingerprint());
-      if (!cancelled.current) setHistory(data);
+      const data = await api.getMyMessages(fingerprint);
+      if (cancelled.current) return;
+      setHistory(data);
+
+      if (!markRead) return;
+      const pending = data.filter((m) => m.delegate_reply && !m.response_read_at);
+      if (pending.length === 0) return;
+      await Promise.all(
+        pending.map((m) =>
+          api.markMessageRead(m.id, fingerprint).catch(() => {
+            /* sans conséquence : le compteur se résoudra à la visite suivante */
+          })
+        )
+      );
+      if (!cancelled.current) {
+        setHistory((prev) =>
+          prev.map((m) => (m.response_read_at || !m.delegate_reply ? m : { ...m, response_read_at: 'lu' }))
+        );
+      }
     } catch (err: any) {
       if (!cancelled.current) setLoadError(err.message || 'Erreur de chargement');
     } finally {
@@ -49,11 +71,11 @@ export default function MessageDelegate() {
   }, []);
 
   useEffect(() => {
-    loadHistory();
+    loadHistory(true);
   }, [loadHistory]);
 
   // Permet à l'élève de voir une réponse du délégué sans recharger la page.
-  useAutoRefresh(loadHistory);
+  useAutoRefresh(useCallback(() => loadHistory(false), [loadHistory]));
 
   const handleSubmit = async () => {
     if (!content.trim()) return;
@@ -169,7 +191,7 @@ export default function MessageDelegate() {
         <div className="flex items-center justify-between gap-3 mb-3">
           <h2 className="text-lg font-bold">Mes messages</h2>
           <button
-            onClick={loadHistory}
+            onClick={() => loadHistory(false)}
             disabled={loadingHistory}
             className="glass-button text-xs px-3 py-2 disabled:opacity-50"
           >
@@ -207,7 +229,18 @@ export default function MessageDelegate() {
               </p>
 
               {msg.delegate_reply ? (
-                <div className="mt-3 ml-2 pl-3 border-l-2 border-indigo-400 bg-indigo-500/5 rounded-r-lg py-2 pr-3">
+                <div
+                  className={`mt-3 ml-2 pl-3 border-l-2 rounded-r-lg py-2 pr-3 ${
+                    msg.response_read_at
+                      ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-500/5'
+                      : 'border-amber-400 bg-amber-500/10'
+                  }`}
+                >
+                  {!msg.response_read_at && (
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-1">
+                      Nouveau
+                    </p>
+                  )}
                   <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1">
                     {msg.delegate_name || 'Le délégué'} a répondu
                   </p>

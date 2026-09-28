@@ -3,7 +3,8 @@ import { api } from '@/lib/api';
 
 type PushStatus = 'unsupported' | 'default' | 'granted' | 'denied' | 'busy';
 
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+/** Retourne un ArrayBuffer : c'est le type qu'attend `applicationServerKey`. */
+function urlBase64ToBuffer(base64String: string): ArrayBuffer {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
@@ -11,7 +12,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   for (let i = 0; i < rawData.length; ++i) {
     outputArray[i] = rawData.charCodeAt(i);
   }
-  return outputArray;
+  return outputArray.buffer as ArrayBuffer;
 }
 
 export function usePushNotifications() {
@@ -42,7 +43,7 @@ export function usePushNotifications() {
       const { publicKey } = await api.getPushVapidKey();
       const subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
+        applicationServerKey: urlBase64ToBuffer(publicKey),
       });
       await api.subscribePush(subscription.toJSON());
       setStatus('granted');

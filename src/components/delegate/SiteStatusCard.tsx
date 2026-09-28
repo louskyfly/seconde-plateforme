@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { useMaintenance } from '@/hooks/useMaintenance';
 import { Modal } from '@/components/ui/Modal';
+import type { MaintenanceLogEntry } from '@/types';
 
 function formatDate(value?: string | null): string {
   if (!value) return '';
@@ -21,7 +22,7 @@ export function SiteStatusCard() {
   const [customMessage, setCustomMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [history, setHistory] = useState<{ id: number; active: number; activated_at: string; activated_by: string; deactivated_at: string | null }[]>([]);
+  const [history, setHistory] = useState<MaintenanceLogEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
   const loadHistory = async () => {

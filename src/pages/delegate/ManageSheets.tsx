@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { getRelativeTime, SUBJECTS } from '@/lib/utils';
 import type { Sheet } from '@/types';
+import { SheetViewButton } from '@/components/SheetViewer';
 
 const ALL_SUBJECTS = Object.keys(SUBJECTS);
-const PAGE_SIZE = 24;
 
 function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024
@@ -208,14 +208,10 @@ export default function ManageSheets() {
                 </p>
 
                 <div className="flex items-center gap-3 mt-2 flex-wrap">
-                  <a
-                    href={api.sheetFileUrl(sheet.id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <SheetViewButton
+                    sheet={sheet}
                     className="text-xs text-indigo-500 hover:underline"
-                  >
-                    {sheet.kind === 'image' ? '🔍 Voir le fichier' : '⬇️ Télécharger'}
-                  </a>
+                  />
                   <button onClick={() => toggleStatus(sheet)} className="text-xs text-amber-600 dark:text-amber-400 hover:underline">
                     {sheet.status === 'active' ? '🚫 Masquer' : '✅ Remettre en ligne'}
                   </button>

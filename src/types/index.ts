@@ -50,6 +50,8 @@ export interface Message {
   delegate_reply?: string | null;
   replied_at?: string | null;
   delegate_name?: string | null;
+  /** Renseigné par le serveur : l'élève a ouvert la réponse du délégué. */
+  response_read_at?: string | null;
 }
 
 export interface Poll {
@@ -125,6 +127,17 @@ export interface MaintenanceState {
   activated_at?: string | null;
   deactivated_by?: string | null;
   deactivated_at?: string | null;
+}
+
+/** Une ligne de `maintenance_log`, telle que renvoyée par /api/maintenance/history. */
+export interface MaintenanceLogEntry {
+  id: number;
+  active: number;
+  message: string;
+  activated_by: string | null;
+  activated_at: string;
+  deactivated_by: string | null;
+  deactivated_at: string | null;
 }
 
 export interface ChatUser {

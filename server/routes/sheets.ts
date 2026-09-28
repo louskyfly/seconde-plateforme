@@ -118,20 +118,20 @@ router.get('/:id/file', (req, res) => {
       return;
     }
 
-    const inline = check.file.kind === 'image' && req.query.inline === '1';
+    // `inline` : sans cela, ouvrir une fiche depuis un téléphone téléchargait le
+    // fichier et laissait un onglet blanc à la place de l'image.
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     res.setHeader('Cache-Control', 'private, max-age=600');
-    if (inline) {
-      res.setHeader('Content-Type', check.file.mime);
-      res.send(check.file.buffer);
-      return;
-    }
     res.setHeader('Content-Type', check.file.mime);
     res.setHeader(
       'Content-Disposition',
-      `${inline ? 'inline' : 'attachment'}; filename="${row.file_name || safeFileName(row.title, check.file.ext)}"`
+      `inline; filename="${row.file_name || safeFileName(row.title, check.file.ext)}"`
     );
+    // Le lecteur PDF intégré refuse de s'afficher si la réponse est sandboxée :
+    // on réserve la restriction forte aux formats autres que image/PDF.
+    if (check.file.mime !== 'application/pdf') {
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    }
     res.send(check.file.buffer);
   } catch (err) {
     console.error('Get sheet file error:', err);

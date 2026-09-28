@@ -21,7 +21,8 @@ router.get('/mine', (req, res) => {
 
     const messages = db
       .prepare(
-        `SELECT id, content, category, anonymous, status, delegate_reply, replied_at, created_at
+        `SELECT id, content, category, anonymous, status, delegate_reply, replied_at,
+                response_read_at, created_at
            FROM messages
           WHERE fingerprint = ?
           ORDER BY created_at DESC, id DESC
@@ -55,7 +56,7 @@ router.get('/', requireAuth, (req, res) => {
     // Le fingerprint identifie l'élève : inutile pour le délégué, on l'enlève.
     for (const msg of sanitized) delete msg.fingerprint;
     res.json(sanitized);
-    res.json(sanitized);  } catch (err) {
+  } catch (err) {
     console.error('Get messages error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
@@ -116,11 +117,13 @@ router.put('/:id', requireAuth, (req, res) => {
         status = COALESCE(?, status),
         delegate_reply = COALESCE(?, delegate_reply),
         replied_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE replied_at END,
+        response_read_at = CASE WHEN ? = 1 THEN NULL ELSE response_read_at END,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`
     ).run(
       status?.trim() ?? null,
       hasReply ? cleanReply : null,
+      hasReply ? 1 : 0,
       hasReply ? 1 : 0,
       id
     );
@@ -130,6 +133,38 @@ router.put('/:id', requireAuth, (req, res) => {
     res.json(updated);
   } catch (err) {
     console.error('Update message error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+/**
+ * Marque comme lue la réponse du délégué. Sans cet appel, le compteur
+ * « messages à lire » de l'accueil restait affiché même après lecture.
+ * La vérification du fingerprint empêche de marquer le message d'un autre élève.
+ */
+router.post('/mine/:id/read', (req, res) => {
+  try {
+    const fingerprint = String(req.query.fingerprint || '').slice(0, 64);
+    if (!fingerprint) {
+      res.status(400).json({ error: 'Fingerprint requis' });
+      return;
+    }
+
+    const id = Number(req.params.id);
+    const updated = db
+      .prepare(
+        `UPDATE messages SET response_read_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND fingerprint = ? AND delegate_reply IS NOT NULL`
+      )
+      .run(id, fingerprint);
+
+    if (updated.changes === 0) {
+      res.status(404).json({ error: 'Message introuvable' });
+      return;
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Mark message read error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

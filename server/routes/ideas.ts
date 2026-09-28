@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { cleanText } from '../lib/files.js';
 
 const router = Router();
+
+/** Statuts acceptés, alignés sur IDEA_STATUSES côté client. */
+const IDEA_STATUSES = ['a_etudier', 'en_discussion', 'transmise', 'realisee', 'non_retenue'];
 
 router.get('/', (req, res) => {
   try {
@@ -63,17 +67,29 @@ router.put('/:id', requireAuth, (req, res) => {
     }
 
     const { status, delegate_response } = req.body;
+
+    // Le statut est validé explicitement : une valeur hors liste était
+    // acceptée et enregistrée telle quelle, ce qui rendait l'idée invisible
+    // des filtres du client.
+    let nextStatus: string | null = null;
+    if (status !== undefined && status !== null && status !== '') {
+      const candidate = cleanText(String(status), 30);
+      if (!IDEA_STATUSES.includes(candidate)) {
+        res.status(400).json({ error: 'Statut invalide' });
+        return;
+      }
+      nextStatus = candidate;
+    }
+
+    const response = cleanText(delegate_response, 2000);
+
     db.prepare(
       `UPDATE ideas SET
         status = COALESCE(?, status),
         delegate_response = COALESCE(?, delegate_response),
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`
-    ).run(
-      status?.trim() ?? null,
-      delegate_response?.trim() ?? null,
-      id
-    );
+    ).run(nextStatus, response || null, id);
 
     const updated = db.prepare('SELECT * FROM ideas WHERE id = ?').get(id);
     res.json(updated);

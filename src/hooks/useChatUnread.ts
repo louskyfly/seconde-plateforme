@@ -21,17 +21,33 @@ export function useChatUnread(enabled = true, pollMs = 10000): number {
 
     check();
     const id = setInterval(check, pollMs);
+
+    /*
+     * Le compteur ne se rafraîchissait qu'avec le timer de 10 s : en revenant
+     * sur l'onglet juste après avoir lu ses messages, la pastille restait
+     * affichée et l'élève croyait qu'il avait encore des messages à lire.
+     * On réinterroge donc immédiatement au retour sur la page.
+     */
+    const onWake = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onWake);
+    window.addEventListener('focus', onWake);
+    window.addEventListener('online', onWake);
+
     return () => {
       mounted = false;
       clearInterval(id);
+      document.removeEventListener('visibilitychange', onWake);
+      window.removeEventListener('focus', onWake);
+      window.removeEventListener('online', onWake);
     };
   }, [enabled, pollMs]);
 
   /* Reprend le nombre de non-lus sur l'icône de l'application (PWA installée) */
   useEffect(() => {
-    if (!enabled) return;
     setAppBadge(unread);
-  }, [unread, enabled]);
+  }, [unread]);
 
   return unread;
 }

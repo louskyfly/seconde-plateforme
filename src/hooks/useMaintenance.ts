@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 
-interface MaintenanceInfo {
+export interface MaintenanceInfo {
   active: boolean;
   message: string;
   isAdmin: boolean;
   checked: boolean;
+  /** Qui a déclenché l'arrêt en cours, et quand (null si le site est ouvert). */
+  activated_by?: string | null;
+  activated_at?: string | null;
 }
 
 /**
@@ -17,6 +20,8 @@ export function useMaintenance(pollMs = 15000): MaintenanceInfo {
     active: false,
     message: '',
     isAdmin: false,
+    activated_by: null,
+    activated_at: null,
   });
   const [checked, setChecked] = useState(false);
 
@@ -28,7 +33,13 @@ export function useMaintenance(pollMs = 15000): MaintenanceInfo {
         .getMaintenanceState()
         .then((data) => {
           if (!mounted) return;
-          setState({ active: data.active, message: data.message, isAdmin: data.is_admin });
+          setState({
+            active: data.active,
+            message: data.message,
+            isAdmin: data.is_admin,
+            activated_by: data.activated_by ?? null,
+            activated_at: data.activated_at ?? null,
+          });
         })
         .catch(() => {})
         .finally(() => {

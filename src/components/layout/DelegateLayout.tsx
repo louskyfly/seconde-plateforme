@@ -2,7 +2,6 @@ import { lazy } from 'react';
 import { Outlet, NavLink, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
-import { PageLoader } from '@/components/ui/PageLoader';
 import { useEffect } from 'react';
 
 const Login = lazy(() => import('@/pages/delegate/Login'));

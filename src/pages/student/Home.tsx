@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useSettings } from '@/hooks/useSettings';
 import { usePendingPolls } from '@/hooks/usePendingPolls';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { MiniCalendar } from '@/components/MiniCalendar';
 import { normalizeSeasonTheme, type SeasonTheme } from '@/lib/season';
 import {
   formatDate,
@@ -86,6 +87,7 @@ function FeaturedBubble({
 
 export default function Home() {
   const { settings } = useSettings();
+  const navigate = useNavigate();
   const season = normalizeSeasonTheme(settings?.season_theme);
   const pendingPolls = usePendingPolls();
   const [loading, setLoading] = useState(true);
@@ -93,6 +95,8 @@ export default function Home() {
   const [offline, setOffline] = useState(!navigator.onLine);
   const [latestAnnouncement, setLatestAnnouncement] = useState<Announcement | null>(null);
   const [nextEvent, setNextEvent] = useState<Event | null>(null);
+  const [events, setEvents] = useState<Event[]>([]);
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [latestIdea, setLatestIdea] = useState<Idea | null>(null);
   const [activePoll, setActivePoll] = useState<Poll | null>(null);
   const [resources, setResources] = useState<Resource[]>([]);
@@ -106,13 +110,15 @@ export default function Home() {
     if (!silent) setLoading(true);
     setError('');
     try {
-      const [announcements, events, ideas, polls, resourcesList, projects] = await Promise.all([
+      const fingerprint = generateFingerprint();
+      const [announcements, events, ideas, polls, resourcesList, projects, myMessages] = await Promise.all([
         api.getAnnouncements(),
         api.getEvents(),
         api.getIdeas(),
-        api.getPolls(generateFingerprint()),
+        api.getPolls(fingerprint),
         api.getResources(),
         api.getProjects(),
+        api.getMyMessages(fingerprint),
       ]);
       if (!cancelled.current) setOffline(false);
 
@@ -129,6 +135,12 @@ export default function Home() {
         .filter((e) => parseServerDate(e.date).getTime() >= now.getTime() - 60_000)
         .sort((a, b) => parseServerDate(a.date).getTime() - parseServerDate(b.date).getTime());
       setNextEvent(upcoming[0] ?? null);
+      setEvents(events);
+
+      // « Messages à lire » : le délégué a répondu et l'élève n'a pas encore
+      // ouvert sa réponse. Sans cet indicateur, l'élève ne savait pas qu'une
+      // réponse l'attendait.
+      setUnreadMessages(myMessages.filter((m) => m.status === 'repondu' && !m.response_read_at).length);
 
       const ideasSorted = [...ideas].sort(
         (a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime()
@@ -299,6 +311,40 @@ export default function Home() {
             content={latestAnnouncement ? latestAnnouncement.title : ''}
             empty="Aucune annonce publiée pour le moment"
           />
+
+          {/* Mini-calendrier : les jours avec un événement portent une pastille,
+              et un clic sur un jour ouvre l'agenda filtré dessus. */}
+          <div className="mt-3">
+            <MiniCalendar events={events} compact onSelectDay={() => navigate('/calendrier')} />
+          </div>
+
+          {/* Messages à lire : le student ne voit que ses propres échanges, le
+              compteur ne porte que sur ce qu'il a envoyé sans réponse. */}
+          {unreadMessages > 0 && (
+            <Link
+              to="/messagerie"
+              className="glass group mt-3 flex items-center gap-3 rounded-full border-indigo-400/40 bg-indigo-500/10 px-4 py-3 sm:px-6 sm:py-4 no-underline text-inherit active:scale-[0.98] transition-transform duration-200"
+            >
+              <span className="relative flex h-11 w-11 sm:h-14 sm:w-14 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500 text-2xl shadow-lg shadow-indigo-500/30">
+                📩
+                <span className="absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white shadow">
+                  {unreadMessages}
+                </span>
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-bold">
+                  {unreadMessages} message{unreadMessages > 1 ? 's' : ''} à lire
+                </h3>
+                <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                  Le délégué a répondu à {unreadMessages > 1 ? 'tes' : 'ton'} message
+                  {unreadMessages > 1 ? 's' : ''}
+                </p>
+              </div>
+              <span className="text-gray-400 transition-transform duration-200 group-hover:translate-x-1">
+                →
+              </span>
+            </Link>
+          )}
 
           <Link
             to="/messagerie"

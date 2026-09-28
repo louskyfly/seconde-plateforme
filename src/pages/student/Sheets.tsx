@@ -5,11 +5,11 @@ import { fileToDataUri, readAsDataUri } from '@/lib/image';
 import { getRelativeTime, SUBJECTS, generateFingerprint } from '@/lib/utils';
 import type { Sheet } from '@/types';
 import { Modal } from '@/components/ui/Modal';
+import { SheetViewButton } from '@/components/SheetViewer';
 
 const ALL_SUBJECTS = Object.keys(SUBJECTS);
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
-const PAGE_SIZE = 24;
 
 function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024
@@ -290,14 +290,10 @@ export default function Sheets() {
                 </p>
 
                 <div className="flex items-center gap-2 mt-3 pt-1">
-                  <a
-                    href={api.sheetFileUrl(sheet.id)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <SheetViewButton
+                    sheet={sheet}
                     className="glass-button text-xs px-3 py-1.5"
-                  >
-                    {sheet.kind === 'image' ? '🔍 Voir' : '⬇️ Télécharger'}
-                  </a>
+                  />
                   {sheet.is_mine && (
                     <button onClick={() => remove(sheet)} className="text-xs text-red-500 hover:underline px-1">
                       Supprimer

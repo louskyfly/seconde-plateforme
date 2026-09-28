@@ -96,6 +96,8 @@ export function ManageIdeas() {
   const [responseTarget, setResponseTarget] = useState<Idea | null>(null);
   const [toDelete, setToDelete] = useState<Idea | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  /** Confirmation éphémère affichée après un changement de statut. */
+  const [flash, setFlash] = useState<{ id: number; text: string } | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -127,15 +129,29 @@ export function ManageIdeas() {
     return c;
   }, [ideas]);
 
+  /**
+   * Mise à jour optimiste : le statut change immédiatement à l'écran, puis on
+   * confirme. Avant, on attendait un rechargement complet de la liste, ce qui
+   * donnait l'impression que le menu n'avait rien fait (et pouvait écraser le
+   * choix par un état plus ancien). En cas d'échec, on restaure la valeur
+   * précédente et on affiche l'erreur.
+   */
   const changeStatus = async (idea: Idea, status: string) => {
+    if (status === idea.status) return;
+    const previous = idea.status;
     setBusyId(idea.id);
+    setError('');
+    setIdeas((prev) => prev.map((i) => (i.id === idea.id ? { ...i, status } : i)));
+    setFlash({ id: idea.id, text: `Statut : ${IDEA_STATUSES[status]?.label ?? status}` });
     try {
       await api.updateIdea(idea.id, { status });
-      load();
     } catch (err: any) {
-      setError(err.message || 'Erreur');
+      setIdeas((prev) => prev.map((i) => (i.id === idea.id ? { ...i, status: previous } : i)));
+      setError(err.message || 'Impossible de changer le statut');
+      setFlash(null);
     } finally {
       setBusyId(null);
+      window.setTimeout(() => setFlash((f) => (f?.id === idea.id ? null : f)), 2600);
     }
   };
 
@@ -236,12 +252,23 @@ export function ManageIdeas() {
                   </div>
                 )}
 
+                {flash?.id === i.id && (
+                  <p className="mt-3 text-xs font-medium text-green-600 dark:text-green-400">
+                    ✓ {flash.text}
+                  </p>
+                )}
+
                 <div className="flex gap-2 flex-wrap mt-4">
+                  <label className="sr-only" htmlFor={`idea-status-${i.id}`}>
+                    Statut de l'idée
+                  </label>
                   <select
+                    id={`idea-status-${i.id}`}
                     value={i.status}
                     disabled={busyId === i.id}
                     onChange={(e) => changeStatus(i, e.target.value)}
-                    className="glass-input w-auto text-sm"
+                    aria-label={`Statut de « ${i.title} »`}
+                    className="glass-input w-auto text-sm disabled:opacity-60"
                   >
                     {Object.entries(IDEA_STATUSES).map(([key, v]) => (
                       <option key={key} value={key}>

@@ -357,7 +357,18 @@ describe('Fiches de révision', () => {
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('content-type'), 'image/png');
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
-    assert.match(res.headers.get('content-disposition') || '', /attachment/);
+    assert.match(res.headers.get('content-disposition') || '', /inline/);
+  });
+
+  test('l’image s’affiche dans l’onglet au lieu d’être téléchargée', async () => {
+    // Régression : la réponse était en `attachment`, ce qui laissait un onglet
+    // blanc sur téléphone au lieu d'afficher la fiche.
+    const list = await student('GET', `/api/sheets?fingerprint=${ALICE}`);
+    const sheet = list.data.items[0];
+    const res = await fetch(`${BASE}/api/sheets/${sheet.id}/file?inline=1`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-disposition') || '', /inline/);
+    assert.doesNotMatch(res.headers.get('content-disposition') || '', /attachment/);
   });
 
   test('un élève ne peut pas supprimer la fiche d’un autre', async () => {
@@ -428,6 +439,57 @@ describe('Fiches de révision', () => {
     assert.equal(res.status, 200);
     assert.ok(res.data.items.length <= 1);
     assert.ok(res.data.items.every((s) => /maths/i.test(s.title + s.description + s.subject)));
+  });
+});
+
+describe('Idées', () => {
+  let ideaId = 0;
+
+  test('le délégué dépose une idée', async () => {
+    const res = await student('POST', '/api/ideas', {
+      title: 'Sortie au musée',
+      description: 'Une idée de test',
+      category: 'classe',
+      fingerprint: ALICE,
+      author_name: 'Alice',
+    });
+    assert.equal(res.status, 201);
+    ideaId = res.data.id;
+  });
+
+  test('le délégué ne peut pas changer le statut qu’un élève n’a pas créé', async () => {
+    // Recorded above: the idea is created as a student, then the delegate acts
+    // on it. Both roles are exercised; the endpoint only requires auth.
+    const res = await admin('PUT', `/api/ideas/${ideaId}`, { status: 'en_discussion' });
+    assert.equal(res.status, 200);
+    assert.equal(res.data.status, 'en_discussion');
+  });
+
+  test('tous les statuts de la liste sont acceptés', async () => {
+    for (const status of ['a_etudier', 'transmise', 'realisee', 'non_retenue', 'en_discussion']) {
+      const res = await admin('PUT', `/api/ideas/${ideaId}`, { status });
+      assert.equal(res.status, 200, `${status} doit être accepté`);
+      assert.equal(res.data.status, status);
+    }
+  });
+
+  test('un statut hors liste est refusé au lieu d’être enregistré tel quel', async () => {
+    // Régression : une valeur invalide était acceptée, ce qui rendait l'idée
+    // invisible des filtres du client.
+    const res = await admin('PUT', `/api/ideas/${ideaId}`, { status: 'statut_bidon' });
+    assert.equal(res.status, 400);
+    assert.match(res.data.error, /invalide/i);
+
+    const after = await admin('GET', '/api/ideas');
+    assert.equal(after.data.find((i) => i.id === ideaId).status, 'en_discussion', 'le statut ne doit pas bouger');
+  });
+
+  test('un élève ne peut pas changer le statut', async () => {
+    const res = await student('PUT', `/api/ideas/${ideaId}`, { status: 'realisee' });
+    assert.equal(res.status, 401);
+
+    const after = await admin('GET', '/api/ideas');
+    assert.equal(after.data.find((i) => i.id === ideaId).status, 'en_discussion');
   });
 });
 
@@ -668,14 +730,54 @@ describe('Messages au délégué', () => {
     assert.equal(msg.status, 'repondu');
   });
 
-  test('un élève ne peut pas répondre lui-même', async () => {
-    const res = await student('PUT', `/api/messages/${messageId}`, { reply: 'Fausse réponse' });
-    assert.equal(res.status, 401);
+    test('un élève ne peut pas répondre lui-même', async () => {
+      const res = await student('PUT', `/api/messages/${messageId}`, { reply: 'Fausse réponse' });
+      assert.equal(res.status, 401);
 
-    const mine = await student('GET', `/api/messages/mine?fingerprint=${ALICE}`);
-    assert.equal(mine.data.find((m) => m.id === messageId).delegate_reply, 'Oui, je regarde ça demain.');
+      const mine = await student('GET', `/api/messages/mine?fingerprint=${ALICE}`);
+      assert.equal(mine.data.find((m) => m.id === messageId).delegate_reply, 'Oui, je regarde ça demain.');
+    });
+
+    test('une réponse non lue est signalée à l’élève puis se vide à la lecture', async () => {
+      const pending = await student('GET', `/api/messages/mine?fingerprint=${ALICE}`);
+      const msg = pending.data.find((m) => m.id === messageId);
+      assert.equal(msg.response_read_at, null, 'la réponse doit démarrer non lue');
+
+      // Le compteur de l'accueil s'appuie sur ce champ.
+      const unread = pending.data.filter((m) => m.status === 'repondu' && !m.response_read_at);
+      assert.equal(unread.length, 1, 'l’accueil doit annoncer 1 message à lire');
+
+      const read = await student('POST', `/api/messages/mine/${messageId}/read?fingerprint=${ALICE}`);
+      assert.equal(read.status, 200);
+
+      const after = await student('GET', `/api/messages/mine?fingerprint=${ALICE}`);
+      assert.ok(
+        after.data.find((m) => m.id === messageId).response_read_at,
+        'la réponse doit être marquée comme lue'
+      );
+      assert.equal(
+        after.data.filter((m) => m.status === 'repondu' && !m.response_read_at).length,
+        0,
+        'le compteur de l’accueil doit retomber à 0'
+      );
+    });
+
+    test('un élève ne peut pas marquer le message d’un autre comme lu', async () => {
+      const foreign = await other('POST', '/api/messages', {
+        content: 'Question de Bob',
+        category: 'question',
+        fingerprint: BOB,
+      });
+      assert.equal(foreign.status, 201);
+      await admin('PUT', `/api/messages/${foreign.data.id}`, { reply: 'Réponse à Bob' });
+
+      const res = await student(
+        'POST',
+        `/api/messages/mine/${foreign.data.id}/read?fingerprint=${ALICE}`
+      );
+      assert.equal(res.status, 404, 'le fingerprint doit être vérifié');
+    });
   });
-});
 
 describe('Sauvegarde des données', () => {
   test('le point de santé signale l’état du stockage', async () => {

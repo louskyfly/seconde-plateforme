@@ -2,11 +2,17 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { formatDate, EVENT_CATEGORIES } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { MiniCalendar } from '@/components/MiniCalendar';
 import type { Event } from '@/types';
+
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
 export default function Calendar() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -27,9 +33,15 @@ export default function Calendar() {
 
   const now = new Date();
 
+  /** Filtre le jour choisi dans le mini-calendrier ; tout le mois sinon. */
+  const visible = useMemo(
+    () => (selectedDay ? events.filter((e) => dayKey(new Date(e.date)) === dayKey(selectedDay)) : events),
+    [events, selectedDay]
+  );
+
   const grouped = useMemo(() => {
     const map = new Map<string, Event[]>();
-    events.forEach((e) => {
+    visible.forEach((e) => {
       const d = new Date(e.date);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (!map.has(key)) {
@@ -38,11 +50,35 @@ export default function Calendar() {
       map.get(key)!.push(e);
     });
     return map;
-  }, [events]);
+  }, [visible]);
 
   return (
     <div className="animate-fadeIn">
       <h1 className="text-2xl font-bold mb-5">Calendrier</h1>
+
+      {!loading && (
+        <div className="mb-5">
+          <MiniCalendar
+            events={events}
+            selected={selectedDay ?? undefined}
+            onSelectDay={(date) => setSelectedDay((prev) => (prev && dayKey(prev) === dayKey(date) ? null : date))}
+          />
+          {selectedDay && (
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {selectedDay.toLocaleDateString('fr-FR', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                })}
+              </p>
+              <button onClick={() => setSelectedDay(null)} className="glass-button text-xs px-3 py-1.5">
+                Voir tout le mois
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading && (
         <div className="space-y-3">
@@ -64,7 +100,14 @@ export default function Calendar() {
         </div>
       )}
 
-      {!loading && (
+      {!loading && events.length > 0 && visible.length === 0 && selectedDay && (
+        <div className="glass-card text-center py-8">
+          <p className="text-2xl mb-2">🌤️</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Aucun événement ce jour-là</p>
+        </div>
+      )}
+
+      {!loading && visible.length > 0 && (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([key, groupEvents]) => {
             const d = new Date(groupEvents[0].date);

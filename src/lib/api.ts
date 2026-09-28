@@ -9,6 +9,7 @@ import type {
   Project,
   Stats,
   MaintenanceState,
+  MaintenanceLogEntry,
   ChatUser,
   ChatConversation,
   ChatMessage,
@@ -68,6 +69,10 @@ export const api = {
   sendMessage: (data: any) => request<Message>('/messages', { method: 'POST', body: JSON.stringify(data) }),
   getMyMessages: (fingerprint: string) =>
     request<Message[]>(`/messages/mine?fingerprint=${encodeURIComponent(fingerprint)}`),
+  markMessageRead: (id: number, fingerprint: string) =>
+    request<{ success: boolean }>(`/messages/mine/${id}/read?fingerprint=${encodeURIComponent(fingerprint)}`, {
+      method: 'POST',
+    }),
   updateMessage: (id: number, data: any) => request<Message>(`/messages/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteMessage: (id: number) => request<{ success: boolean }>(`/messages/${id}`, { method: 'DELETE' }),
   
@@ -111,7 +116,7 @@ export const api = {
   activateMaintenance: (password: string, message?: string) =>
     request<MaintenanceState>('/maintenance/activate', { method: 'POST', body: JSON.stringify({ password, message }) }),
   deactivateMaintenance: () => request<MaintenanceState>('/maintenance/deactivate', { method: 'POST' }),
-  getMaintenanceHistory: () => request<MaintenanceState[]>('/maintenance/history'),
+  getMaintenanceHistory: () => request<MaintenanceLogEntry[]>('/maintenance/history'),
 
   // Chat
   joinChat: (fingerprint: string, display_name: string) =>

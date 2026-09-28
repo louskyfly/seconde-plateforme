@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { initClickRipple } from './lib/ripple';
+import { SeasonDecor } from './components/SeasonDecor';
 import './index.css';
 
 // Register service worker
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <div className="liquid-bg" aria-hidden="true">
         <span />
       </div>
+      <SeasonDecor />
       <App />
     </BrowserRouter>
   </React.StrictMode>

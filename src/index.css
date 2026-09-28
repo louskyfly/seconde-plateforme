@@ -520,6 +520,62 @@ html[data-season='noel'] .season-greeting {
   border: 1px solid rgba(226, 232, 240, 0.3);
 }
 
+/* ===== Décorations de saison (citrouilles, bougies, sapins, étoiles) =====
+   Rendu par <SeasonDecor /> au-dessus du fond liquide. Le calque est en
+   pointer-events: none pour ne jamais gêner un clic sur un bouton. */
+.season-decor {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.season-decor__item {
+  position: absolute;
+  display: block;
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28));
+  will-change: transform, opacity;
+}
+/* Les décorations des bords s'effacent sur téléphone, où le contenu occupe
+   presque tout l'écran : on garde seulement les quatre principales. */
+@media (max-width: 640px) {
+  .season-decor__item--wide {
+    display: none;
+  }
+}
+
+@keyframes decor-sway {
+  0%, 100% { transform: rotate(-3deg) translateY(0); }
+  50% { transform: rotate(3deg) translateY(-1.2vmin); }
+}
+@keyframes decor-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.2vmin); }
+}
+/* La flamme vacille : l'échelle de la bougie change légèrement. */
+@keyframes decor-flicker {
+  0%, 100% { transform: scale(1) translateY(0); }
+  35% { transform: scale(1.03, 0.97) translateY(-0.2vmin); }
+  70% { transform: scale(0.98, 1.02) translateY(0); }
+}
+@keyframes decor-twinkle {
+  0%, 100% { transform: scale(0.75); opacity: 0.35; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+@keyframes decor-fall {
+  0% { transform: translateY(-12vmin) rotate(0deg); }
+  100% { transform: translateY(112vh) rotate(320deg); }
+}
+/* Les chauve-souris traversent l'écran en diagonale. */
+@keyframes decor-fly {
+  0% { transform: translate(-14vw, 6vh) rotate(-6deg); }
+  25% { transform: translate(22vw, -5vh) rotate(8deg); }
+  50% { transform: translate(58vw, 8vh) rotate(-7deg); }
+  75% { transform: translate(94vw, -4vh) rotate(5deg); }
+  100% { transform: translate(128vw, 6vh) rotate(-6deg); }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

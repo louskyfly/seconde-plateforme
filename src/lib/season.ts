@@ -33,6 +33,6 @@ export function applySeason(theme: unknown): SeasonTheme {
 
 export const SEASON_THEMES: { value: SeasonTheme; label: string; emoji: string; hint: string }[] = [
   { value: 'aucun', label: 'Normal', emoji: '🎨', hint: 'Le thème actuel' },
-  { value: 'halloween', label: 'Halloween', emoji: '🎃', hint: 'Orange et violet' },
-  { value: 'noel', label: 'Noël', emoji: '🎄', hint: 'Rouge et vert' },
+  { value: 'halloween', label: 'Halloween', emoji: '🎃', hint: 'Citrouilles, bougies, chauve-souris' },
+  { value: 'noel', label: 'Noël', emoji: '🎄', hint: 'Sapins, étoiles, flocons, cadeaux' },
 ];

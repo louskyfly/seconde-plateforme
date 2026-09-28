@@ -130,8 +130,32 @@ Depuis **Paramètres → Thème de la plateforme**, le délégué décore toute 
 npm test
 ```
 
-Lance le build puis 47 tests d'intégration sur une **base temporaire** (aucune donnée réelle touchée) :
-maintenance (activation, blocage, contournement API, accès délégué), chat (adhésion, envoi, réception, non-lus, isolation, suppression, limite 3 Mo), fiches (dépôt, image de plus de 3 Mo acceptée, type refusé, taille refusée, masquage, suppression), sondages (droits de création, `has_voted`, double vote refusé, résultats visibles), thèmes de saison (défaut, activation, refus d'un élève, valeur invalide) et permissions.
+Lance le build puis 76 tests d'intégration sur une **base temporaire** (aucune donnée réelle touchée) : maintenance (activation, blocage, contournement API, accès délégué), chat (adhésion, envoi, réception, non-lus, isolation, suppression, limite 3 Mo), fiches (dépôt, aperçu `inline`, image de plus de 3 Mo acceptée, type refusé, taille refusée, masquage, suppression), calendrier (création, heure vide, droits), messages au délégué (réponse, marquage lu, isolation), sondages (droits, `has_voted`, double vote, édition), thèmes de saison, sauvegarde/restauration, et **survie de la session à un redémarrage du serveur**.
+
+### Test de charge
+
+```bash
+npm run load:test -- https://seconde-plateforme.onrender.com 35 45
+```
+
+Simule N élèves simultanés (inscription au chat comprise) plus le délégué, sur les mêmes endpoints que l'application, et affiche débit, taux de succès et latences p50/p95/p99.
+
+Les élèves simulés s'inscrivent au chat : nettoyer ensuite avec
+
+```bash
+ADMIN_PASSWORD=… npm run load:cleanup -- https://seconde-plateforme.onrender.com load-student-
+```
+
+Résultats mesurés sur le plan gratuit Render (une instance) :
+
+| Utilisateurs | Débit | p50 | p95 | p99 | Erreurs 5xx |
+|---|---|---|---|---|---|
+| 35 | 43 req/s | 179 ms | 219 ms | 266 ms | 0 |
+| 150 | 172 req/s | 191 ms | 418 ms | 1 028 ms | 0 |
+| 400 | 225 req/s | 1 103 ms | 2 223 ms | 2 784 ms | 0 |
+
+Le palier se situe vers 225 req/s : au-delà, la latence monte mais aucune requête n'échoue. Une classe de 30-35 élèves connectés simultanément laisse donc une marge très confortable.
+
 
 ## 📦 Structure du projet
 

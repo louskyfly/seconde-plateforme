@@ -138,9 +138,9 @@ export default function Home() {
       setEvents(events);
 
       // « Messages à lire » : le délégué a répondu et l'élève n'a pas encore
-      // ouvert sa réponse. Sans cet indicateur, l'élève ne savait pas qu'une
-      // réponse l'attendait.
-      setUnreadMessages(myMessages.filter((m) => m.status === 'repondu' && !m.response_read_at).length);
+      // ouvert sa réponse. On se base sur la présence de la réponse plutôt que
+      // sur le statut, que le délégué peut régler séparément.
+      setUnreadMessages(myMessages.filter((m) => m.delegate_reply && !m.response_read_at).length);
 
       const ideasSorted = [...ideas].sort(
         (a, b) => parseServerDate(b.created_at).getTime() - parseServerDate(a.created_at).getTime()

@@ -130,10 +130,20 @@ export function MiniCalendar({ events, selected, onSelectDay, compact = false }:
                 isToday && !isSelected ? 'ring-1 ring-indigo-400 font-bold' : ''
               } ${onSelectDay ? 'hover:bg-indigo-500/15 cursor-pointer' : 'cursor-default'}`}
             >
-              <span>{date.getDate()}</span>
+              <span
+                className={
+                  isSelected
+                    ? 'font-bold leading-none'
+                    : hasEvent
+                      ? 'font-extrabold leading-none text-indigo-600 dark:text-indigo-400'
+                      : 'leading-none'
+                }
+              >
+                {date.getDate()}
+              </span>
               {hasEvent && (
                 <span
-                  className={`absolute bottom-0.5 w-1 h-1 rounded-full ${
+                  className={`absolute bottom-0.5 h-1.5 w-1.5 rounded-full ring-2 ring-white dark:ring-slate-800 ${
                     isSelected ? 'bg-white' : 'bg-indigo-500'
                   }`}
                   aria-hidden="true"

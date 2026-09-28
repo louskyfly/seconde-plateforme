@@ -98,6 +98,36 @@ before(async () => {
   await waitForServer();
 });
 
+/** Relance le serveur sur la même base : simule un redémarrage de Render. */
+async function restartServer() {
+  if (server && server.exitCode === null) {
+    await new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        server.kill('SIGKILL');
+        resolve();
+      }, 5000);
+      server.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      server.kill();
+    });
+  }
+  server = spawn(process.execPath, ['dist/server/index.js'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      DB_PATH: path.join(tmpDir, 'test.db'),
+      NODE_ENV: 'test',
+      SESSION_SECRET: 'secret-de-test',
+      ADMIN_PASSWORD,
+    },
+    stdio: 'ignore',
+  });
+  await waitForServer();
+}
+
 after(async () => {
   // Sur Windows, le fichier SQLite reste verrouillé tant que le serveur n'a pas
   // quitté : on attend sa fin avant de supprimer la base temporaire.
@@ -439,6 +469,64 @@ describe('Fiches de révision', () => {
     assert.equal(res.status, 200);
     assert.ok(res.data.items.length <= 1);
     assert.ok(res.data.items.every((s) => /maths/i.test(s.title + s.description + s.subject)));
+  });
+});
+
+describe('Calendrier', () => {
+  test('le délégué crée un événement', async () => {
+    const res = await admin('POST', '/api/events', {
+      title: 'Sortie au musée',
+      date: '2026-10-15',
+      time: '08:30',
+      description: 'Départ devant le lycée',
+      category: 'sortie',
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.title, 'Sortie au musée');
+    assert.equal(res.data.date, '2026-10-15');
+    assert.equal(res.data.time, '08:30');
+    assert.equal(res.data.category, 'sortie');
+  });
+
+  test('un événement sans heure ni description est accepté', async () => {
+    // Le formulaire envoie `time: null` quand l'heure est vide : l'insertion
+    // échouait sur un `.trim()` appliqué à null.
+    const res = await admin('POST', '/api/events', {
+      title: 'Conseil de classe',
+      date: '2026-11-04',
+      time: null,
+      description: '',
+      category: 'reunion',
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.time, '');
+  });
+
+  test('titre ou date manquants sont refusés', async () => {
+    assert.equal((await admin('POST', '/api/events', { date: '2026-10-15' })).status, 400);
+    assert.equal((await admin('POST', '/api/events', { title: 'Sans date' })).status, 400);
+  });
+
+  test('un élève ne peut pas créer ni supprimer un événement', async () => {
+    assert.equal(
+      (await student('POST', '/api/events', { title: 'Pirate', date: '2026-10-15' })).status,
+      401
+    );
+    const list = await student('GET', '/api/events');
+    assert.equal((await student('DELETE', `/api/events/${list.data[0].id}`)).status, 401);
+  });
+
+  test('la modification et la suppression fonctionnent côté délégué', async () => {
+    const list = await admin('GET', '/api/events');
+    const created = list.data.find((e) => e.title === 'Conseil de classe');
+
+    const updated = await admin('PUT', `/api/events/${created.id}`, { title: 'Conseil de classe (reporté)' });
+    assert.equal(updated.status, 200);
+    assert.equal(updated.data.title, 'Conseil de classe (reporté)');
+
+    assert.equal((await admin('DELETE', `/api/events/${created.id}`)).status, 200);
+    const after = await student('GET', '/api/events');
+    assert.equal(after.data.some((e) => e.id === created.id), false);
   });
 });
 
@@ -872,5 +960,36 @@ describe('Paramètres et thème de saison', () => {
     assert.equal(res.status, 200);
     assert.equal(res.data.season_theme, 'aucun');
     assert.equal(res.data.class_name, 'Seconde 9');
+  });
+});
+
+/*
+ * Ce bloc redémarre le serveur : il est donc placed en dernier, sinon il
+ * interromprait les suites précédentes.
+ */
+describe('Session délégué', () => {
+  test('la session survit à un redémarrage du serveur', async () => {
+    // Régression : avec le MemoryStore par défaut d'express-session, Render
+    // redémarrant vidait les sessions. Le délégué était déconnecté sans
+    // s'en apercevoir et toutes ses écritures échouaient sur un 401.
+    assert.equal((await admin('GET', '/api/admin/overview')).status, 200, 'session valide avant redémarrage');
+
+    await restartServer();
+
+    const after = await admin('GET', '/api/admin/overview');
+    assert.equal(after.status, 200, 'la session doit survivre au redémarrage');
+
+    // Et surtout : l'écriture qui échouait doit maintenant passer.
+    const event = await admin('POST', '/api/events', {
+      title: 'Après redémarrage',
+      date: '2026-12-01',
+      category: 'autre',
+    });
+    assert.equal(event.status, 201, 'le délégué doit pouvoir créer un événement après un redémarrage');
+  });
+
+  test('une session inconnue reste refusée après redémarrage', async () => {
+    assert.equal((await other('GET', '/api/admin/overview')).status, 401);
+    assert.equal((await other('POST', '/api/events', { title: 'X', date: '2026-12-02' })).status, 401);
   });
 });

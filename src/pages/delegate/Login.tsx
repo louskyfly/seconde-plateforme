@@ -4,9 +4,11 @@ import { api } from '@/lib/api';
 
 interface LoginProps {
   token?: string;
+  /** Rappel affiché quand une écriture a échoué parce que la session avait expiré. */
+  sessionExpired?: boolean;
 }
 
-function Login({ token = '' }: LoginProps) {
+function Login({ token = '', sessionExpired = false }: LoginProps) {
   const { login } = useAuth();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -77,6 +79,11 @@ function Login({ token = '' }: LoginProps) {
 
         {!checkingLink && linkValid && (
           <>
+            {sessionExpired && (
+              <div className="mb-4 rounded-xl border border-amber-300/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                Ta session a expiré (le site a redémarré). Reconnecte-toi pour continuer.
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <input
                 type="password"

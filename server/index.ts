@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import db, { isPersistentStorage } from './db/index.js';
 import { initDatabase, ensureDefaultChatGroup } from './db/schema.js';
+import { SqliteSessionStore } from './db/session-store.js';
 import { startAutoBackup } from './db/backup.js';
 import { seedDatabase } from './db/seed.js';
 import { maintenanceGate } from './middleware/maintenance.js';
@@ -52,7 +53,8 @@ app.use(
     secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
     resave: false,
     saveUninitialized: false,
-    store: new session.MemoryStore(),
+    // MemoryStore (défaut) perdait la session à chaque redémarrage de Render.
+    store: new SqliteSessionStore(db),
     cookie: {
       httpOnly: true,
       secure: process.env.COOKIE_SECURE === 'true' ? true : ('auto' as const),

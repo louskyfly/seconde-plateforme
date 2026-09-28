@@ -1,7 +1,8 @@
-import { lazy } from 'react';
+import { lazy, useState } from 'react';
 import { Outlet, NavLink, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
+import { SESSION_EXPIRED_EVENT } from '@/lib/api';
 import { useEffect } from 'react';
 
 const Login = lazy(() => import('@/pages/delegate/Login'));
@@ -136,10 +137,19 @@ function DelegateLayout() {
   const { token } = useParams<{ token: string }>();
   const { isAuthenticated, loading } = useAuth();
   const location = useLocation();
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
+
+  // Dès qu'une écriture échoue sur 401, on note la cause pour expliquer
+  // l'écran de connexion plutôt que d'afficher une page vide.
+  useEffect(() => {
+    const onExpired = () => setSessionExpired(true);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
 
   if (loading) {
     return (
@@ -150,7 +160,7 @@ function DelegateLayout() {
   }
 
   if (!isAuthenticated) {
-    return <Login token={token || ''} />;
+    return <Login token={token || ''} sessionExpired={sessionExpired} />;
   }
 
   return (

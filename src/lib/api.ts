@@ -21,14 +21,58 @@ import type {
 
 const BASE = '/api';
 
+/**
+ * Levée quand une écriture renvoie 401 : le serveur a redémarré (Render le fait
+ * souvent sur le plan gratuit) et le store de session, en mémoire, a été vidé.
+ * Le client croyait encore être connecté et chaque action échouait sur un
+ * message incompréhensible. Cet événement force l'affichage de l'écran de
+ * connexion.
+ */
+export const SESSION_EXPIRED_EVENT = 'api:session-expired';
+
+/**
+ * Erreur d'API porteuse du statut HTTP.
+ *
+ * Le message brut du serveur ("Non autorisé", "Erreur serveur"…) ne dit pas à
+ * l'utilisateur quoi faire. On remonte ici un message actionnable.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly sessionExpired: boolean;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.sessionExpired = status === 401;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+      ...options,
+    });
+  } catch {
+    // Coupure réseau ou service indisponible : on ne parle pas de "401".
+    throw new ApiError('Connexion impossible : vérifie ton réseau et réessaie.', 0);
+  }
+
   if (!res.ok) {
-    const data = await res.json().catch(() => ({ error: 'Erreur réseau' }));
-    throw new Error(data.error || `Erreur ${res.status}`);
+    const data = await res.json().catch(() => ({ error: '' }));
+    if (res.status === 401) {
+      // /api/auth/* gère lui-même ses erreurs : pas de boucle de redirection.
+      if (!path.startsWith('/auth')) {
+        window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+      }
+      throw new ApiError('Session expirée : reconnecte-toi pour continuer.', res.status);
+    }
+    if (res.status === 503 && (data as any).maintenance) {
+      throw new ApiError('Le site est momentanément en maintenance.', res.status);
+    }
+    throw new ApiError(data.error || `Erreur ${res.status}`, res.status);
   }
   return res.json();
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { api } from '@/lib/api';
@@ -50,6 +50,72 @@ export function Settings() {
   const [copied, setCopied] = useState(false);
   const [qrUrl, setQrUrl] = useState('');
   const [qrBusy, setQrBusy] = useState(false);
+
+  const [storage, setStorage] = useState<{
+    persistent_storage: boolean;
+    db_path: string;
+    backups: { file: string; date: string; size: number }[];
+  } | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMessage, setBackupMessage] = useState('');
+
+  const loadStorage = useCallback(() => {
+    api
+      .getStorage()
+      .then(setStorage)
+      .catch(() => setStorage(null));
+  }, []);
+
+  useEffect(() => {
+    loadStorage();
+  }, [loadStorage]);
+
+  /** Télécharge une sauvegarde JSON complète de la base. */
+  const exportData = async () => {
+    setBackupBusy(true);
+    setBackupMessage('');
+    try {
+      const payload = await api.exportDatabase();
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `seconde-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setBackupMessage('✅ Sauvegarde téléchargée. Conserve ce fichier en lieu sûr.');
+    } catch (err: any) {
+      setBackupMessage(err.message || "Erreur lors de l'export");
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  /** Restaure une sauvegarde JSON : la base actuelle est remplacée. */
+  const importData = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!window.confirm('Restaurer cette sauvegarde ? Toutes les données actuelles seront remplacées.')) {
+      return;
+    }
+
+    setBackupBusy(true);
+    setBackupMessage('');
+    try {
+      const payload = JSON.parse(await file.text());
+      await api.importDatabase(payload);
+      setBackupMessage('✅ Données restaurées. Recharge la page pour voir les changements.');
+      loadStorage();
+    } catch (err: any) {
+      setBackupMessage(err.message || 'Fichier de sauvegarde invalide');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!settings) return;
@@ -410,6 +476,66 @@ export function Settings() {
           {pwdBusy ? 'Modification...' : 'Modifier le mot de passe'}
         </button>
       </form>
+
+      <div className="glass-card space-y-4">
+        <h2 className="font-semibold">💾 Sauvegarde des données</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Tant qu'aucun disque persistant n'est attaché au serveur, la base est effacée à
+          chaque redéploiement. Exporte une sauvegarde après chaque session importante, et
+          restaure-la si les données disparaissent.
+        </p>
+
+        {storage && (
+          <p
+            className={`text-xs px-3 py-2 rounded-lg ${
+              storage.persistent_storage
+                ? 'bg-green-500/10 text-green-700 dark:text-green-400'
+                : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+            }`}
+          >
+            {storage.persistent_storage
+              ? '✅ Stockage durable : les données survivent aux redéploiements.'
+              : '⚠️ Stockage éphémère : les données seront perdues au prochain redéploiement.'}
+          </p>
+        )}
+
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={exportData}
+            disabled={backupBusy}
+            className="glass-button-primary text-sm disabled:opacity-50"
+          >
+            {backupBusy ? 'Préparation...' : 'Exporter une sauvegarde'}
+          </button>
+          <label
+            className={`glass-button text-sm cursor-pointer ${backupBusy ? 'opacity-50' : ''}`}
+          >
+            {backupBusy ? 'Restauration...' : 'Restaurer une sauvegarde'}
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              disabled={backupBusy}
+              onChange={importData}
+            />
+          </label>
+        </div>
+
+        {backupMessage && (
+          <p
+            className={`text-sm ${backupMessage.startsWith('✅') ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}
+          >
+            {backupMessage}
+          </p>
+        )}
+
+        {storage && storage.backups.length > 0 && (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {storage.backups.length} sauvegarde(s) automatique(s) sur le serveur, la plus
+            récente du {new Date(storage.backups[0].date).toLocaleString('fr-FR')}.
+          </p>
+        )}
+      </div>
 
       <div className="glass-card border-red-300/40 dark:border-red-900/40 space-y-4">
         <h2 className="font-semibold text-red-600 dark:text-red-400">Zone sensible</h2>

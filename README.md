@@ -185,8 +185,35 @@ Le projet est pré-configuré avec un **render.yaml** (Blueprint).
 
 ### Notes
 - Le QR code se génère automatiquement depuis la page **Paramètres** de l'espace délégué
-- Les données SQLite sont éphémères sur le plan gratuit (perdues au redéploiement)
 - En cas de crash : vérifiez les logs dans le Dashboard Render
+
+## 💾 Persistance des données (important)
+
+Sur le **plan gratuit**, le système de fichiers de Render est éphémère : **la base
+SQLite est effacée à chaque redéploiement** (commit, changement de build, ou
+redémarrage du service). Les annonces, fiches, sondages et messages disparaissent.
+
+### Rendre les données durables
+1. Passez le service sur un **plan payant** (Starter, ~7 $/mois).
+2. Dans le Dashboard Render → **Disks** → **Add Disk** :
+   - **Name** : `donnees`
+   - **Mount Path** : `/var/data`
+   - **Size** : 1 Go (suffisant, les fiches sont limitées à 15 Mo)
+3. Rien à changer dans le code : l'application détecte `/var/data` et y place
+   la base automatiquement (`DB_PATH=/var/data/seconde.db`).
+
+Tant que ce disque n'est pas attaché, le serveur le signale clairement :
+- avertissement dans les logs Render au démarrage ;
+- `GET /api/health` renvoie `"persistent_storage": false` ;
+- bandeau orange dans **Paramètres > Sauvegarde des données**.
+
+### Sauvegardes
+- Une **sauvegarde automatique quotidienne** est créée dans le dossier
+  `backups/` à côté de la base (14 sauvegardes conservées, via l'API de backup
+  SQLite : la copie reste cohérente même pendant des écritures).
+- **Paramètres > Sauvegarde des données** permet au délégué de **télécharger**
+  un export JSON complet et de le **restaurer**. C'est la solution de secours
+  sur le plan gratuit : exporter avant un redéploiement, restaure après.
 
 ## 🌐 Connecter un domaine court
 

@@ -159,4 +159,10 @@ export const api = {
   getChatUsers: () => request<ChatUser[]>('/admin/users'),
   getAdminLog: (limit = 50) => request<AdminLogEntry[]>(`/admin/log?limit=${limit}`),
   getAdminOverview: () => request<AdminOverview>('/admin/overview'),
+  getStorage: () =>
+    request<{ persistent_storage: boolean; db_path: string; backups: { file: string; date: string; size: number }[] }>(
+      '/admin/storage'
+    ),
+  exportDatabase: () => request<any>('/admin/export'),
+  importDatabase: (payload: any) => request<{ success: boolean }>('/admin/import', { method: 'POST', body: JSON.stringify(payload) }),
 };

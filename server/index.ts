@@ -5,8 +5,9 @@ import session from 'express-session';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import db from './db/index.js';
+import db, { isPersistentStorage } from './db/index.js';
 import { initDatabase, ensureDefaultChatGroup } from './db/schema.js';
+import { startAutoBackup } from './db/backup.js';
 import { seedDatabase } from './db/seed.js';
 import { maintenanceGate } from './middleware/maintenance.js';
 
@@ -36,6 +37,7 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 initDatabase(db);
 seedDatabase(db);
 ensureDefaultChatGroup(db);
+startAutoBackup(db);
 
 app.set('trust proxy', process.env.TRUST_PROXY ? parseInt(process.env.TRUST_PROXY, 10) : false);
 
@@ -85,7 +87,7 @@ app.use('/api/maintenance', maintenanceRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', persistent_storage: isPersistentStorage });
 });
 
 if (NODE_ENV === 'production') {

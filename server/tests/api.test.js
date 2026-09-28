@@ -677,6 +677,67 @@ describe('Messages au délégué', () => {
   });
 });
 
+describe('Sauvegarde des données', () => {
+  test('le point de santé signale l’état du stockage', async () => {
+    const res = await student('GET', '/api/health');
+    assert.equal(res.status, 200);
+    assert.equal(res.data.status, 'ok');
+    assert.equal(typeof res.data.persistent_storage, 'boolean');
+  });
+
+  test('l’état du stockage est réservé au délégué', async () => {
+    assert.equal((await student('GET', '/api/admin/storage')).status, 401);
+    assert.equal((await other('GET', '/api/admin/storage')).status, 401);
+    assert.equal((await admin('GET', '/api/admin/storage')).status, 200);
+  });
+
+  test('l’export contient les données réelles', async () => {
+    const res = await admin('GET', '/api/admin/export');
+    assert.equal(res.status, 200);
+    assert.equal(res.data.version, 1);
+    assert.ok(res.data.tables.settings.length >= 1, 'les paramètres doivent être exportés');
+    assert.ok(res.data.tables.polls.length >= 1, 'les sondages doivent être exportés');
+    assert.match(res.headers.get('content-disposition') || '', /attachment/);
+  });
+
+  test('un élève ne peut pas exporter ni restaurer la base', async () => {
+    assert.equal((await student('GET', '/api/admin/export')).status, 401);
+    assert.equal((await student('POST', '/api/admin/import', { tables: {} })).status, 401);
+  });
+
+  test('la restauration remet les données exportées', async () => {
+    const backup = (await admin('GET', '/api/admin/export')).data;
+
+    await admin('POST', '/api/ideas', { title: 'Idée à écraser', description: 'x', category: 'classe' });
+    const polluted = await admin('GET', '/api/ideas');
+    assert.ok(polluted.data.some((i) => i.title === 'Idée à écraser'));
+
+    const restore = await admin('POST', '/api/admin/import', backup);
+    assert.equal(restore.status, 200);
+
+    const restored = await admin('GET', '/api/ideas');
+    assert.equal(
+      restored.data.some((i) => i.title === 'Idée à écraser'),
+      false,
+      'la restauration doit remplacer le contenu de la base'
+    );
+
+    const restoredPolls = await admin('GET', '/api/polls');
+    assert.ok(
+      restoredPolls.data.some((p) => p.question === 'Quelle est la couleur de la classe ? (corrigé)'),
+      'les données sauvegardées doivent être revenues'
+    );
+  });
+
+  test('un fichier de sauvegarde invalide est refusé sans casser la base', async () => {
+    const res = await admin('POST', '/api/admin/import', { tables: 'pas-un-objet' });
+    assert.equal(res.status, 400);
+
+    const still = await admin('GET', '/api/settings');
+    assert.equal(still.status, 200);
+  });
+});
+
 describe('Paramètres et thème de saison', () => {
   test('le thème vaut "aucun" par défaut', async () => {
     const res = await student('GET', '/api/settings');

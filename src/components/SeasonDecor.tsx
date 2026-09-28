@@ -85,7 +85,7 @@ function SpiderWeb() {
   const rays = [0, 30, 60, 90, 120, 150];
   return (
     <svg viewBox="0 0 200 200" className="h-full w-full">
-      <g stroke="#dbe3f0" strokeWidth="1" fill="none" opacity="0.55">
+      <g stroke="#e4ecf7" strokeWidth="1.1" fill="none" opacity="0.7">
         {rays.map((deg) => (
           <line key={deg} x1="0" y1="0" x2="200" y2="0" transform={`rotate(${deg})`} />
         ))}
@@ -108,6 +108,23 @@ function SpiderWeb() {
   );
 }
 
+/** Arbre d'automne : tronc nu et houppier en feuilles jaunes et ambre. */
+function AutumnTree() {
+  return (
+    <svg viewBox="0 0 72 88" className="h-full w-full">
+      <ellipse cx="36" cy="83" rx="24" ry="3.5" fill="#000" opacity="0.2" />
+      <path d="M32.5 83V44h5v39z" fill="#5a3a22" />
+      <path d="M35 58l-10-10M35 52l9-9M35 65l-8-7" stroke="#5a3a22" strokeWidth="2.8" fill="none" strokeLinecap="round" />
+      <circle cx="36" cy="28" r="17" fill="#d99a0b" />
+      <circle cx="19" cy="36" r="13" fill="#f0c419" />
+      <circle cx="53" cy="36" r="13" fill="#dca10a" />
+      <circle cx="29" cy="18" r="11" fill="#f7d945" />
+      <circle cx="45" cy="20" r="10" fill="#eebc14" />
+      <circle cx="36" cy="40" r="12" fill="#c98a08" />
+    </svg>
+  );
+}
+
 function FirTree() {
   return (
     <svg viewBox="0 0 64 84" className="h-full w-full">
@@ -124,12 +141,44 @@ function FirTree() {
   );
 }
 
+/**
+ * Flocon de neige « stellaire dendritique ».
+ *
+ * Un vrai flocon a une symétrie hexagonale (groupe diédrique D6) : on dessine
+ * UNE branche, avec ses ramifications, puis on la répète 6 fois en tournant de
+ * 60°. C'est ce qui le distingue d'un simple astérisque (trois barres
+ * croisées), qui est la version qu'on obtenait avant.
+ */
+const SNOW_ARMS = [0, 60, 120, 180, 240, 300];
+/** Position sur l'épine, longueur de la ramification. */
+const SNOW_BRANCHES = [
+  { y: 8.5, len: 5.4 },
+  { y: 13, len: 4.2 },
+  { y: 16.8, len: 2.6 },
+];
+
 function Snowflake() {
   return (
-    <svg viewBox="0 0 24 24" className="h-full w-full" stroke="#eaf4ff" strokeWidth="1.6" strokeLinecap="round" fill="none">
-      <path d="M12 2v20M3.3 7l17.4 10M20.7 7L3.3 17" />
-      <path d="M12 6l-2.6-2.2M12 6l2.6-2.2M12 18l-2.6 2.2M12 18l2.6 2.2" />
-      <path d="M5.6 9.6L2.7 8.9M5.6 9.6l-.5-3M18.4 14.4l2.9.7M18.4 14.4l.5 3" />
+    <svg viewBox="0 0 40 40" className="h-full w-full">
+      <g stroke="#eaf6ff" strokeWidth="1.25" strokeLinecap="round" fill="none">
+        {SNOW_ARMS.map((deg) => (
+          <g key={deg} transform={`rotate(${deg} 20 20)`}>
+            <path d="M20 20V5" />
+            {SNOW_BRANCHES.map((b) => {
+              // Ramification à 60° de l'épine : 0,866 en dx, 0,5 en dy.
+              const dx = b.len * 0.866;
+              const dy = b.len * 0.5;
+              return (
+                <path
+                  key={b.y}
+                  d={`M20 ${b.y}l${-dx.toFixed(2)} ${dy.toFixed(2)}M20 ${b.y}l${dx.toFixed(2)} ${dy.toFixed(2)}`}
+                />
+              );
+            })}
+          </g>
+        ))}
+      </g>
+      <circle cx="20" cy="20" r="1.7" fill="#eaf6ff" />
     </svg>
   );
 }
@@ -146,7 +195,16 @@ function Gift() {
   );
 }
 
-const MOTIFS = { pumpkin: Pumpkin, candle: Candle, leaf: Leaf, web: SpiderWeb, tree: FirTree, snow: Snowflake, gift: Gift };
+const MOTIFS = {
+  pumpkin: Pumpkin,
+  candle: Candle,
+  leaf: Leaf,
+  web: SpiderWeb,
+  fir: FirTree,
+  autumn: AutumnTree,
+  snow: Snowflake,
+  gift: Gift,
+};
 type Motif = keyof typeof MOTIFS;
 
 /** Position en % de la fenêtre + taille en vmin (le décor s'adapte au téléphone). */
@@ -213,15 +271,26 @@ const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
   ],
 };
 
-/** Éléments immobiles, ancrés dans les coins : deux, pour rester sobre. */
+/**
+ * Éléments immobiles, ancrés dans les coins : ce sont eux qui font le décor,
+ * ils ne bougent jamais, donc ils ne peuvent pas gêner la lecture ni saccader.
+ *
+ * Halloween en est plus généreux que Noël : l'arbre d'automne, la citrouille et
+ * et les deux toiles restent visibles sur tous les écrans, les bougies
+ * secondaires disparaissent sur téléphone.
+ */
 const ANCHORS: Record<'halloween' | 'noel', Anchor[]> = {
   halloween: [
-    { motif: 'pumpkin', size: 15, opacity: 0.85, fromLeft: 1.5, fromBottom: -1 },
-    { motif: 'candle', size: 10, opacity: 0.7, fromRight: 4, fromBottom: 0, small: true },
-    { motif: 'web', size: 17, opacity: 0.22, fromRight: -4, fromTop: -7, small: true },
+    { motif: 'web', size: 20, opacity: 0.3, fromRight: -4, fromTop: -7 },
+    { motif: 'web', size: 15, opacity: 0.24, fromLeft: -5, fromTop: -8, small: true },
+    { motif: 'autumn', size: 21, opacity: 0.92, fromRight: 3, fromBottom: -2 },
+    { motif: 'pumpkin', size: 13, opacity: 0.92, fromRight: 22, fromBottom: -1 },
+    { motif: 'pumpkin', size: 8, opacity: 0.7, fromLeft: 2, fromBottom: -2, small: true },
+    { motif: 'candle', size: 10, opacity: 0.8, fromRight: 2, fromBottom: 0, small: true },
+    { motif: 'candle', size: 7.5, opacity: 0.7, fromRight: 15, fromBottom: 0, small: true },
   ],
   noel: [
-    { motif: 'tree', size: 19, opacity: 0.9, fromLeft: 1.5, fromBottom: -2 },
+    { motif: 'fir', size: 19, opacity: 0.9, fromLeft: 1.5, fromBottom: -2 },
     { motif: 'gift', size: 7, opacity: 0.7, fromRight: 4, fromBottom: 0, small: true },
   ],
 };

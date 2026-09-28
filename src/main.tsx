@@ -22,7 +22,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <span />
       </div>
       <SeasonDecor />
-      <App />
+      <div className="app-root">
+        <App />
+      </div>
     </BrowserRouter>
   </React.StrictMode>
 );

@@ -1,16 +1,25 @@
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { normalizeSeasonTheme, type SeasonTheme } from '@/lib/season';
 
 /**
- * Décorations de saison (citrouilles, bougies, sapins, étoiles…).
+ * Décorations de saison.
  *
  * Le thème actif est porté par l'attribut `data-season` sur <html>, posé par
  * applySeason(). On l'observe plutôt que de le stocker ici : la décoration suit
- * ainsi le thème quel que soit l'écran affiché, et disparaît avec « Normal ».
+ * ainsi le thème sur toutes les pages, et disparaît avec « Normal ».
  *
- * Les dessins sont en SVG (nets à toute taille, pas d'image à charger) et
- * animés uniquement en CSS, avec un nombre d'éléments fixe pour ne pas peser
- * sur un téléphone d'élève.
+ * Deux calques, dans cet ordre d'importance :
+ *   1. `.season-decor__fall`  — les particules qui tombent (flocons, feuilles),
+ *      seules choses en mouvement. Peu nombreuses, en haut de l'écran.
+ *   2. `.season-decor__fixed` — deux ou trois éléments sobres, ancrés dans les
+ *      coins et le bas de l'écran, immobiles.
+ *
+ * Rien ne traverse le contenu : le calque est à z-index 0 et l'application à
+ * z-index 1 (voir .app-root dans index.css), donc aucune décoration ne peut
+ * passer devant le texte quelle que soit la position de la pile. Les
+ * animations ne touchent que `transform` et `opacity`, ce qui évite les
+ * recalculs de mise en page saccadés pendant un swipe.
  */
 
 /** Suit le thème posé sur <html> par applySeason(). */
@@ -52,9 +61,9 @@ function Pumpkin() {
 function Candle() {
   return (
     <svg viewBox="0 0 32 72" className="h-full w-full">
+      <ellipse cx="16" cy="68" rx="13" ry="3.5" fill="#000" opacity="0.18" />
       <rect x="9" y="28" width="14" height="40" rx="3" fill="#f4e6cf" />
       <rect x="9" y="28" width="5" height="40" rx="2.5" fill="#fffaf0" />
-      <ellipse cx="16" cy="30" rx="8" ry="2.6" fill="#e2d3b6" />
       <path d="M16 28v-7" stroke="#4a3524" strokeWidth="1.6" strokeLinecap="round" />
       <path d="M16 22c-4-4-2-9 0-13 2 4 4 9 0 13z" fill="#ffb340" />
       <path d="M16 21c-2-2-1-4 0-6 1 2 2 4 0 6z" fill="#fff3c4" />
@@ -62,32 +71,12 @@ function Candle() {
   );
 }
 
-function Bat() {
+/** Feuille d'automne : c'est ce qui tombe, plutôt qu'un animal qui traverse. */
+function Leaf() {
   return (
-    <svg viewBox="0 0 64 40" className="h-full w-full">
-      <path
-        d="M32 22C24 10 12 8 4 12c4 4 6 8 4 12 4-2 8 0 10 4 3-2 6-2 9 0 2-3 3-5 5-6zM32 22c8-12 20-14 28-10-4 4-6 8-4 12-4-2-8 0-10 4-3-2-6-2-9 0-2-3-3-5-5-6z"
-        fill="#2b1b3d"
-      />
-      <ellipse cx="32" cy="24" rx="5" ry="7" fill="#2b1b3d" />
-      <path d="M28 15l-2-6 5 4zM36 15l2-6-5 4z" fill="#2b1b3d" />
-      <circle cx="30" cy="22" r="1.3" fill="#ff9e3e" />
-      <circle cx="34" cy="22" r="1.3" fill="#ff9e3e" />
-    </svg>
-  );
-}
-
-function Ghost() {
-  return (
-    <svg viewBox="0 0 48 56" className="h-full w-full">
-      <path
-        d="M24 4c11 0 18 8 18 19v29l-6-5-6 5-6-5-6 5-6-5-6 5V23C6 12 13 4 24 4z"
-        fill="#e8e2f5"
-        opacity="0.85"
-      />
-      <ellipse cx="17" cy="22" rx="3.4" ry="4.4" fill="#3a2a55" />
-      <ellipse cx="31" cy="22" rx="3.4" ry="4.4" fill="#3a2a55" />
-      <ellipse cx="24" cy="33" rx="4" ry="3.4" fill="#3a2a55" />
+    <svg viewBox="0 0 24 24" className="h-full w-full">
+      <path d="M12 1c6 4 9 9 9 13a9 9 0 0 1-18 0c0-4 3-9 9-13z" fill="currentColor" />
+      <path d="M12 4v16M12 9l4-3M12 9l-4-3M12 14l4-3M12 14l-4-3" stroke="rgba(60,26,6,0.55)" strokeWidth="1.2" fill="none" />
     </svg>
   );
 }
@@ -96,7 +85,7 @@ function SpiderWeb() {
   const rays = [0, 30, 60, 90, 120, 150];
   return (
     <svg viewBox="0 0 200 200" className="h-full w-full">
-      <g stroke="#cbd5e1" strokeWidth="1" fill="none" opacity="0.5">
+      <g stroke="#dbe3f0" strokeWidth="1" fill="none" opacity="0.55">
         {rays.map((deg) => (
           <line key={deg} x1="0" y1="0" x2="200" y2="0" transform={`rotate(${deg})`} />
         ))}
@@ -121,26 +110,16 @@ function SpiderWeb() {
 
 function FirTree() {
   return (
-    <svg viewBox="0 0 64 80" className="h-full w-full">
+    <svg viewBox="0 0 64 84" className="h-full w-full">
+      <ellipse cx="32" cy="80" rx="22" ry="3.5" fill="#000" opacity="0.2" />
       <rect x="29" y="66" width="6" height="12" rx="2" fill="#5a3a22" />
-      <path d="M32 6l16 24H16z" fill="#1f7a3d" />
-      <path d="M32 24l20 26H12z" fill="#2b8f4a" />
-      <path d="M32 44l23 26H9z" fill="#359a55" />
-      <path d="M32 2l3.2 6.4 7 1-5 5 1.2 7-6.4-3.4-6.4 3.4 1.2-7-5-5 7-1z" fill="#f5d76e" />
-      <circle cx="26" cy="34" r="2" fill="#f5d76e" />
-      <circle cx="38" cy="42" r="2" fill="#e0484f" />
-      <circle cx="27" cy="55" r="2" fill="#f5d76e" />
-    </svg>
-  );
-}
-
-function Star() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-full w-full">
-      <path
-        d="M12 1.6l3.1 6.9 7.4.8-5.5 5 1.5 7.3L12 17.8 5.5 21.6 7 14.3 1.5 9.3l7.4-.8z"
-        fill="#ffe9a3"
-      />
+      <path d="M32 8l15 22H17z" fill="#1f7a3d" />
+      <path d="M32 25l19 25H13z" fill="#2b8f4a" />
+      <path d="M32 44l22 25H10z" fill="#359a55" />
+      <path d="M32 3l3 5.8 6.4.9-4.6 4.5 1.1 6.4-5.9-3.1-5.9 3.1 1.1-6.4-4.6-4.5 6.4-.9z" fill="#f5d76e" />
+      <circle cx="26" cy="35" r="1.9" fill="#f5d76e" />
+      <circle cx="38" cy="42" r="1.9" fill="#e0484f" />
+      <circle cx="27" cy="55" r="1.9" fill="#f5d76e" />
     </svg>
   );
 }
@@ -158,113 +137,154 @@ function Snowflake() {
 function Gift() {
   return (
     <svg viewBox="0 0 48 48" className="h-full w-full">
-      <rect x="6" y="18" width="36" height="26" rx="3" fill="#c0273a" />
+      <ellipse cx="24" cy="45" rx="17" ry="3" fill="#000" opacity="0.18" />
+      <rect x="6" y="18" width="36" height="25" rx="3" fill="#c0273a" />
       <rect x="6" y="18" width="36" height="8" rx="3" fill="#d9364c" />
-      <rect x="20" y="18" width="8" height="26" fill="#f2e3b8" />
+      <rect x="20" y="18" width="8" height="25" fill="#f2e3b8" />
       <path d="M24 18c-6 0-9-3-8-6 1.4-3.4 6-1 8 6zm0 0c6 0 9-3 8-6-1.4-3.4-6-1-8 6z" fill="#f2e3b8" />
     </svg>
   );
 }
 
-function Ornament() {
-  return (
-    <svg viewBox="0 0 32 32" className="h-full w-full">
-      <rect x="14" y="0" width="4" height="6" rx="1.5" fill="#c9a227" />
-      <circle cx="16" cy="19" r="12" fill="#c0273a" />
-      <path d="M8 12c3 4 3 14 0 18M24 12c-3 4-3 14 0 18" stroke="#f2e3b8" strokeWidth="1.6" fill="none" />
-      <circle cx="11" cy="14" r="2.6" fill="#fff" opacity="0.7" />
-    </svg>
-  );
-}
-
-const MOTIFS = { pumpkin: Pumpkin, candle: Candle, bat: Bat, ghost: Ghost, web: SpiderWeb, tree: FirTree, star: Star, snow: Snowflake, gift: Gift, ornament: Ornament };
+const MOTIFS = { pumpkin: Pumpkin, candle: Candle, leaf: Leaf, web: SpiderWeb, tree: FirTree, snow: Snowflake, gift: Gift };
 type Motif = keyof typeof MOTIFS;
 
-interface Placement {
-  motif: Motif;
-  /** Position en % de la fenêtre. */
+/** Position en % de la fenêtre + taille en vmin (le décor s'adapte au téléphone). */
+interface Box {
   x: number;
   y: number;
-  /** Taille en vmin : la décoration s'adapte au téléphone comme au grand écran. */
   size: number;
-  animation: string;
-  duration: number;
-  delay: number;
   opacity: number;
-  /** Masqué sur petit écran pour ne pas encombrer le contenu. */
-  mobile?: boolean;
+}
+
+interface Particle extends Box {
+  /** Durée de chute. */
+  duration: number;
+  /** Décalage : évite que tout tombe en même temps. */
+  delay: number;
+  /** Légère dérive horizontale. */
+  drift: number;
+  color?: string;
+  /** Masqué sur petit écran, où la place manque. */
+  small?: boolean;
+}
+
+interface Anchor {
+  motif: Motif;
+  size: number;
+  opacity: number;
+  color?: string;
+  /** Ancrage : distance depuis le bord, en % de la fenêtre. */
+  fromLeft?: number;
+  fromRight?: number;
+  fromTop?: number;
+  fromBottom?: number;
+  small?: boolean;
 }
 
 /**
- * Disposition volontairement asymmetrical et aérée : les décorations doivent
- * rester sur les bords pour ne pas concurrencer le texte des cartes en verre.
- * `mobile: false` masque l'élément sur petit écran, où la place manque.
+ * Les particules restent dans le haut de l'écran (y de 3 à 41 %) : aucune ne
+ * descend volontairement sous la mi-écran, pour ne jamais empiéter sur la
+ * lecture du texte. Le motif diffère par thème : flocon pour Noël, feuille
+ * d'automne pour Halloween.
  */
-const PLACEMENTS: Record<'halloween' | 'noel', Placement[]> = {
+const FALL_MOTIF: Record<'halloween' | 'noel', Motif> = { halloween: 'leaf', noel: 'snow' };
+const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
   halloween: [
-    { motif: 'pumpkin', x: 6, y: 74, size: 13, animation: 'decor-sway', duration: 6, delay: 0, opacity: 0.9 },
-    { motif: 'pumpkin', x: 88, y: 80, size: 10, animation: 'decor-sway', duration: 7.5, delay: 1.1, opacity: 0.8, mobile: false },
-    { motif: 'pumpkin', x: 46, y: 88, size: 8, animation: 'decor-sway', duration: 6.8, delay: 2.3, opacity: 0.6, mobile: false },
-    { motif: 'candle', x: 17, y: 86, size: 11, animation: 'decor-flicker', duration: 4, delay: 0.4, opacity: 0.85 },
-    { motif: 'candle', x: 80, y: 88, size: 9, animation: 'decor-flicker', duration: 4.6, delay: 1.7, opacity: 0.7, mobile: false },
-    { motif: 'candle', x: 30, y: 92, size: 7, animation: 'decor-flicker', duration: 3.6, delay: 2.9, opacity: 0.55, mobile: false },
-    { motif: 'bat', x: 22, y: 14, size: 7, animation: 'decor-fly', duration: 11, delay: 0, opacity: 0.55 },
-    { motif: 'bat', x: 64, y: 9, size: 6, animation: 'decor-fly', duration: 13, delay: 3, opacity: 0.5, mobile: false },
-    { motif: 'bat', x: 82, y: 30, size: 5, animation: 'decor-fly', duration: 15, delay: 6, opacity: 0.45, mobile: false },
-    { motif: 'ghost', x: 92, y: 20, size: 8, animation: 'decor-float', duration: 9, delay: 0.8, opacity: 0.5, mobile: false },
-    { motif: 'ghost', x: 4, y: 34, size: 6, animation: 'decor-float', duration: 10, delay: 3.4, opacity: 0.45, mobile: false },
-    { motif: 'web', x: -8, y: -6, size: 26, animation: 'none', duration: 0, delay: 0, opacity: 0.35, mobile: false },
+    { x: 8, y: 6, size: 1.8, opacity: 0.7, duration: 9, delay: 0, drift: 6, color: '#c2621c' },
+    { x: 24, y: 18, size: 1.4, opacity: 0.6, duration: 11, delay: 2.4, drift: -5, color: '#a3471a' },
+    { x: 41, y: 4, size: 2, opacity: 0.65, duration: 10, delay: 4.1, drift: 4, color: '#d4772a' },
+    { x: 58, y: 22, size: 1.5, opacity: 0.55, duration: 12, delay: 1.2, drift: -7, color: '#9c4a1c' },
+    { x: 73, y: 8, size: 1.7, opacity: 0.6, duration: 9.5, delay: 3.3, drift: 5, color: '#c2621c' },
+    { x: 88, y: 19, size: 1.3, opacity: 0.5, duration: 11.5, delay: 5.6, drift: -4, color: '#8f5a2a' },
+    { x: 33, y: 38, size: 1.2, opacity: 0.45, duration: 13, delay: 6.4, drift: 3, color: '#b8551d', small: true },
+    { x: 66, y: 41, size: 1.3, opacity: 0.45, duration: 12.5, delay: 7.2, drift: -3, color: '#b8551d', small: true },
   ],
   noel: [
-    { motif: 'tree', x: 5, y: 70, size: 17, animation: 'decor-sway', duration: 7, delay: 0, opacity: 0.95 },
-    { motif: 'tree', x: 89, y: 74, size: 14, animation: 'decor-sway', duration: 8, delay: 1.3, opacity: 0.85, mobile: false },
-    { motif: 'tree', x: 47, y: 87, size: 10, animation: 'decor-sway', duration: 7.6, delay: 2.5, opacity: 0.6, mobile: false },
-    { motif: 'gift', x: 19, y: 88, size: 8, animation: 'decor-float', duration: 6, delay: 0.5, opacity: 0.85 },
-    { motif: 'gift', x: 78, y: 90, size: 7, animation: 'decor-float', duration: 6.8, delay: 2.2, opacity: 0.7, mobile: false },
-    { motif: 'ornament', x: 11, y: 58, size: 5, animation: 'decor-sway', duration: 5.4, delay: 0.9, opacity: 0.75 },
-    { motif: 'ornament', x: 85, y: 52, size: 5, animation: 'decor-sway', duration: 5.8, delay: 2, opacity: 0.7, mobile: false },
-    { motif: 'ornament', x: 72, y: 16, size: 4, animation: 'decor-sway', duration: 6.2, delay: 3.1, opacity: 0.6, mobile: false },
-    { motif: 'star', x: 15, y: 12, size: 3, animation: 'decor-twinkle', duration: 3.4, delay: 0, opacity: 0.9 },
-    { motif: 'star', x: 34, y: 7, size: 2.4, animation: 'decor-twinkle', duration: 4.2, delay: 1.2, opacity: 0.85 },
-    { motif: 'star', x: 58, y: 11, size: 2.8, animation: 'decor-twinkle', duration: 3.8, delay: 2.4, opacity: 0.8 },
-    { motif: 'star', x: 78, y: 6, size: 2.2, animation: 'decor-twinkle', duration: 4.6, delay: 0.6, opacity: 0.75, mobile: false },
-    { motif: 'star', x: 92, y: 42, size: 2.6, animation: 'decor-twinkle', duration: 3.6, delay: 3.4, opacity: 0.7, mobile: false },
-    { motif: 'star', x: 6, y: 44, size: 2, animation: 'decor-twinkle', duration: 4.4, delay: 1.8, opacity: 0.7, mobile: false },
-    { motif: 'snow', x: 12, y: 24, size: 2.6, animation: 'decor-fall', duration: 13, delay: 0, opacity: 0.8 },
-    { motif: 'snow', x: 31, y: 40, size: 2, animation: 'decor-fall', duration: 17, delay: 3, opacity: 0.7 },
-    { motif: 'snow', x: 50, y: 30, size: 2.4, animation: 'decor-fall', duration: 15, delay: 6, opacity: 0.75 },
-    { motif: 'snow', x: 68, y: 46, size: 2, animation: 'decor-fall', duration: 19, delay: 2, opacity: 0.65, mobile: false },
-    { motif: 'snow', x: 88, y: 34, size: 2.6, animation: 'decor-fall', duration: 16, delay: 8, opacity: 0.7, mobile: false },
+    { x: 7, y: 5, size: 2, opacity: 0.85, duration: 11, delay: 0, drift: 5 },
+    { x: 21, y: 16, size: 1.5, opacity: 0.75, duration: 13, delay: 2.2, drift: -4 },
+    { x: 36, y: 3, size: 1.7, opacity: 0.8, duration: 12, delay: 4.3, drift: 6 },
+    { x: 52, y: 20, size: 1.3, opacity: 0.7, duration: 14, delay: 1.1, drift: -5 },
+    { x: 67, y: 6, size: 1.9, opacity: 0.8, duration: 11.5, delay: 3.5, drift: 4 },
+    { x: 82, y: 17, size: 1.4, opacity: 0.7, duration: 13.5, delay: 5.8, drift: -6 },
+    { x: 94, y: 4, size: 1.6, opacity: 0.7, duration: 12.5, delay: 2.8, drift: 3 },
+    { x: 30, y: 34, size: 1.2, opacity: 0.55, duration: 15, delay: 6.6, drift: 4, small: true },
+    { x: 62, y: 38, size: 1.3, opacity: 0.55, duration: 16, delay: 7.4, drift: -3, small: true },
   ],
 };
 
+/** Éléments immobiles, ancrés dans les coins : deux, pour rester sobre. */
+const ANCHORS: Record<'halloween' | 'noel', Anchor[]> = {
+  halloween: [
+    { motif: 'pumpkin', size: 15, opacity: 0.85, fromLeft: 1.5, fromBottom: -1 },
+    { motif: 'candle', size: 10, opacity: 0.7, fromRight: 4, fromBottom: 0, small: true },
+    { motif: 'web', size: 17, opacity: 0.22, fromRight: -4, fromTop: -7, small: true },
+  ],
+  noel: [
+    { motif: 'tree', size: 19, opacity: 0.9, fromLeft: 1.5, fromBottom: -2 },
+    { motif: 'gift', size: 7, opacity: 0.7, fromRight: 4, fromBottom: 0, small: true },
+  ],
+};
+
+function anchorStyle(a: Anchor): CSSProperties {
+  return {
+    width: `${a.size}vmin`,
+    height: `${a.size}vmin`,
+    opacity: a.opacity,
+    left: a.fromLeft !== undefined ? `${a.fromLeft}%` : undefined,
+    right: a.fromRight !== undefined ? `${a.fromRight}%` : undefined,
+    top: a.fromTop !== undefined ? `${a.fromTop}%` : undefined,
+    bottom: a.fromBottom !== undefined ? `${a.fromBottom}%` : undefined,
+  };
+}
+
 export function SeasonDecor() {
   const season = useSeasonFromDocument();
-  const placements = season === 'aucun' ? undefined : PLACEMENTS[season];
-
-  if (!placements) return null;
+  if (season === 'aucun') return null;
 
   return (
     <div className="season-decor" aria-hidden="true">
-      {placements.map((p, i) => {
-        const Motif = MOTIFS[p.motif];
-        return (
-          <span
-            key={`${season}-${i}`}
-            className={`season-decor__item ${p.mobile ? 'season-decor__item--wide' : ''}`}
-            style={{
-              left: `${p.x}%`,
-              top: `${p.y}%`,
-              width: `${p.size}vmin`,
-              height: `${p.size}vmin`,
-              opacity: p.opacity,
-              animation: p.animation === 'none' ? undefined : `${p.animation} ${p.duration}s ease-in-out ${p.delay}s infinite`,
-            }}
-          >
-            <Motif />
-          </span>
-        );
-      })}
+      <div className="season-decor__fall">
+        {PARTICLES[season].map((p, i) => {
+          const Motif = MOTIFS[FALL_MOTIF[season]];
+          return (
+            <span
+              key={`fall-${i}`}
+              className={`season-decor__flake ${p.small ? 'season-decor__item--small' : ''}`}
+              style={{
+                left: `${p.x}%`,
+                top: `${p.y}%`,
+                width: `${p.size}vmin`,
+                height: `${p.size}vmin`,
+                opacity: p.opacity,
+                color: p.color,
+                // Une durée et une dérive par particule : la chute n'est jamais
+                // synchrone, donc l'œil ne suit pas un mouvement_unique.
+                ['--fall-duration' as string]: `${p.duration}s`,
+                ['--fall-delay' as string]: `${p.delay}s`,
+                ['--fall-drift' as string]: `${p.drift}vmin`,
+              }}
+            >
+              <Motif />
+            </span>
+          );
+        })}
+      </div>
+
+      <div className="season-decor__fixed">
+        {ANCHORS[season].map((a, i) => {
+          const Motif = MOTIFS[a.motif];
+          return (
+            <span
+              key={`fixed-${i}`}
+              className={`season-decor__anchor ${a.small ? 'season-decor__item--small' : ''}`}
+              style={{ ...anchorStyle(a), color: a.color }}
+            >
+              <Motif />
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }

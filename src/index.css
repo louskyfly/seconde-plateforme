@@ -520,60 +520,107 @@ html[data-season='noel'] .season-greeting {
   border: 1px solid rgba(226, 232, 240, 0.3);
 }
 
-/* ===== Décorations de saison (citrouilles, bougies, sapins, étoiles) =====
-   Rendu par <SeasonDecor /> au-dessus du fond liquide. Le calque est en
-   pointer-events: none pour ne jamais gêner un clic sur un bouton. */
+/* ===== Décorations de saison (feuilles, flocons, sapin, citrouille) =====
+   Rendu par <SeasonDecor />. Le calque est en z-index 0 et l'application en
+   z-index 1 (voir .app-root) : une décoration ne peut donc JAMAIS passer
+   devant le texte, quel que soit le mode d'empilement des cartes. */
 .season-decor {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   overflow: hidden;
   pointer-events: none;
+  contain: layout paint;
 }
-.season-decor__item {
+.app-root {
+  position: relative;
+  z-index: 1;
+}
+.season-decor__fall,
+.season-decor__fixed {
+  position: absolute;
+  inset: 0;
+}
+
+/* Particules : uniquement transform + opacity, donc pas de recalcul de mise en
+   page pendant un swipe. Le halo est posé une fois sur le calque, pas sur chaque
+   particule, ce qui coûte bien moins cher sur un téléphone. */
+.season-decor__flake,
+.season-decor__anchor {
   position: absolute;
   display: block;
-  transform-origin: 50% 100%;
-  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28));
-  will-change: transform, opacity;
+  will-change: transform;
+  transform: translateZ(0);
 }
-/* Les décorations des bords s'effacent sur téléphone, où le contenu occupe
-   presque tout l'écran : on garde seulement les quatre principales. */
+.season-decor__flake {
+  animation: decor-fall var(--fall-duration, 12s) linear var(--fall-delay, 0s) infinite;
+}
+/* Éléments fixes : posés dans un coin, ils ne bougent pas. */
+.season-decor__anchor {
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.22));
+}
+
+/* Sur téléphone, on garde seulement la décoration principale : la place manque
+   et le mouvement fatigue l'œil. */
 @media (max-width: 640px) {
-  .season-decor__item--wide {
+  .season-decor__item--small {
     display: none;
   }
 }
 
-@keyframes decor-sway {
-  0%, 100% { transform: rotate(-3deg) translateY(0); }
-  50% { transform: rotate(3deg) translateY(-1.2vmin); }
-}
-@keyframes decor-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2.2vmin); }
-}
-/* La flamme vacille : l'échelle de la bougie change légèrement. */
-@keyframes decor-flicker {
-  0%, 100% { transform: scale(1) translateY(0); }
-  35% { transform: scale(1.03, 0.97) translateY(-0.2vmin); }
-  70% { transform: scale(0.98, 1.02) translateY(0); }
-}
-@keyframes decor-twinkle {
-  0%, 100% { transform: scale(0.75); opacity: 0.35; }
-  50% { transform: scale(1.15); opacity: 1; }
-}
 @keyframes decor-fall {
-  0% { transform: translateY(-12vmin) rotate(0deg); }
-  100% { transform: translateY(112vh) rotate(320deg); }
+  0% {
+    transform: translate3d(0, -8vh, 0) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate3d(calc(var(--fall-drift, 4vmin) * 0.5), 50vh, 0) rotate(180deg);
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--fall-drift, 4vmin), 104vh, 0) rotate(360deg);
+    opacity: 0;
+  }
 }
-/* Les chauve-souris traversent l'écran en diagonale. */
-@keyframes decor-fly {
-  0% { transform: translate(-14vw, 6vh) rotate(-6deg); }
-  25% { transform: translate(22vw, -5vh) rotate(8deg); }
-  50% { transform: translate(58vw, 8vh) rotate(-7deg); }
-  75% { transform: translate(94vw, -4vh) rotate(5deg); }
-  100% { transform: translate(128vw, 6vh) rotate(-6deg); }
+
+/* Si l'élève a demandé moins d'animations : plus aucune chute, on garde
+   seulement les éléments fixes, immobiles. */
+@media (prefers-reduced-motion: reduce) {
+  .season-decor__fall {
+    display: none;
+  }
+}
+
+/* Neige (ou lueur chaude) sur les boutons : un simple capping clair en haut du
+   bouton, dessiné en ::after pour ne pas toucher au HTML. */
+html[data-season] .glass-button,
+html[data-season] .glass-button-primary {
+  position: relative;
+  overflow: hidden;
+}
+html[data-season] .glass-button::after,
+html[data-season] .glass-button-primary::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 14%;
+  right: 14%;
+  height: 46%;
+  border-radius: 0 0 9999px 9999px;
+  pointer-events: none;
+}
+html[data-season='noel'] .glass-button::after,
+html[data-season='noel'] .glass-button-primary::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.34) 55%, rgba(255, 255, 255, 0) 100%);
+}
+html[data-season='halloween'] .glass-button::after,
+html[data-season='halloween'] .glass-button-primary::after {
+  background: linear-gradient(180deg, rgba(255, 174, 92, 0.55) 0%, rgba(217, 96, 30, 0.18) 60%, rgba(217, 96, 30, 0) 100%);
 }
 
 /* Reduced motion */

@@ -108,23 +108,6 @@ function SpiderWeb() {
   );
 }
 
-/** Arbre d'automne : tronc nu et houppier en feuilles jaunes et ambre. */
-function AutumnTree() {
-  return (
-    <svg viewBox="0 0 72 88" className="h-full w-full">
-      <ellipse cx="36" cy="83" rx="24" ry="3.5" fill="#000" opacity="0.2" />
-      <path d="M32.5 83V44h5v39z" fill="#5a3a22" />
-      <path d="M35 58l-10-10M35 52l9-9M35 65l-8-7" stroke="#5a3a22" strokeWidth="2.8" fill="none" strokeLinecap="round" />
-      <circle cx="36" cy="28" r="17" fill="#d99a0b" />
-      <circle cx="19" cy="36" r="13" fill="#f0c419" />
-      <circle cx="53" cy="36" r="13" fill="#dca10a" />
-      <circle cx="29" cy="18" r="11" fill="#f7d945" />
-      <circle cx="45" cy="20" r="10" fill="#eebc14" />
-      <circle cx="36" cy="40" r="12" fill="#c98a08" />
-    </svg>
-  );
-}
-
 function FirTree() {
   return (
     <svg viewBox="0 0 64 84" className="h-full w-full">
@@ -201,7 +184,6 @@ const MOTIFS = {
   leaf: Leaf,
   web: SpiderWeb,
   fir: FirTree,
-  autumn: AutumnTree,
   snow: Snowflake,
   gift: Gift,
 };
@@ -274,23 +256,22 @@ const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
 /**
  * Éléments immobiles, ancrés dans les coins : ce sont eux qui font le décor,
  * ils ne bougent jamais, donc ils ne peuvent pas gêner la lecture ni saccader.
- *
- * Halloween en est plus généreux que Noël : l'arbre d'automne, la citrouille et
- * et les deux toiles restent visibles sur tous les écrans, les bougies
- * secondaires disparaissent sur téléphone.
+ * Le décor ne touche pas aux boutons, seulement aux bords de l'écran.
  */
 const ANCHORS: Record<'halloween' | 'noel', Anchor[]> = {
   halloween: [
     { motif: 'web', size: 20, opacity: 0.3, fromRight: -4, fromTop: -7 },
     { motif: 'web', size: 15, opacity: 0.24, fromLeft: -5, fromTop: -8, small: true },
-    { motif: 'autumn', size: 21, opacity: 0.92, fromRight: 3, fromBottom: -2 },
-    { motif: 'pumpkin', size: 13, opacity: 0.92, fromRight: 22, fromBottom: -1 },
+    { motif: 'pumpkin', size: 13, opacity: 0.92, fromRight: 20, fromBottom: -1 },
+    { motif: 'pumpkin', size: 7.5, opacity: 0.8, fromRight: 31, fromBottom: 0, small: true },
     { motif: 'pumpkin', size: 8, opacity: 0.7, fromLeft: 2, fromBottom: -2, small: true },
-    { motif: 'candle', size: 10, opacity: 0.8, fromRight: 2, fromBottom: 0, small: true },
-    { motif: 'candle', size: 7.5, opacity: 0.7, fromRight: 15, fromBottom: 0, small: true },
+    { motif: 'candle', size: 10, opacity: 0.8, fromRight: 4, fromBottom: 0, small: true },
+    { motif: 'candle', size: 7.5, opacity: 0.7, fromRight: 12.5, fromBottom: 0, small: true },
   ],
   noel: [
     { motif: 'fir', size: 19, opacity: 0.9, fromLeft: 1.5, fromBottom: -2 },
+    { motif: 'fir', size: 14, opacity: 0.85, fromRight: 3, fromBottom: -2 },
+    { motif: 'gift', size: 7, opacity: 0.75, fromLeft: 18, fromBottom: 0, small: true },
     { motif: 'gift', size: 7, opacity: 0.7, fromRight: 4, fromBottom: 0, small: true },
   ],
 };

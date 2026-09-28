@@ -596,51 +596,8 @@ html[data-season='noel'] .season-greeting {
   }
 }
 
-/* Neige (ou braises) sur les boutons.
-   Un simple dégradé blanc donnait une barre plate qui ne ressemblait à rien :
-   on dessine une congère, au bord supérieur irrégulier, répétée en largeur.
-   Le motif fait 60px de large et se répète sans couture visible (les deux
-   extrémités sont à la même hauteur), donc la neige a toujours le même
-   relief, quelle que soit la largeur du bouton.
-
-   L'ombre bleutée sous la congère la rend lisible sur un bouton sombre comme
-   sur un bouton clair ou transparent. */
-html[data-season] .glass-button,
-html[data-season] .glass-button-primary {
-  position: relative;
-  overflow: hidden;
-}
-html[data-season] .glass-button::after,
-html[data-season] .glass-button-primary::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 44%;
-  pointer-events: none;
-}
-html[data-season='noel'] .glass-button::after,
-html[data-season='noel'] .glass-button-primary::after {
-  background-image:
-    /* le voile givré, pour qu'on devine la neige sur un bouton transparent */
-    linear-gradient(180deg, rgba(226, 240, 255, 0.75) 0%, rgba(226, 240, 255, 0) 100%),
-    /* la congère : chemin irregular répété en largeur */
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 14'%3E%3Cpath d='M0 14 L0 6.5 C4 2 10 2 15 6 C20 10 26 10 31 5.5 C36 1.5 42 1.5 47 6 C51 9.5 56 9.5 60 6.5 L60 14 Z' fill='%23ffffff'/%3E%3C/svg%3E");
-  background-repeat: no-repeat, repeat-x;
-  background-size: 100% 100%, 60px 100%;
-  filter: drop-shadow(0 1.5px 2px rgba(63, 103, 168, 0.45));
-}
-/* Halloween : même relief, en braises tièdes, plus une ligne de lueur. */
-html[data-season='halloween'] .glass-button::after,
-html[data-season='halloween'] .glass-button-primary::after {
-  background-image:
-    linear-gradient(180deg, rgba(255, 190, 120, 0.3) 0%, rgba(255, 190, 120, 0) 100%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 14'%3E%3Cpath d='M0 14 L0 7 C4 3.5 10 3.5 15 7 C20 10.5 26 10.5 31 6.5 C36 2.5 42 2.5 47 7 C51 10 56 10 60 7 L60 14 Z' fill='%23ff9e3e'/%3E%3C/svg%3E");
-  background-repeat: no-repeat, repeat-x;
-  background-size: 100% 100%, 60px 100%;
-  filter: drop-shadow(0 1px 2px rgba(217, 96, 30, 0.5));
-}
+/* Aucun décor sur les boutons : le nettoyage des vagues (orange pour Halloween,
+   neige pour Noël) a été retiré, donc on ne touche plus du tout à leur rendu. */
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {

@@ -1478,3 +1478,46 @@ describe('Élèves et groupes', () => {
     assert.equal((await admin('PUT', `/api/groups/${g.id}/status`, { status: 'peut-etre' })).status, 400);
   });
 });
+
+describe('Visites', () => {
+  test('le délégué est déjà connecté', async () => {
+    assert.equal((await admin('GET', '/api/stats')).status, 200);
+  });
+
+  test('une visite se compte sans authentification', async () => {
+    const sansId = await student('POST', '/api/stats/visit', {});
+    assert.equal(sansId.status, 400, 'il faut une empreinte appareil');
+
+    const res = await student('POST', '/api/stats/visit', {
+      fingerprint: 'visiteur-alpha-0001',
+      page: '/',
+    });
+    assert.equal(res.status, 200);
+  });
+
+  test('recharger la page ne crée pas un second visiteur', async () => {
+    // Trois ouvertures du même appareil le même jour.
+    for (let i = 0; i < 3; i++) {
+      await student('POST', '/api/stats/visit', {
+        fingerprint: 'visiteur-beta-0002',
+        page: '/calendrier',
+      });
+    }
+
+    const stats = await admin('GET', '/api/stats/visits');
+    assert.equal(stats.status, 200);
+
+    assert.ok(stats.data.days[0], 'le jour courant doit être présent');
+
+    const visiteur = stats.data.identites.find((v) => v.page === '/calendrier');
+    assert.ok(visiteur, 'l’appareil beta doit apparaître');
+    assert.equal(visiteur.hits, 3, 'trois ouvertures, un seul visiteur');
+
+    // Le libellé reste court et anonyme : jamais l'empreinte complète.
+    assert.match(visiteur.label, /^Appareil [a-z0-9]{6}$/);
+  });
+
+  test('les statistiques de visites sont réservées au délégué', async () => {
+    assert.equal((await other('GET', '/api/stats/visits')).status, 401);
+  });
+});

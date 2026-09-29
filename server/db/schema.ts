@@ -132,6 +132,25 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Visites quotidiennes, pour les statistiques demandées par le délégué.
+--
+-- L'identité est l'empreinte appareil (voter_fp) déjà utilisée ailleurs, ce qui
+-- permet de distinguer « 12 élèves présents » de « 40 ouvertures de page ».
+-- Une seule ligne par empreinte et par jour : recharger dix fois la page ne
+-- gonfle pas le compteur, et le total reste lisible.
+CREATE TABLE IF NOT EXISTS visits (
+  fingerprint TEXT NOT NULL,
+  day TEXT NOT NULL,
+  page TEXT,
+  user_agent TEXT,
+  first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  hits INTEGER DEFAULT 1,
+  PRIMARY KEY (fingerprint, day)
+);
+
+CREATE INDEX IF NOT EXISTS idx_visits_day ON visits(day);
+
 -- Élèves de la classe. Sert au tableau demandé dans l'onglet Projets, et aux
 -- groupes de travail (un élève appartient à au plus un groupe validé).
 -- La date d'anniversaire est stockée en MM-JJ : l'année n'a aucune utilité ici.

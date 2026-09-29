@@ -5,6 +5,7 @@ import DelegateLayout from './components/layout/DelegateLayout';
 import { AuthProvider } from './hooks/useAuth';
 import { PageLoader } from './components/ui/PageLoader';
 import { MaintenanceGate } from './components/MaintenanceGate';
+import { useVisitTracker } from './hooks/useVisitTracker';
 
 const Home = lazy(() => import('./pages/student/Home'));
 const Announcements = lazy(() => import('./pages/student/Announcements'));
@@ -31,9 +32,16 @@ const DelegateChat = lazy(() => import('./pages/delegate/ManageChat'));
 const DelegateSheets = lazy(() => import('./pages/delegate/ManageSheets'));
 const DelegateSettings = lazy(() => import('./pages/delegate/Settings'));
 
+/** Comptabilise la visite courante. Doit vivre sous le routeur. */
+function VisitTracker() {
+  useVisitTracker();
+  return null;
+}
+
 export default function App() {
   return (
     <AuthProvider>
+      <VisitTracker />
       <Suspense fallback={<PageLoader />}>
         <MaintenanceGate>
           <Routes>

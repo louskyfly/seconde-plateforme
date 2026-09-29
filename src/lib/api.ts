@@ -12,6 +12,7 @@ import type {
   StudentGroup,
   StudentGroupStatus,
   Stats,
+  VisitStats,
   MaintenanceState,
   MaintenanceLogEntry,
   ChatUser,
@@ -182,6 +183,12 @@ export const api = {
   
   // Stats
   getStats: () => request<Stats>('/stats'),
+  recordVisit: (fingerprint: string, page: string) =>
+    request<{ success: boolean }>('/stats/visit', {
+      method: 'POST',
+      body: JSON.stringify({ fingerprint, page }),
+    }),
+  getVisits: (days = 14) => request<VisitStats>(`/stats/visits?days=${days}`),
 
   // Push notifications
   getPushVapidKey: () => request<{ publicKey: string }>('/push/vapid-public-key'),

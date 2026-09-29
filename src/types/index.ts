@@ -181,6 +181,25 @@ export interface ChatMessage {
   reactions: Record<string, { total: number; mine: boolean }>;
 }
 
+export interface VisitDay {
+  day: string;
+  visitors: number;
+  hits: number;
+}
+
+export interface VisitIdentity {
+  label: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  hits: number;
+  page: string | null;
+}
+
+export interface VisitStats {
+  days: VisitDay[];
+  identites: VisitIdentity[];
+}
+
 export interface Student {
   id: number;
   first_name: string;

@@ -4,6 +4,7 @@ import { api } from '@/lib/api';
 import { useSettings } from '@/hooks/useSettings';
 import { SiteStatusCard } from '@/components/delegate/SiteStatusCard';
 import { StorageWarning } from '@/components/delegate/StorageWarning';
+import { VisitStatsCard } from '@/components/delegate/VisitStatsCard';
 import type { AdminLogEntry, AdminOverview, Stats } from '@/types';
 
 interface StatCardProps {
@@ -20,6 +21,9 @@ const ACTION_LABELS: Record<string, string> = {
   sheet_hide: '📝 Fiche masquée',
   sheet_show: '📝 Fiche remise en ligne',
   sheet_delete: '🗑️ Fiche supprimée',
+  chat_day_delete: '🧹 Journée de chat effacée',
+  chat_purge: '🧹 Purge automatique du chat',
+  idea_reply: '💬 Réponse à une idée',
 };
 
 function StatCard({ emoji, label, count, to }: StatCardProps) {
@@ -75,6 +79,8 @@ function Dashboard() {
       <StorageWarning />
 
       <SiteStatusCard />
+
+      <VisitStatsCard />
 
       {loading ? (
         <div className="flex justify-center py-12">

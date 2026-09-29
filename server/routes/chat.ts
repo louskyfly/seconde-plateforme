@@ -187,6 +187,42 @@ router.get('/conversation', (req, res) => {
   }
 });
 
+/**
+ * Liste de tous les membres du chat, réservée au délégué.
+ *
+ * C'est la page « voir tous les membres » : chaque élève inscrit avec son nom,
+ * sa date d'arrivée et son nombre de messages. Le délégué n'est pas compté
+ * comme membre, il répond.
+ */
+router.get('/members', requireAuth, (req, res) => {
+  try {
+    const group = getDefaultGroup();
+    if (!group) {
+      res.status(500).json({ error: 'Conversation indisponible' });
+      return;
+    }
+
+    const members = db
+      .prepare(
+        `SELECT u.id, u.display_name, u.kind,
+                cm.joined_at AS joined_at,
+                u.last_seen_at,
+                (SELECT COUNT(*) FROM chat_messages m WHERE m.sender_id = u.id) AS message_count,
+                (SELECT MAX(m.created_at) FROM chat_messages m WHERE m.sender_id = u.id) AS last_message_at
+         FROM chat_users u
+         JOIN chat_members cm ON cm.user_id = u.id AND cm.conversation_id = ?
+         WHERE u.kind = 'student'
+         ORDER BY u.display_name COLLATE NOCASE`
+      )
+      .all(group.id);
+
+    res.json(members);
+  } catch (err) {
+    console.error('Chat members error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 function countUnread(conversationId: number, userId: number): number {
   const member = db
     .prepare('SELECT last_read_message_id FROM chat_members WHERE conversation_id = ? AND user_id = ?')

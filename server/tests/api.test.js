@@ -1521,3 +1521,22 @@ describe('Visites', () => {
     assert.equal((await other('GET', '/api/stats/visits')).status, 401);
   });
 });
+
+describe('Membres du chat', () => {
+  test('le délégué voit tous les membres, pas les élèves', async () => {
+    assert.equal((await student('GET', '/api/chat/members')).status, 401);
+
+    const res = await admin('GET', '/api/chat/members');
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.data));
+    assert.ok(res.data.some((m) => m.display_name === 'Alice'), 'Alice s’est inscrite plus haut');
+
+    // Le délégué n'est pas listé comme membre : il répond, il ne participe pas.
+    assert.ok(res.data.every((m) => m.kind === 'student'));
+
+    // Les champs attendus par l'interface sont tous présents.
+    const alice = res.data.find((m) => m.display_name === 'Alice');
+    assert.equal(typeof alice.message_count, 'number');
+    assert.ok('joined_at' in alice);
+  });
+});

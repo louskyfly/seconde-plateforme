@@ -17,6 +17,7 @@ import type {
   MaintenanceLogEntry,
   ChatUser,
   ChatConversation,
+  ChatMemberInfo,
   ChatMessage,
   Sheet,
   SheetListResponse,
@@ -224,6 +225,8 @@ export const api = {
     `/api/chat/messages/${messageId}/image` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''),
   deleteChatMessage: (id: number, fingerprint?: string) =>
     request<{ success: boolean }>(`/chat/messages/${id}` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''), { method: 'DELETE' }),
+  /** Liste des membres du chat. Réservé au délégué. */
+  getChatMembers: () => request<ChatMemberInfo[]>('/chat/members'),
   /** Supprime tous les messages d'une journée. Réservé au délégué. */
   deleteChatDay: (date: string) =>
     request<{ success: boolean; deleted: number; date: string }>(`/chat/day/${date}`, { method: 'DELETE' }),

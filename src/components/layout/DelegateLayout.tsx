@@ -2,6 +2,7 @@ import { lazy, useState } from 'react';
 import { Outlet, NavLink, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
+import { usePendingIdeas } from '@/hooks/usePendingIdeas';
 import { SESSION_EXPIRED_EVENT } from '@/lib/api';
 import { useEffect } from 'react';
 
@@ -41,6 +42,8 @@ function Sidebar({ token }: { token: string }) {
   const { settings } = useSettings();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  // La pastille disparaît quand on ouvre la page « Idées » elle-même.
+  const pendingIdeas = usePendingIdeas(true, 30000);
 
   const handleLogout = async () => {
     await logout();
@@ -75,6 +78,14 @@ function Sidebar({ token }: { token: string }) {
           >
             <span className="text-lg flex-shrink-0">{item.emoji}</span>
             <span className="truncate">{item.label}</span>
+            {item.label === 'Idées' && pendingIdeas > 0 && (
+              <span
+                className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center"
+                aria-label={`${pendingIdeas} idée(s) en attente`}
+              >
+                {pendingIdeas}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -96,6 +107,9 @@ function Sidebar({ token }: { token: string }) {
 }
 
 function DelegateBottomNav({ token }: { token: string }) {
+  // Sur mobile, pas de pastille quand on est déjà sur la page idées.
+  const location = useLocation();
+  const pendingIdeas = usePendingIdeas(!location.pathname.endsWith('/idees'), 30000);
   const items = [
     { emoji: '📊', label: 'Board', path: `/gestion/${token}`, end: true },
     { emoji: '📩', label: 'Messages', path: `/gestion/${token}/messages` },
@@ -127,7 +141,17 @@ function DelegateBottomNav({ token }: { token: string }) {
               }`
             }
           >
-            <span className="text-xl mb-0.5">{item.emoji}</span>
+            <span className="text-xl mb-0.5 relative">
+              {item.emoji}
+              {item.label === 'Idées' && pendingIdeas > 0 && (
+                <span
+                  className="absolute -top-0.5 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center"
+                  aria-label={`${pendingIdeas} idée(s) en attente`}
+                >
+                  {pendingIdeas}
+                </span>
+              )}
+            </span>
             <span className="truncate">{item.label}</span>
           </NavLink>
         ))}

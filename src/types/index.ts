@@ -166,6 +166,16 @@ export interface ChatConversation {
   is_group: number;
 }
 
+export interface ChatMemberInfo {
+  id: number;
+  display_name: string;
+  kind: string;
+  joined_at: string;
+  last_seen_at: string;
+  message_count: number;
+  last_message_at: string | null;
+}
+
 export type ChatReaction = 'pouce' | 'rire' | 'coeur';
 
 export interface ChatMessage {

@@ -8,6 +8,13 @@ export type SeasonTheme = 'aucun' | 'halloween' | 'noel';
 
 const SEASONS: SeasonTheme[] = ['aucun', 'halloween', 'noel'];
 
+/** Icône d'onglet accordée au thème. */
+const FAVICONS: Record<SeasonTheme, string> = {
+  aucun: '/favicon.svg',
+  halloween: '/favicon-halloween.svg',
+  noel: '/favicon-noel.svg',
+};
+
 export function normalizeSeasonTheme(value: unknown): SeasonTheme {
   const theme = String(value ?? '').toLowerCase().trim();
   return (SEASONS as string[]).includes(theme) ? (theme as SeasonTheme) : 'aucun';
@@ -27,6 +34,13 @@ export function applySeason(theme: unknown): SeasonTheme {
   if (meta) {
     const color = value === 'halloween' ? '#2b1b3d' : value === 'noel' ? '#3a1220' : '#0a1220';
     meta.setAttribute('content', color);
+  }
+  // L'icône de l'onglet suit le thème : citrouille en octobre, sapin en
+  // décembre. Sans cela, l'onglet garde l'icône bleue d'origine et on ne voit
+  // plus du tout de quel côté on est.
+  const icon = document.querySelector('link[rel="icon"]');
+  if (icon) {
+    icon.setAttribute('href', FAVICONS[value]);
   }
   return value;
 }

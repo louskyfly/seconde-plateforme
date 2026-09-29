@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { to: '/calendrier', emoji: '📅', label: 'Calendrier' },
   { to: '/ressources', emoji: '📚', label: 'Ressources' },
   { to: '/projets', emoji: '🚀', label: 'Projets' },
+  { to: '/classe', emoji: '👥', label: 'La classe' },
 ];
 
 function Sidebar() {

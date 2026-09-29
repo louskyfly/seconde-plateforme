@@ -8,6 +8,9 @@ import type {
   Event,
   Resource,
   Project,
+  Student,
+  StudentGroup,
+  StudentGroupStatus,
   Stats,
   MaintenanceState,
   MaintenanceLogEntry,
@@ -157,6 +160,25 @@ export const api = {
   createProject: (data: any) => request<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
   updateProject: (id: number, data: any) => request<Project>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteProject: (id: number) => request<{ success: boolean }>(`/projects/${id}`, { method: 'DELETE' }),
+
+  // Élèves et groupes
+  getStudents: () => request<Student[]>('/students'),
+  createStudent: (data: Partial<Student>) => request<Student>('/students', { method: 'POST', body: JSON.stringify(data) }),
+  updateStudent: (id: number, data: Partial<Student>) => request<Student>(`/students/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteStudent: (id: number) => request<{ success: boolean }>(`/students/${id}`, { method: 'DELETE' }),
+  getStudentGroups: () => request<StudentGroup[]>('/groups'),
+  createStudentGroup: (data: { name: string; is_private?: boolean; student_ids?: number[]; validate_now?: boolean }) =>
+    request<StudentGroup>('/groups', { method: 'POST', body: JSON.stringify(data) }),
+  updateGroupStatus: (id: number, status: StudentGroupStatus) =>
+    request<StudentGroup>(`/groups/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  proposeGroupMember: (id: number, studentId: number, fingerprint: string) =>
+    request<{ success: boolean; members: Student[] }>(`/groups/${id}/propose-member`, {
+      method: 'POST',
+      body: JSON.stringify({ student_id: studentId, fingerprint }),
+    }),
+  removeGroupMember: (id: number, studentId: number) =>
+    request<{ success: boolean; members: Student[] }>(`/groups/${id}/members/${studentId}`, { method: 'DELETE' }),
+  deleteStudentGroup: (id: number) => request<{ success: boolean }>(`/groups/${id}`, { method: 'DELETE' }),
   
   // Stats
   getStats: () => request<Stats>('/stats'),

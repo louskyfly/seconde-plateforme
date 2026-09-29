@@ -132,6 +132,52 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Élèves de la classe. Sert au tableau demandé dans l'onglet Projets, et aux
+-- groupes de travail (un élève appartient à au plus un groupe validé).
+-- La date d'anniversaire est stockée en MM-JJ : l'année n'a aucune utilité ici.
+CREATE TABLE IF NOT EXISTS students (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  first_name TEXT NOT NULL,
+  last_name TEXT NOT NULL,
+  birthday TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS student_groups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  is_private INTEGER DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'en_attente',
+  created_by_fingerprint TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  validated_at DATETIME,
+  validated_by TEXT
+);
+
+CREATE TABLE IF NOT EXISTS student_group_members (
+  group_id INTEGER NOT NULL,
+  student_id INTEGER NOT NULL,
+  added_by_fingerprint TEXT,
+  added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (group_id, student_id),
+  FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+-- Un élève ne peut appartenir qu'à un seul groupe VALIDÉ : c'est ce qui rend le
+-- tableau cohérent, sans qu'un même nom apparaisse dans deux équipes.
+--
+-- Cette table est la source de vérité de cette règle : une ligne par élève
+-- validé. La clé primaire sur student_id fait office de verrou, et la clé
+-- étrangère sur group_id nettoie tout automatiquement quand un groupe disparaît.
+-- Les groupes en attente restent, eux, libres de se chevaucher.
+CREATE TABLE IF NOT EXISTS student_group_validated (
+  student_id INTEGER PRIMARY KEY,
+  group_id INTEGER NOT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS admin_login_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ip_address TEXT NOT NULL,

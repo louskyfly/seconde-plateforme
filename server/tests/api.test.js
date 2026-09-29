@@ -1267,3 +1267,214 @@ describe('Session délégué', () => {
     assert.equal((await other('POST', '/api/events', { title: 'X', date: '2026-12-02' })).status, 401);
   });
 });
+
+describe('Élèves et groupes', () => {
+  let alice;
+  let bob;
+  let clara;
+  let dan;
+
+  test('inscription du délégué', async () => {
+    const res = await admin('POST', '/api/auth/login', { password: ADMIN_PASSWORD });
+    assert.equal(res.status, 200);
+  });
+
+  test('un élève peut être ajouté et lu par tout le monde', async () => {
+    const refuse = await student('POST', '/api/students', { first_name: 'Marie', last_name: 'Dupont' });
+    assert.equal(refuse.status, 401, 'un élève ne peut pas créer de fiche');
+
+    const res = await admin('POST', '/api/students', {
+      first_name: 'Marie',
+      last_name: 'Dupont',
+      birthday: '03-14',
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.birthday, '03-14');
+
+    // Prénom et nom trop courts, ou nom composé, sont refusés.
+    assert.equal((await admin('POST', '/api/students', { first_name: 'M', last_name: 'Dupont' })).status, 400);
+    assert.equal((await admin('POST', '/api/students', { first_name: 'Jean Paul', last_name: 'Dupont' })).status, 201);
+
+    const liste = await student('GET', '/api/students');
+    assert.equal(liste.status, 200, 'le tableau de classe est visible de tous');
+    assert.ok(Array.isArray(liste.data) && liste.data.length >= 2);
+    assert.equal(liste.data[0].last_name, 'Dupont', 'trié par nom');
+  });
+
+  test('une date d’anniversaire invalide est normalisée', async () => {
+    // Le 31 février n'existe pas : on ne doit pas le laisser passer.
+    const faux = await admin('POST', '/api/students', { first_name: 'Zoé', last_name: 'Petit', birthday: '02-31' });
+    assert.equal(faux.status, 201);
+    assert.equal(faux.data.birthday, null);
+
+    const vide = await admin('POST', '/api/students', { first_name: 'Paul', last_name: 'Petit' });
+    assert.equal(vide.data.birthday, null);
+  });
+
+  test('un groupe doit faire 3 ou 4 élèves pour être validé', async () => {
+    alice = (await admin('POST', '/api/students', { first_name: 'Alice', last_name: 'Aubry' })).data;
+    bob = (await admin('POST', '/api/students', { first_name: 'Bob', last_name: 'Bernard' })).data;
+    clara = (await admin('POST', '/api/students', { first_name: 'Clara', last_name: 'Caron' })).data;
+    dan = (await admin('POST', '/api/students', { first_name: 'Dan', last_name: 'Durand' })).data;
+
+    const tropPetit = await admin('POST', '/api/groups', {
+      name: 'Petits',
+      student_ids: [alice.id, bob.id],
+    });
+    assert.equal(tropPetit.status, 400, '2 élèves ne suffisent pas');
+    assert.match(tropPetit.data.error, /au moins 3/);
+
+    // Cinq élèves bien distincts : le refus ne doit pas venir d'un doublon.
+    const cinq = [];
+    for (const [prenom, nom] of [
+      ['Sol', 'Soleil'],
+      ['Tao', 'Tasse'],
+      ['Ulysse', 'Urbain'],
+    ]) {
+      cinq.push((await admin('POST', '/api/students', { first_name: prenom, last_name: nom })).data);
+    }
+
+    const tropGrand = await admin('POST', '/api/groups', {
+      name: 'Trop grands',
+      student_ids: [alice.id, bob.id, clara.id, dan.id, ...cinq.map((s) => s.id)],
+    });
+    assert.equal(tropGrand.status, 400, 'au-delà de 4 élèves, c’est refusé');
+    assert.match(tropGrand.data.error, /d[ée]passer 4/);
+
+    // Le groupe refusé ne doit pas rester en base.
+    const apresEchec = (await admin('GET', '/api/groups')).data;
+    assert.equal(apresEchec.filter((g) => g.name === 'Trop grands').length, 0);
+
+    const bon = await admin('POST', '/api/groups', {
+      name: 'Groupe 1',
+      student_ids: [alice.id, bob.id, clara.id],
+    });
+    assert.equal(bon.status, 201);
+    assert.equal(bon.data.status, 'valide');
+  });
+
+  test('un groupe validé est figé : plus personne ne peut le modifier', async () => {
+    const groupes = (await admin('GET', '/api/groups')).data;
+    const groupe = groupes.find((g) => g.name === 'Groupe 1');
+
+    const ajout = await admin('POST', `/api/groups/${groupe.id}/propose-member`, {
+      student_id: dan.id,
+      fingerprint: 'fingerprint-de-test-1234',
+    });
+    assert.equal(ajout.status, 409, 'un groupe validé ne se complète plus');
+
+    const retrait = await admin('DELETE', `/api/groups/${groupe.id}/members/${alice.id}`);
+    assert.equal(retrait.status, 409);
+  });
+
+  test('un élève déjà validé ne peut pas rejoindre un second groupe validé', async () => {
+    const deuxieme = await admin('POST', '/api/groups', {
+      name: 'Groupe 2',
+      student_ids: [bob.id, clara.id, dan.id],
+    });
+    assert.equal(deuxieme.status, 409, 'Bob et Clara sont déjà pris');
+    assert.match(deuxieme.data.error, /déjà dans un groupe validé/i);
+  });
+
+  test('un groupe privé se propose puis se valide', async () => {
+    const eleve1 = (await admin('POST', '/api/students', { first_name: 'Emma', last_name: 'Elsa' })).data;
+    const eleve2 = (await admin('POST', '/api/students', { first_name: 'Fanny', last_name: 'Fabre' })).data;
+    const eleve3 = (await admin('POST', '/api/students', { first_name: 'Gaspard', last_name: 'Guerin' })).data;
+
+    // Né en attente : les élèves complètent, le délégué valide ensuite.
+    const cree = await admin('POST', '/api/groups', {
+      name: 'Groupe privé',
+      is_private: true,
+      validate_now: false,
+      student_ids: [eleve1.id],
+    });
+    assert.equal(cree.status, 201);
+    assert.equal(cree.data.status, 'en_attente');
+
+    // Un élève peut proposer son camarade, mais pas s'ajouter lui-même sans
+    // identifiant appareil.
+    const sansEmpreinte = await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
+      student_id: eleve2.id,
+    });
+    assert.equal(sansEmpreinte.status, 401);
+
+    const proposition = await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
+      student_id: eleve2.id,
+      fingerprint: 'fingerprint-de-test-5678',
+    });
+    assert.equal(proposition.status, 200);
+    assert.equal(proposition.data.members.length, 2);
+
+    // Tant que le groupe est en attente, on peut encore retirer un élève.
+    const retrait = await admin('DELETE', `/api/groups/${cree.data.id}/members/${eleve2.id}`);
+    assert.equal(retrait.status, 200);
+    assert.equal(retrait.data.members.length, 1);
+
+    await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
+      student_id: eleve2.id,
+      fingerprint: 'fingerprint-de-test-5678',
+    });
+    const troisieme = await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
+      student_id: eleve3.id,
+      fingerprint: 'fingerprint-de-test-9012',
+    });
+    assert.equal(troisieme.status, 200);
+    assert.equal(troisieme.data.members.length, 3);
+
+    const validation = await admin('PUT', `/api/groups/${cree.data.id}/status`, { status: 'valide' });
+    assert.equal(validation.status, 200);
+    assert.equal(validation.data.status, 'valide');
+  });
+
+  test('un groupe refusé libère ses élèves', async () => {
+    const libere1 = (await admin('POST', '/api/students', { first_name: 'Hana', last_name: 'Hamon' })).data;
+    const libere2 = (await admin('POST', '/api/students', { first_name: 'Ivan', last_name: 'Imbert' })).data;
+    const libere3 = (await admin('POST', '/api/students', { first_name: 'Jade', last_name: 'Jacquin' })).data;
+
+    const groupe = (await admin('POST', '/api/groups', {
+      name: 'Temporaire',
+      student_ids: [libere1.id, libere2.id, libere3.id],
+    })).data;
+    assert.equal(groupe.status, 'valide');
+
+    // Tant que le groupe est validé, ils sont pris.
+    const autre = await admin('POST', '/api/groups', {
+      name: 'Reprise',
+      student_ids: [libere1.id, libere2.id, libere3.id],
+    });
+    assert.equal(autre.status, 409);
+
+    const refus = await admin('PUT', `/api/groups/${groupe.id}/status`, { status: 'refuse' });
+    assert.equal(refus.status, 200);
+
+    // Le refus libère les trois élèves : ils peuvent être revalidés ailleurs.
+    const reprise = await admin('POST', '/api/groups', {
+      name: 'Reprise',
+      student_ids: [libere1.id, libere2.id, libere3.id],
+    });
+    assert.equal(reprise.status, 201);
+  });
+
+  test('supprimer un élève le retire de son groupe', async () => {
+    const cible = (await admin('POST', '/api/students', { first_name: 'Léo', last_name: 'Leroy' })).data;
+    const compa1 = (await admin('POST', '/api/students', { first_name: 'Mia', last_name: 'Moret' })).data;
+    const compa2 = (await admin('POST', '/api/students', { first_name: 'Noé', last_name: 'Noel' })).data;
+
+    const groupe = (await admin('POST', '/api/groups', {
+      name: 'AvecLeo',
+      student_ids: [cible.id, compa1.id, compa2.id],
+    })).data;
+
+    const res = await admin('DELETE', `/api/students/${cible.id}`);
+    assert.equal(res.status, 200);
+
+    const apres = (await admin('GET', '/api/groups')).data.find((g) => g.id === groupe.id);
+    assert.equal(apres.members.length, 2, 'les deux autres restent dans le groupe');
+  });
+
+  test('un statut de groupe inconnu est refusé', async () => {
+    const eleve = (await admin('POST', '/api/students', { first_name: 'Iris', last_name: 'Issor' })).data;
+    const g = (await admin('POST', '/api/groups', { name: 'Statut', student_ids: [eleve.id], validate_now: false })).data;
+    assert.equal((await admin('PUT', `/api/groups/${g.id}/status`, { status: 'peut-etre' })).status, 400);
+  });
+});

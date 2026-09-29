@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { to: '/calendrier', emoji: '📅', label: 'Agenda' },
   { to: '/ressources', emoji: '📚', label: 'Ressources' },
   { to: '/projets', emoji: '🚀', label: 'Projets' },
+  { to: '/classe', emoji: '👥', label: 'Classe' },
 ];
 
 export function BottomNav() {

@@ -181,6 +181,27 @@ export interface ChatMessage {
   reactions: Record<string, { total: number; mine: boolean }>;
 }
 
+export interface Student {
+  id: number;
+  first_name: string;
+  last_name: string;
+  /** Anniversaire en MM-JJ, ou null si l'élève n'en a pas communiqué. */
+  birthday: string | null;
+  created_at: string;
+}
+
+export type StudentGroupStatus = 'en_attente' | 'valide' | 'refuse';
+
+export interface StudentGroup {
+  id: number;
+  name: string;
+  is_private: number;
+  status: StudentGroupStatus;
+  members: Student[];
+  validated_at: string | null;
+  validated_by: string | null;
+}
+
 export interface Sheet {
   id: number;
   title: string;

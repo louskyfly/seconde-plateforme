@@ -1,4 +1,4 @@
-const CACHE_NAME = "seconde-shell-v3";
+const CACHE_NAME = "seconde-shell-v4";
 const APP_SHELL = ["/", "/index.html", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
@@ -23,7 +23,16 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   if (url.origin !== location.origin) return;
 
-  if (url.pathname.startsWith("/api/") || request.mode === "navigate") {
+  // Les réponses d'API ne sont JAMAIS mises en cache.
+  //
+  // Elles l'étaient en networkFirst : quand le réseau échouait, le service
+  // worker renvoyait la dernière réponse connue. Pendant ce temps la base avait
+  // déjà été réinitialisée, et l'élève voyait d'anciennes données — l'inverse
+  // exact du problème signalé. Mieux vaut une erreur franche (l'UI affiche
+  // désormais « Réessayer ») que des données périmées présentées comme vraies.
+  if (url.pathname.startsWith("/api/")) return;
+
+  if (request.mode === "navigate") {
     event.respondWith(networkFirst(request));
     return;
   }

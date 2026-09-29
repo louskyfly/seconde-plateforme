@@ -926,6 +926,33 @@ describe('Sauvegarde des données', () => {
     const still = await admin('GET', '/api/settings');
     assert.equal(still.status, 200);
   });
+
+  test('une sauvegarde vide est refusée et n’efface rien', async () => {
+    // Ce test ne va volontairement PAS jusqu'à l'import confirmé : celui-ci
+    // viderait réellement la base et invaliderait la session des suites
+    // suivantes. On vérifie donc le garde-fou, qui est le comportement sûr.
+    const refused = await admin('POST', '/api/admin/import', { tables: {} });
+    assert.equal(refused.status, 400);
+    assert.equal(refused.data.requires_confirmation, true, 'le client doit être invité à confirmer');
+
+    // Même refus quand les tables sont présentes mais toutes vides : c'est le
+    // cas réel d'un export fait sur une base déjà réinitialisée.
+    const allEmpty = await admin('POST', '/api/admin/import', {
+      tables: { settings: [], polls: [], ideas: [], events: [] },
+    });
+    assert.equal(allEmpty.status, 400);
+    assert.equal(allEmpty.data.requires_confirmation, true);
+
+    // Les tables inconnues ne suffisent pas à valider un import.
+    const unknown = await admin('POST', '/api/admin/import', { tables: { pas_une_table: [{ id: 1 }] } });
+    assert.equal(unknown.status, 400);
+
+    const intact = await admin('GET', '/api/polls');
+    assert.ok(
+      intact.data.some((p) => p.question === 'Quelle est la couleur de la classe ? (corrigé)'),
+      'la base ne doit pas avoir été vidée par les tentatives refusées'
+    );
+  });
 });
 
 describe('Paramètres et thème de saison', () => {

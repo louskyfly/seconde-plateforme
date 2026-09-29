@@ -108,6 +108,22 @@ router.post('/import', (req, res) => {
         .all() as { name: string }[]).map((t) => t.name)
     );
 
+    // Un export qui ne contient aucune ligne effaçait silencieusement la base :
+    // le DELETE de toutes les tables passait, puis aucune ligne n'était
+    // réinsérée. C'est le moyen le plus simple de tout perdre par erreur, donc
+    // une restauration totalement vide exige désormais une confirmation
+    // explicite du délégué.
+    const entries = Object.entries(payload as Record<string, any[]>).filter(
+      ([name, rows]) => known.has(name) && Array.isArray(rows) && rows.length > 0
+    );
+    if (entries.length === 0 && req.body?.confirm_empty !== true) {
+      res.status(400).json({
+        error: 'Sauvegarde vide confirmée requise',
+        requires_confirmation: true,
+      });
+      return;
+    }
+
     const restore = db.transaction(() => {
       for (const name of known) {
         db.prepare(`DELETE FROM "${name}"`).run();

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { generateFingerprint, parseServerDate } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { LoadError } from '@/components/ui/LoadError';
 import type { Poll } from '@/types';
 
 export default function Polls() {
@@ -11,6 +12,8 @@ export default function Polls() {
   const [votedPolls, setVotedPolls] = useState<Set<number>>(new Set());
   const [voting, setVoting] = useState<number | null>(null);
   const [error, setError] = useState('');
+  /** true quand le chargement a échoué : sert à ne pas afficher « aucun sondage ». */
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -22,8 +25,12 @@ export default function Polls() {
       // Le serveur indique si l'élève a déjà voté (et non « tout sondage
       // fermé »), sinon le bouton « Voter » restait actif pour rien.
       setVotedPolls(new Set(sorted.filter((p) => p.has_voted).map((p) => p.id)));
+      setLoadError(false);
     } catch {
-      /* on garde les données déjà affichées */
+      // On distingue « on n'a pas pu charger » de « il n'y a rien » : sinon une
+      // panne réseau affichait « Aucun sondage » et l'élève croyait ses
+      // sondages disparus.
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -176,7 +183,9 @@ export default function Polls() {
         </div>
       )}
 
-      {!loading && activePolls.length === 0 && closedPolls.length === 0 && (
+      {!loading && loadError && <LoadError onRetry={load} />}
+
+      {!loading && !loadError && activePolls.length === 0 && closedPolls.length === 0 && (
         <div className="glass-card text-center py-10">
           <p className="text-3xl mb-3">🗳️</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">

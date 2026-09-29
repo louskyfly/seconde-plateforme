@@ -213,5 +213,15 @@ export const api = {
       '/admin/storage'
     ),
   exportDatabase: () => request<any>('/admin/export'),
-  importDatabase: (payload: any) => request<{ success: boolean }>('/admin/import', { method: 'POST', body: JSON.stringify(payload) }),
+  /**
+   * Restauration d'un export. `confirmEmpty` n'est envoyé que si le fichier est
+   * minuscule : le serveur refuse par ailleurs une sauvegarde sans aucune ligne,
+   * ce qui viderait la base.
+   */
+  importDatabase: (payload: any, confirmEmpty = false) =>
+    request<{ success: boolean }>('/admin/import', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, confirm_empty: confirmEmpty }),
+    }),
+  getStorageInfo: () => request<any>('/admin/storage'),
 };

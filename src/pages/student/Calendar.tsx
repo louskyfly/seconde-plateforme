@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { formatDate, EVENT_CATEGORIES } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { MiniCalendar } from '@/components/MiniCalendar';
+import { LoadError } from '@/components/ui/LoadError';
 import type { Event } from '@/types';
 
 function dayKey(date: Date): string {
@@ -12,14 +13,18 @@ function dayKey(date: Date): string {
 export default function Calendar() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await api.getEvents();
       setEvents(data.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+      setLoadError(false);
     } catch {
-      /* on garde les données déjà affichées */
+      // Une panne réseau ne doit pas ressembler à « aucun événement » : c'est
+      // exactement ce qui donnait l'impression que le calendrier s'était vidé.
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -91,7 +96,14 @@ export default function Calendar() {
         </div>
       )}
 
-      {!loading && events.length === 0 && (
+      {!loading && loadError && (
+        <LoadError onRetry={load}>
+          La connexion au serveur a échoué. Tes événements sont peut-être toujours là, ce n'est
+          qu'un problème de réseau.
+        </LoadError>
+      )}
+
+      {!loading && !loadError && events.length === 0 && (
         <div className="glass-card text-center py-10">
           <p className="text-3xl mb-3">📅</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
@@ -100,14 +112,14 @@ export default function Calendar() {
         </div>
       )}
 
-      {!loading && events.length > 0 && visible.length === 0 && selectedDay && (
+      {!loading && !loadError && events.length > 0 && visible.length === 0 && selectedDay && (
         <div className="glass-card text-center py-8">
           <p className="text-2xl mb-2">🌤️</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">Aucun événement ce jour-là</p>
         </div>
       )}
 
-      {!loading && visible.length > 0 && (
+      {!loading && !loadError && visible.length > 0 && (
         <div className="space-y-6">
           {Array.from(grouped.entries()).map(([key, groupEvents]) => {
             const d = new Date(groupEvents[0].date);

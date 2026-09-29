@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { useSettings } from '@/hooks/useSettings';
 import { SiteStatusCard } from '@/components/delegate/SiteStatusCard';
+import { StorageWarning } from '@/components/delegate/StorageWarning';
 import type { AdminLogEntry, AdminOverview, Stats } from '@/types';
 
 interface StatCardProps {
@@ -68,6 +69,10 @@ function Dashboard() {
           {error}
         </div>
       )}
+
+      {/* Avant la carte de statut : sur Render gratuit la base est volatile,
+          c'est la seule information qui doit sauter aux yeux du délégué. */}
+      <StorageWarning />
 
       <SiteStatusCard />
 

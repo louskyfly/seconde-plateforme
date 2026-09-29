@@ -48,6 +48,16 @@ app.use(express.json({ limit: '24mb' }));
 app.use(express.urlencoded({ extended: true, limit: '24mb' }));
 app.use(cookieParser());
 
+// Les réponses d'API ne doivent jamais être conservées par un cache HTTP
+// (navigateur, proxy Render ou service worker). Une réponse périmée présentée
+// comme fraîche est pire qu'une erreur franche : l'élève croyait ses données
+// perdues alors qu'il lisait un instantané de l'ancienne base.
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
+  next();
+});
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET || 'dev-secret-change-me',

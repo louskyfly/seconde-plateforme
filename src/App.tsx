@@ -16,6 +16,7 @@ const Calendar = lazy(() => import('./pages/student/Calendar'));
 const Resources = lazy(() => import('./pages/student/Resources'));
 const Projects = lazy(() => import('./pages/student/Projects'));
 const StudentList = lazy(() => import('./pages/student/StudentList'));
+const Revisions = lazy(() => import('./pages/student/Revisions'));
 const Chat = lazy(() => import('./pages/student/Chat'));
 const Sheets = lazy(() => import('./pages/student/Sheets'));
 const DelegateLogin = lazy(() => import('./pages/delegate/Login'));
@@ -28,6 +29,7 @@ const DelegateCalendar = lazy(() => import('./pages/delegate/ManageCalendar'));
 const DelegateResources = lazy(() => import('./pages/delegate/ManageResources'));
 const DelegateProjects = lazy(() => import('./pages/delegate/ManageProjects'));
 const DelegateStudents = lazy(() => import('./pages/delegate/ManageStudents'));
+const DelegateRevisions = lazy(() => import('./pages/delegate/ManageRevisions'));
 const DelegateChat = lazy(() => import('./pages/delegate/ManageChat'));
 const DelegateSheets = lazy(() => import('./pages/delegate/ManageSheets'));
 const DelegateSettings = lazy(() => import('./pages/delegate/Settings'));
@@ -58,6 +60,7 @@ export default function App() {
               <Route path="/ressources" element={<Resources />} />
               <Route path="/projets" element={<Projects />} />
               <Route path="/classe" element={<StudentList />} />
+              <Route path="/revisions" element={<Revisions />} />
             </Route>
 
             {/* Delegate space */}
@@ -74,6 +77,7 @@ export default function App() {
               <Route path="fiches" element={<DelegateSheets />} />
               <Route path="projets" element={<DelegateProjects />} />
               <Route path="classe" element={<DelegateStudents />} />
+              <Route path="revisions" element={<DelegateRevisions />} />
               <Route path="parametres" element={<DelegateSettings />} />
             </Route>
 

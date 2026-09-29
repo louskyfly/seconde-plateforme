@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { emoji: '📚', label: 'Ressources' },
   { emoji: '🚀', label: 'Projets' },
   { emoji: '👥', label: 'Élèves' },
+  { emoji: '📖', label: 'Révisions' },
   { emoji: '⚙️', label: 'Paramètres' },
 ];
 
@@ -35,6 +36,7 @@ const PATH_MAP: Record<string, string> = {
   'Ressources': '/ressources',
   'Projets': '/projets',
   'Élèves': '/classe',
+  'Révisions': '/revisions',
   'Paramètres': '/parametres',
 };
 
@@ -122,6 +124,7 @@ function DelegateBottomNav({ token }: { token: string }) {
     { emoji: '📚', label: 'Ressources', path: `/gestion/${token}/ressources` },
     { emoji: '🚀', label: 'Projets', path: `/gestion/${token}/projets` },
     { emoji: '👥', label: 'Élèves', path: `/gestion/${token}/classe` },
+    { emoji: '📖', label: 'Révisions', path: `/gestion/${token}/revisions` },
     { emoji: '⚙️', label: 'Réglages', path: `/gestion/${token}/parametres` },
   ];
 

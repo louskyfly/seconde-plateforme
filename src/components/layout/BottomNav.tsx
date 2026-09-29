@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { to: '/ressources', emoji: '📚', label: 'Ressources' },
   { to: '/projets', emoji: '🚀', label: 'Projets' },
   { to: '/classe', emoji: '👥', label: 'Classe' },
+  { to: '/revisions', emoji: '📖', label: 'Révisions' },
 ];
 
 export function BottomNav() {

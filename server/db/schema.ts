@@ -110,6 +110,27 @@ CREATE TABLE IF NOT EXISTS events (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Sessions de révision planifiées par le délégué.
+--
+-- Volontairement séparées de la table events : une session de révision a une
+-- durée, un lieu et des fiches à travailler, ce qui n'a pas de sens dans le
+-- calendrier général. La date est un jour, pas une date-heure : une session
+-- commence à l'heure indiquée et finit duration minutes plus tard.
+CREATE TABLE IF NOT EXISTS revision_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  subject TEXT NOT NULL DEFAULT 'autre',
+  date TEXT NOT NULL,
+  time TEXT,
+  duration INTEGER NOT NULL DEFAULT 60,
+  location TEXT DEFAULT '',
+  description TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_revision_sessions_date ON revision_sessions(date);
+
 CREATE TABLE IF NOT EXISTS resources (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   title TEXT NOT NULL,

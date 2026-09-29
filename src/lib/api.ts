@@ -8,6 +8,7 @@ import type {
   Event,
   Resource,
   Project,
+  RevisionSession,
   Student,
   StudentGroup,
   StudentGroupStatus,
@@ -182,6 +183,16 @@ export const api = {
     request<{ success: boolean; members: Student[] }>(`/groups/${id}/members/${studentId}`, { method: 'DELETE' }),
   deleteStudentGroup: (id: number) => request<{ success: boolean }>(`/groups/${id}`, { method: 'DELETE' }),
   
+  // Sessions de révision
+  getRevisionSessions: (upcoming = true) =>
+    request<RevisionSession[]>(`/revisions${upcoming ? '' : '?upcoming=false'}`),
+  createRevisionSession: (data: Partial<RevisionSession>) =>
+    request<RevisionSession>('/revisions', { method: 'POST', body: JSON.stringify(data) }),
+  updateRevisionSession: (id: number, data: Partial<RevisionSession>) =>
+    request<RevisionSession>(`/revisions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteRevisionSession: (id: number) =>
+    request<{ success: boolean }>(`/revisions/${id}`, { method: 'DELETE' }),
+
   // Stats
   getStats: () => request<Stats>('/stats'),
   recordVisit: (fingerprint: string, page: string) =>

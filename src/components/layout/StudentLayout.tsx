@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { to: '/ressources', emoji: '📚', label: 'Ressources' },
   { to: '/projets', emoji: '🚀', label: 'Projets' },
   { to: '/classe', emoji: '👥', label: 'La classe' },
+  { to: '/revisions', emoji: '📖', label: 'Révisions' },
 ];
 
 function Sidebar() {

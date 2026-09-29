@@ -1540,3 +1540,94 @@ describe('Membres du chat', () => {
     assert.ok('joined_at' in alice);
   });
 });
+
+describe('Sessions de révision', () => {
+  test('le délégué est connecté', async () => {
+    assert.equal((await admin('GET', '/api/stats')).status, 200);
+  });
+
+  test('une session se crée, se lit et se modifie', async () => {
+    const refuse = await student('POST', '/api/revisions', { title: ' maths', date: '2030-01-10' });
+    assert.equal(refuse.status, 401, 'un élève ne planifie pas les sessions');
+
+    const cree = await admin('POST', '/api/revisions', {
+      title: 'Révisions fractions',
+      subject: 'maths',
+      date: '2030-01-10',
+      time: '14:00',
+      duration: 90,
+      location: 'Salle B',
+      description: 'Fiches 3 et 4',
+    });
+    assert.equal(cree.status, 201);
+    assert.equal(cree.data.duration, 90);
+    assert.equal(cree.data.location, 'Salle B');
+
+    const modifie = await admin('PUT', `/api/revisions/${cree.data.id}`, { location: 'Salle C' });
+    assert.equal(modifie.status, 200);
+    assert.equal(modifie.data.location, 'Salle C');
+    assert.equal(modifie.data.title, 'Révisions fractions', 'les champs non transmis sont conservés');
+  });
+
+  test('les entrées invalides sont refusées ou corrigées', async () => {
+    // Titre manquant, date absente, date impossible : refusés.
+    assert.equal((await admin('POST', '/api/revisions', { date: '2030-01-10' })).status, 400);
+    assert.equal((await admin('POST', '/api/revisions', { title: 'Sans date' })).status, 400);
+    assert.equal((await admin('POST', '/api/revisions', { title: 'Jour faux', date: '2030-02-31' })).status, 400);
+
+    // Une heure impossible n'est pas fatale : la session est « toute la journée ».
+    const sansHeure = await admin('POST', '/api/revisions', {
+      title: 'Journée entière',
+      date: '2030-01-10',
+      time: '25:00',
+    });
+    assert.equal(sansHeure.status, 201);
+    assert.equal(sansHeure.data.time, null);
+  });
+
+  test('une durée hors bornes est ramenée dans les limites', async () => {
+    const tropCourte = await admin('POST', '/api/revisions', {
+      title: 'Éclair',
+      date: '2030-01-11',
+      duration: 2,
+    });
+    assert.equal(tropCourte.data.duration, 15);
+
+    const tropLongue = await admin('POST', '/api/revisions', {
+      title: 'Marathon',
+      date: '2030-01-12',
+      duration: 99999,
+    });
+    assert.equal(tropLongue.data.duration, 480);
+  });
+
+  test('les élèves voient les sessions à venir, pas celles passées', async () => {
+    // Une session d'hier, invisible pour l'élève.
+    const hier = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    await admin('POST', '/api/revisions', { title: 'Passée', date: hier });
+
+    const aVenir = await student('GET', '/api/revisions');
+    assert.equal(aVenir.status, 200);
+    assert.ok(aVenir.data.length >= 1);
+    assert.ok(
+      aVenir.data.every((s) => s.date >= new Date().toISOString().slice(0, 10)),
+      'aucune session passée dans la liste élève'
+    );
+
+    // Le délégué demande explicitement l'historique.
+    const tout = await admin('GET', '/api/revisions?upcoming=false');
+    assert.ok(tout.data.some((s) => s.title === 'Passée'));
+  });
+
+  test('une session se supprime', async () => {
+    const session = (await admin('POST', '/api/revisions', { title: 'Annulée', date: '2030-02-01' })).data;
+
+    assert.equal((await student('DELETE', `/api/revisions/${session.id}`)).status, 401);
+
+    const res = await admin('DELETE', `/api/revisions/${session.id}`);
+    assert.equal(res.status, 200);
+
+    // Supprimer deux fois n'est pas une erreur fatale, la session n'existe plus.
+    assert.equal((await admin('PUT', `/api/revisions/${session.id}`, { title: 'X' })).status, 404);
+  });
+});

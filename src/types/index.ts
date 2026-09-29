@@ -100,6 +100,20 @@ export interface Event {
   updated_at: string;
 }
 
+export interface RevisionSession {
+  id: number;
+  title: string;
+  subject: string;
+  date: string;
+  time: string | null;
+  /** Durée en minutes. */
+  duration: number;
+  location: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Resource {
   id: number;
   title: string;

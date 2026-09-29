@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { cleanText } from '../lib/files.js';
+import { cleanFirstName, isValidFirstName } from '../lib/name.js';
 
 const router = Router();
 
@@ -32,6 +33,14 @@ router.post('/', (req, res) => {
 
     const isAnonymous = anonymous ? 1 : 0;
 
+    // Une idée publiée sous un nom doit porter un prénom : le client peut
+    // contourner l'interface, donc la règle est aussi vérifiée ici.
+    const author = cleanFirstName(author_name);
+    if (!isAnonymous && !isValidFirstName(author)) {
+      res.status(400).json({ error: 'Un prénom est requis pour publier une idée signée' });
+      return;
+    }
+
     const result = db
       .prepare(
         `INSERT INTO ideas (title, description, category, anonymous, author_name)
@@ -42,7 +51,7 @@ router.post('/', (req, res) => {
         description.trim(),
         (category || 'classe').trim(),
         isAnonymous,
-        isAnonymous ? null : (author_name || null)
+        isAnonymous ? null : author
       );
 
     const idea = db.prepare('SELECT * FROM ideas WHERE id = ?').get(Number(result.lastInsertRowid)) as any;

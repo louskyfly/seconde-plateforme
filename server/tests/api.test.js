@@ -572,6 +572,79 @@ describe('Idées', () => {
     assert.equal(after.data.find((i) => i.id === ideaId).status, 'en_discussion', 'le statut ne doit pas bouger');
   });
 
+  test('une idée signée exige un prénom, et un seul mot', async () => {
+    // Règle du site : le prénom est la seule identité affichée. Un nom complet
+    // ne doit pas pouvoir être enregistré, même en contournant le client.
+    const sansPrenom = await student('POST', '/api/ideas', {
+      title: 'Sans prénom',
+      description: 'x',
+      category: 'classe',
+    });
+    assert.equal(sansPrenom.status, 400);
+
+    const nomComplet = await student('POST', '/api/ideas', {
+      title: 'Nom complet',
+      description: 'x',
+      category: 'classe',
+      author_name: 'Jean Dupont',
+    });
+    assert.equal(nomComplet.status, 400, 'un nom de famille ne doit pas être accepté');
+
+    const tropCourt = await student('POST', '/api/ideas', {
+      title: 'Prénom trop court',
+      description: 'x',
+      category: 'classe',
+      author_name: 'J',
+    });
+    assert.equal(tropCourt.status, 400);
+
+    const valide = await student('POST', '/api/ideas', {
+      title: 'Prénom valide',
+      description: 'x',
+      category: 'classe',
+      author_name: 'Zoé',
+    });
+    assert.equal(valide.status, 201);
+    assert.equal(valide.data.author_name, 'Zoé');
+  });
+
+  test('une idée anonyme se publie sans prénom', async () => {
+    const res = await student('POST', '/api/ideas', {
+      title: 'Anonyme',
+      description: 'x',
+      category: 'classe',
+      anonymous: 1,
+    });
+    assert.equal(res.status, 201);
+    assert.equal(res.data.author_name, null, 'le prénom ne doit pas fuiter sur une idée anonyme');
+  });
+
+  test('un message signé exige un prénom, sinon il est refusé', async () => {
+    const sansPrenom = await student('POST', '/api/messages', {
+      content: 'Sans prénom',
+      category: 'question',
+      fingerprint: ALICE,
+    });
+    assert.equal(sansPrenom.status, 400);
+
+    const nomComplet = await student('POST', '/api/messages', {
+      content: 'Nom complet',
+      category: 'question',
+      fingerprint: ALICE,
+      author_name: 'Alice Martin',
+    });
+    assert.equal(nomComplet.status, 400, 'le nom de famille ne doit pas passer');
+
+    const anonyme = await student('POST', '/api/messages', {
+      content: 'Anonyme',
+      category: 'question',
+      anonymous: 1,
+      fingerprint: ALICE,
+    });
+    assert.equal(anonyme.status, 201);
+    assert.equal(anonyme.data.author_name, null);
+  });
+
   test('un élève ne peut pas changer le statut', async () => {
     const res = await student('PUT', `/api/ideas/${ideaId}`, { status: 'realisee' });
     assert.equal(res.status, 401);
@@ -855,6 +928,7 @@ describe('Messages au délégué', () => {
         content: 'Question de Bob',
         category: 'question',
         fingerprint: BOB,
+        author_name: 'Bob',
       });
       assert.equal(foreign.status, 201);
       await admin('PUT', `/api/messages/${foreign.data.id}`, { reply: 'Réponse à Bob' });
@@ -898,7 +972,12 @@ describe('Sauvegarde des données', () => {
   test('la restauration remet les données exportées', async () => {
     const backup = (await admin('GET', '/api/admin/export')).data;
 
-    await admin('POST', '/api/ideas', { title: 'Idée à écraser', description: 'x', category: 'classe' });
+    await admin('POST', '/api/ideas', {
+      title: 'Idée à écraser',
+      description: 'x',
+      category: 'classe',
+      anonymous: 1,
+    });
     const polluted = await admin('GET', '/api/ideas');
     assert.ok(polluted.data.some((i) => i.title === 'Idée à écraser'));
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { CATEGORIES_MESSAGE, generateFingerprint, getRelativeTime } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { useFirstNamePrompt } from '@/hooks/useFirstNamePrompt';
 import type { Message } from '@/types';
 
 const CATEGORIES = Object.keys(CATEGORIES_MESSAGE);
@@ -20,6 +21,7 @@ export default function MessageDelegate() {
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const { ensure, dialog: firstNameDialog } = useFirstNamePrompt();
   const [history, setHistory] = useState<Message[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -79,6 +81,14 @@ export default function MessageDelegate() {
 
   const handleSubmit = async () => {
     if (!content.trim()) return;
+
+    // Le prénom est demandé seulement si le message part sous son nom.
+    let authorName: string | null = null;
+    if (!anonymous) {
+      authorName = await ensure('Pour signer ton message, il me faut ton prénom.');
+      if (!authorName) return; // l'élève a annulé
+    }
+
     setSending(true);
     setError('');
     try {
@@ -86,6 +96,7 @@ export default function MessageDelegate() {
         content: content.trim(),
         category,
         anonymous: anonymous ? 1 : 0,
+        author_name: authorName,
         fingerprint: generateFingerprint(),
       });
       setContent('');
@@ -257,6 +268,8 @@ export default function MessageDelegate() {
           ))}
         </div>
       </section>
+
+      {firstNameDialog}
     </div>
   );
 }

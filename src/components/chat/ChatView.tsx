@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { fileToDataUri } from '@/lib/image';
-import { getRelativeTime, setAppBadge } from '@/lib/utils';
+import { cleanFirstName, getRelativeTime, isValidFirstName, setAppBadge, setFirstName } from '@/lib/utils';
 import type { ChatConversation, ChatMessage, ChatUser } from '@/types';
 
 const POLL_MS = 3000;
@@ -151,11 +151,21 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
 
   const join = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fingerprint || pseudo.trim().length < 2) return;
+    if (!fingerprint) return;
+    // Le chat affiche un prénom, jamais un nom complet : « Jean Dupont » est
+    // refusé, seul le premier mot est conservé.
+    const firstName = cleanFirstName(pseudo);
+    if (!isValidFirstName(firstName)) {
+      setError('Écris un seul prénom, sans nom de famille.');
+      return;
+    }
     setJoining(true);
     setError('');
     try {
-      const data = await api.joinChat(fingerprint, pseudo.trim());
+      // Le prénom est mémorisé : inutile de le redemander pour les idées ou
+      // les messages au délégué.
+      setFirstName(firstName);
+      const data = await api.joinChat(fingerprint, firstName);
       setUser(data.user);
       setConversation(data.conversation);
       setNeedsProfile(false);
@@ -249,15 +259,26 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
           <p className="text-3xl mb-3">💬</p>
           <h2 className="font-bold mb-1">Rejoindre le chat de classe</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">
-            Choisis un pseudo. Ni nom, ni email : seul ce pseudo sera visible par la classe.
+            Choisis ton prénom : c'est le seul nom visible par la classe. Ni nom de famille, ni
+            email.
           </p>
           <form onSubmit={join} className="space-y-3">
             <input
               value={pseudo}
               onChange={(e) => setPseudo(e.target.value)}
+              onKeyDown={(e) => {
+                // Collé depuis une autre source, un prénom peut contenir des
+                // espaces ou des chiffres : on nettoie avant l'enregistrement.
+                if (e.key === 'Enter') setPseudo(cleanFirstName(pseudo));
+              }}
+              onPaste={(e) => {
+                e.preventDefault();
+                setPseudo(cleanFirstName(e.clipboardData.getData('text')));
+              }}
               maxLength={30}
-              placeholder="Ton pseudo"
+              placeholder="Ton prénom"
               className="w-full px-4 py-2.5 rounded-xl glass text-sm outline-none focus:ring-2 focus:ring-indigo-500/40"
+              autoComplete="given-name"
               autoFocus
             />
             <button type="submit" disabled={joining || pseudo.trim().length < 2} className="glass-button-primary w-full py-2.5 text-sm">

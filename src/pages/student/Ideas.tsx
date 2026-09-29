@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { getRelativeTime, parseServerDate, CATEGORIES_IDEA, IDEA_STATUSES } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { useFirstNamePrompt } from '@/hooks/useFirstNamePrompt';
 import { Modal } from '@/components/ui/Modal';
 import type { Idea } from '@/types';
 
@@ -21,6 +22,7 @@ export default function Ideas() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const [loadError, setLoadError] = useState('');
+  const { ensure, dialog: firstNameDialog } = useFirstNamePrompt();
 
   const fetchIdeas = useCallback(() => {
     setLoadError('');
@@ -55,6 +57,15 @@ export default function Ideas() {
       setFormError('Écris un titre pour ton idée.');
       return;
     }
+
+    // Le prénom est demandé uniquement si l'élève publie sous son nom : une
+    // idée anonyme n'en a pas besoin.
+    let authorName: string | null = null;
+    if (!formAnon) {
+      authorName = await ensure('Pour signer ton idée, il me faut ton prénom.');
+      if (!authorName) return; // l'élève a annulé
+    }
+
     setSubmitting(true);
     setFormError('');
     try {
@@ -63,6 +74,7 @@ export default function Ideas() {
         description: formDesc.trim(),
         category: formCat,
         anonymous: formAnon ? 1 : 0,
+        author_name: authorName,
       });
       resetForm();
       setModalOpen(false);
@@ -282,6 +294,8 @@ export default function Ideas() {
           </button>
         </form>
       </Modal>
+
+      {firstNameDialog}
     </div>
   );
 }

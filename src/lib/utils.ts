@@ -67,6 +67,48 @@ export function generateFingerprint(): string {
   return fp;
 }
 
+const FIRST_NAME_KEY = 'student_first_name';
+
+/**
+ * Prénom de l'élève, demandé uniquement au moment où il publie.
+ *
+ * Choix explicite : le prénom n'est pas demandé à la première connexion, mais
+ * il est obligatoire dès qu'on publie quelque chose sous son nom (idée,
+ * message au délégué). Le prénom est la seule identité affichée : ni nom de
+ * famille, ni classe, ni email.
+ */
+export function getFirstName(): string {
+  return localStorage.getItem(FIRST_NAME_KEY) || '';
+}
+
+export function setFirstName(value: string): void {
+  const name = value.trim();
+  if (name) {
+    localStorage.setItem(FIRST_NAME_KEY, name);
+  } else {
+    localStorage.removeItem(FIRST_NAME_KEY);
+  }
+}
+
+/**
+ * Nettoie un prénom saisi : on ne garde que des lettres, des espaces, des
+ * apostrophes et des traits d'union, et on refuse les espaces au milieu
+ * (« Jean Pierre » ne peut pas être un prénom).
+ */
+export function cleanFirstName(value: string): string {
+  return value
+    .replace(/[^\p{L}\s'-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 30);
+}
+
+export function isValidFirstName(value: string): boolean {
+  const name = cleanFirstName(value);
+  if (name.length < 2 || name.length > 30) return false;
+  return !name.includes(' ');
+}
+
 export const CATEGORIES_ANNOUNCEMENT: Record<string, string> = {
   scolarite: '📚 Scolarite',
   organisation: '📅 Organisation',

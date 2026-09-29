@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { cleanText } from '../lib/files.js';
+import { cleanFirstName, isValidFirstName } from '../lib/name.js';
 
 const router = Router();
 
@@ -73,6 +74,14 @@ router.post('/', (req, res) => {
     const isAnonymous = anonymous ? 1 : 0;
     const senderId = typeof fingerprint === 'string' ? fingerprint.trim().slice(0, 64) : '';
 
+    // Même règle que pour les idées : un message signé exige un prénom, sinon
+    // un client qui contourne l'interface pourrait publier sans identité.
+    const author = cleanFirstName(author_name);
+    if (!isAnonymous && !isValidFirstName(author)) {
+      res.status(400).json({ error: 'Un prénom est requis pour envoyer un message signé' });
+      return;
+    }
+
     const result = db
       .prepare(
         `INSERT INTO messages (content, category, anonymous, author_name, fingerprint)
@@ -82,7 +91,7 @@ router.post('/', (req, res) => {
         content.trim(),
         (category || 'autre').trim(),
         isAnonymous,
-        isAnonymous ? null : (author_name || null),
+        isAnonymous ? null : author,
         senderId || null
       );
 

@@ -166,6 +166,8 @@ export interface ChatConversation {
   is_group: number;
 }
 
+export type ChatReaction = 'pouce' | 'rire' | 'coeur';
+
 export interface ChatMessage {
   id: number;
   conversation_id: number;
@@ -175,6 +177,8 @@ export interface ChatMessage {
   content: string;
   has_image: number;
   created_at: string;
+  /** Compteurs par réaction, avec `mine` pour celles de l'élève courant. */
+  reactions: Record<string, { total: number; mine: boolean }>;
 }
 
 export interface Sheet {

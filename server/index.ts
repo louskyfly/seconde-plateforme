@@ -11,6 +11,7 @@ import { SqliteSessionStore } from './db/session-store.js';
 import { startAutoBackup } from './db/backup.js';
 import { seedDatabase } from './db/seed.js';
 import { maintenanceGate } from './middleware/maintenance.js';
+import { startChatPurge } from './lib/chat-purge.js';
 
 import authRoutes from './routes/auth.js';
 import announcementsRoutes from './routes/announcements.js';
@@ -39,6 +40,7 @@ initDatabase(db);
 seedDatabase(db);
 ensureDefaultChatGroup(db);
 startAutoBackup(db);
+startChatPurge();
 
 app.set('trust proxy', process.env.TRUST_PROXY ? parseInt(process.env.TRUST_PROXY, 10) : false);
 

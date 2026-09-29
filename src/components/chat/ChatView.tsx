@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { fileToDataUri } from '@/lib/image';
 import { cleanFirstName, getRelativeTime, isValidFirstName, setAppBadge, setFirstName } from '@/lib/utils';
+import { ChatReactions, LONG_PRESS_MS } from './ChatReactions';
 import type { ChatConversation, ChatMessage, ChatUser } from '@/types';
 
 const POLL_MS = 3000;
@@ -29,8 +30,29 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
   const [content, setContent] = useState('');
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [newCount, setNewCount] = useState(0);
+const [uploading, setUploading] = useState(false);
+const [newCount, setNewCount] = useState(0);
+
+  /** Sélecteur de réactions ouvert, par identifiant de message. */
+  const [reactionFor, setReactionFor] = useState<number | null>(null);
+  const longPressTimer = useRef<number | null>(null);
+
+  /** Les réactions sont réservées aux élèves : le délégué répond, il ne réagit pas. */
+  const canReact = !isAdmin && user?.kind === 'student' && !!fingerprint;
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+  };
+
+  const startLongPress = (messageId: number) => {
+    cancelLongPress();
+    longPressTimer.current = window.setTimeout(() => setReactionFor(messageId), LONG_PRESS_MS);
+  };
+
+  /** Met à jour les compteurs d'un seul message, sans recharger tout le fil. */
+  const applyReactionCounts = (messageId: number, counts: Record<string, { total: number; mine: boolean }>) => {
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: counts } : m)));
+  };
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -335,6 +357,10 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
                       ? 'bg-amber-500/15 dark:bg-amber-500/10 border border-amber-500/30 rounded-bl-md'
                       : 'glass rounded-bl-md'
                 }`}
+                onTouchStart={canReact ? () => startLongPress(m.id) : undefined}
+                onTouchEnd={canReact ? () => cancelLongPress() : undefined}
+                onTouchMove={canReact ? () => cancelLongPress() : undefined}
+                onTouchCancel={canReact ? () => cancelLongPress() : undefined}
               >
                 <div className="flex items-center gap-2 mb-0.5">
                   {!mine && (
@@ -359,6 +385,17 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
                 )}
 
                 {m.content && <p className="whitespace-pre-wrap break-words">{m.content}</p>}
+
+                {canReact && (
+                  <ChatReactions
+                    messageId={m.id}
+                    fingerprint={fingerprint}
+                    initial={m.reactions || {}}
+                    onChange={applyReactionCounts}
+                    open={reactionFor === m.id}
+                    onOpenChange={(isOpen) => setReactionFor(isOpen ? m.id : null)}
+                  />
+                )}
 
                 {canDelete && (
                   <button

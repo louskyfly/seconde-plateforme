@@ -102,6 +102,8 @@ function shapeMessage(row: any) {
     content: row.content,
     has_image: row.image ? 1 : 0,
     created_at: row.created_at,
+    // Remplacé plus loin par reactionCounts() : évite une requête par message.
+    reactions: {} as Record<string, { total: number; mine: boolean }>,
   };
 }
 
@@ -213,6 +215,109 @@ router.get('/unread', (req, res) => {
   }
 });
 
+/** Réactions autorisées : la liste est fermée, aucune valeur libre. */
+const REACTIONS = ['pouce', 'rire', 'coeur'] as const;
+type Reaction = (typeof REACTIONS)[number];
+
+function isReaction(value: unknown): value is Reaction {
+  return typeof value === 'string' && (REACTIONS as readonly string[]).includes(value);
+}
+
+/**
+ * Réactions d'un message.
+ *
+ * Réservées aux élèves : le délégué ne réagit pas, il répond, donc l'API
+ * refuse sa requête. Une réaction est un ajout/retrait : re-cliquer sur la
+ * même réaction l'enlève.
+ */
+router.post('/messages/:id/reactions', (req, res) => {
+  try {
+    const user = findUser(req);
+    if (!user) {
+      res.status(401).json({ error: 'Identifiant appareil manquant' });
+      return;
+    }
+    if (user.kind === 'delegate') {
+      res.status(403).json({ error: 'Les réactions sont réservées aux élèves' });
+      return;
+    }
+
+    const { reaction } = req.body || {};
+    if (!isReaction(reaction)) {
+      res.status(400).json({ error: 'Réaction inconnue' });
+      return;
+    }
+
+    const messageId = Number(req.params.id);
+    const message = db.prepare('SELECT id FROM chat_messages WHERE id = ?').get(messageId) as
+      | { id: number }
+      | undefined;
+    if (!message) {
+      res.status(404).json({ error: 'Message introuvable' });
+      return;
+    }
+
+    const group = getDefaultGroup();
+    if (!group || !isMember(group.id, user.id)) {
+      res.status(403).json({ error: 'Accès refusé' });
+      return;
+    }
+
+    // Insertion ignorée si la réaction existe déjà : sert d'idempotence, puis on
+    // bascule pour retirer. L'ordre INSERT puis DELETE compte, sinon retirer
+    // une réaction absente ne ferait rien.
+    const insert = db
+      .prepare(
+        'INSERT OR IGNORE INTO chat_reactions (message_id, reaction, user_id) VALUES (?, ?, ?)'
+      )
+      .run(messageId, reaction, user.id);
+
+    let active = 1;
+    if (insert.changes === 0) {
+      db.prepare('DELETE FROM chat_reactions WHERE message_id = ? AND reaction = ? AND user_id = ?').run(
+        messageId,
+        reaction,
+        user.id
+      );
+      active = 0;
+    }
+
+    res.json({
+      reaction,
+      active,
+      // `user.id` est indispensable, sans quoi le `mine` renvoyé serait toujours
+      // faux et la réactionposant clignoterait après chaque clic.
+      counts: reactionCounts(messageId, user.id),
+      mine: active === 1,
+    });
+  } catch (err) {
+    console.error('Chat reaction error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+/** Comptage des réactions d'un message, avec la liste de celles de l'élève. */
+function reactionCounts(messageId: number, userId?: number) {
+  const rows = db
+    .prepare(
+      'SELECT reaction, COUNT(*) AS total FROM chat_reactions WHERE message_id = ? GROUP BY reaction'
+    )
+    .all(messageId) as { reaction: string; total: number }[];
+
+  const mineRows = userId
+    ? (db
+        .prepare('SELECT reaction FROM chat_reactions WHERE message_id = ? AND user_id = ?')
+        .all(messageId, userId) as { reaction: string }[])
+    : [];
+
+  const mine = new Set(mineRows.map((r) => r.reaction));
+  const counts: Record<string, { total: number; mine: boolean }> = {};
+  for (const row of rows) {
+    counts[row.reaction] = { total: row.total, mine: mine.has(row.reaction) };
+  }
+  return counts;
+}
+
 router.get('/messages', (req, res) => {
   try {
     const user = findUser(req);
@@ -241,7 +346,14 @@ router.get('/messages', (req, res) => {
       )
       .all(conversation.id, after, limit) as any[];
 
-    res.json({ messages: rows.reverse().map(shapeMessage), conversation_id: conversation.id });
+    // Les réactions voyagent avec les messages : un aller-retour suffit à
+    // afficher les compteurs et de savoir lesquelles l'élève a déjà posées.
+    const messages = rows.reverse().map(shapeMessage);
+    for (const message of messages) {
+      message.reactions = reactionCounts(message.id, user.id);
+    }
+
+    res.json({ messages, conversation_id: conversation.id });
   } catch (err) {
     console.error('Get chat messages error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -386,6 +498,50 @@ router.get('/messages/:id/image', (req, res) => {
  * Suppression d'un message : par son auteur, ou par le délégué (modération).
  * Dans les deux cas l'action est inscrite au journal d'administration.
  */
+/**
+ * Suppression d'une journée entière de discussion.
+ *
+ * Réservée au délégué. Le jour est interprété en heure locale du serveur, ce qui
+ * correspond aux dates UTC stockées par SQLite : `date(m.created_at) = ?`.
+ */
+router.delete('/day/:date', requireAuth, (req, res) => {
+  try {
+    const { date } = req.params;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      res.status(400).json({ error: 'Date invalide' });
+      return;
+    }
+
+    const group = getDefaultGroup();
+    if (!group) {
+      res.status(404).json({ error: 'Conversation introuvable' });
+      return;
+    }
+
+    const count = (
+      db
+        .prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE conversation_id = ? AND date(created_at) = ?')
+        .get(group.id, date) as { n: number }
+    ).n;
+
+    if (count === 0) {
+      res.status(404).json({ error: 'Aucun message à cette date' });
+      return;
+    }
+
+    db.prepare('DELETE FROM chat_messages WHERE conversation_id = ? AND date(created_at) = ?').run(
+      group.id,
+      date
+    );
+    logAdminAction(db, 'chat_day_delete', 'chat_conversation', group.id, `Journée du ${date} supprimée (${count} message(s))`);
+
+    res.json({ success: true, deleted: count, date });
+  } catch (err) {
+    console.error('Delete chat day error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 router.delete('/messages/:id', (req, res) => {
   try {
     const isAdmin = req.session?.authenticated === true;

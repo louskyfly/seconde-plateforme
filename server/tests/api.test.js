@@ -297,6 +297,82 @@ describe('Chat', () => {
     assert.ok(log.data.some((entry) => entry.action === 'chat_message_delete'));
   });
 
+  test('les élèves réagissent aux messages, le délégué non', async () => {
+    const sent = await other('POST', '/api/chat/messages', {
+      fingerprint: BOB,
+      conversation_id: 1,
+      content: 'Message à réagir',
+    });
+    const messageId = sent.data.message.id;
+
+    // Réaction inconnue : refusée, la liste est fermée.
+    const inconnue = await student('POST', `/api/chat/messages/${messageId}/reactions`, {
+      fingerprint: ALICE,
+      reaction: 'fusée',
+    });
+    assert.equal(inconnue.status, 400);
+
+    // Le délégué ne réagit pas, il répond.
+    const parDelegate = await admin('POST', `/api/chat/messages/${messageId}/reactions`, {
+      reaction: 'pouce',
+    });
+    assert.equal(parDelegate.status, 403);
+
+    // Un élève réagit, la réaction est comptée.
+    const ajout = await student('POST', `/api/chat/messages/${messageId}/reactions`, {
+      fingerprint: ALICE,
+      reaction: 'pouce',
+    });
+    assert.equal(ajout.status, 200);
+    assert.equal(ajout.data.active, 1);
+    assert.equal(ajout.data.counts.pouce.total, 1);
+    assert.equal(ajout.data.counts.pouce.mine, true);
+
+    // Re-cliquer retire la réaction (une seule fois par élève et par type).
+    const retrait = await student('POST', `/api/chat/messages/${messageId}/reactions`, {
+      fingerprint: ALICE,
+      reaction: 'pouce',
+    });
+    assert.equal(retrait.data.active, 0);
+    assert.equal(retrait.data.counts.pouce, undefined, 'le compteur doit repasser à zéro');
+
+    // Deux élèves différents, deux Votes distincts.
+    await student('POST', `/api/chat/messages/${messageId}/reactions`, { fingerprint: ALICE, reaction: 'coeur' });
+    await other('POST', `/api/chat/messages/${messageId}/reactions`, { fingerprint: BOB, reaction: 'coeur' });
+    const fil = await student('GET', `/api/chat/messages?fingerprint=${ALICE}&conversation_id=1&after=0`);
+    const message = fil.data.messages.find((m) => m.id === messageId);
+    assert.equal(message.reactions.coeur.total, 2);
+    assert.equal(message.reactions.coeur.mine, true, 'Alice voit sa propre réaction');
+  });
+
+  test('le délégué supprime une journée entière de discussion', async () => {
+    await student('POST', '/api/chat/messages', { fingerprint: ALICE, conversation_id: 1, content: 'Jour 1 A' });
+    await student('POST', '/api/chat/messages', { fingerprint: ALICE, conversation_id: 1, content: 'Jour 1 B' });
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Un élève ne peut pas le faire.
+    const parEleve = await student('DELETE', `/api/chat/day/${today}?fingerprint=${ALICE}`);
+    assert.equal(parEleve.status, 401);
+
+    const res = await admin('DELETE', `/api/chat/day/${today}`);
+    assert.equal(res.status, 200);
+    assert.ok(res.data.deleted >= 2, 'les deux messages du jour doivent partir');
+
+    const fil = await student('GET', `/api/chat/messages?fingerprint=${ALICE}&conversation_id=1&after=0`);
+    assert.equal(
+      fil.data.messages.filter((m) => m.content.startsWith('Jour 1')).length,
+      0,
+      'plus aucun message du jour ne doit subsister'
+    );
+
+    // Une date mal formée est refusée.
+    assert.equal((await admin('DELETE', '/api/chat/day/pas-une-date')).status, 400);
+
+    const log = await admin('GET', '/api/admin/log');
+    assert.ok(log.data.some((entry) => entry.action === 'chat_day_delete'));
+  });
+
   test('limite anti-spam', async () => {
     let limited = false;
     for (let i = 0; i < 12; i++) {

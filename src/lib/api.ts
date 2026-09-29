@@ -195,6 +195,15 @@ export const api = {
     `/api/chat/messages/${messageId}/image` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''),
   deleteChatMessage: (id: number, fingerprint?: string) =>
     request<{ success: boolean }>(`/chat/messages/${id}` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''), { method: 'DELETE' }),
+  /** Supprime tous les messages d'une journée. Réservé au délégué. */
+  deleteChatDay: (date: string) =>
+    request<{ success: boolean; deleted: number; date: string }>(`/chat/day/${date}`, { method: 'DELETE' }),
+  /** Ajoute ou retire une réaction. Réservée aux élèves. */
+  toggleChatReaction: (messageId: number, reaction: string, fingerprint?: string | null) =>
+    request<{ reaction: string; active: number; mine: boolean; counts: Record<string, { total: number; mine: boolean }> }>(
+      `/chat/messages/${messageId}/reactions`,
+      { method: 'POST', body: JSON.stringify({ reaction, fingerprint }) }
+    ),
 
   // Fiches de révision
   getSheets: (params: { subject?: string | null; q?: string | null; page?: number; fingerprint?: string | null; status?: string | null } = {}) => {

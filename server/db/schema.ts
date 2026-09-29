@@ -214,9 +214,25 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
   deleted_by TEXT,
+  purged_at DATETIME,
   FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
   FOREIGN KEY (sender_id) REFERENCES chat_users(id) ON DELETE CASCADE
 );
+
+-- Réactions rapides : pouce, rire, cœur. Réservées aux élèves (le délégué ne
+-- réagit pas, il répond), d'où l'absence de contrainte sur le sender.
+CREATE TABLE IF NOT EXISTS chat_reactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL,
+  reaction TEXT NOT NULL,
+  user_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(message_id, reaction, user_id),
+  FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES chat_users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_reactions_msg ON chat_reactions(message_id);
 
 CREATE TABLE IF NOT EXISTS sheets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

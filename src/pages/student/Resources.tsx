@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { SUBJECTS } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { LoadError } from '@/components/ui/LoadError';
 import type { Resource } from '@/types';
 
 const ALL_SUBJECTS = Object.keys(SUBJECTS);
@@ -9,14 +10,17 @@ const ALL_SUBJECTS = Object.keys(SUBJECTS);
 export default function Resources() {
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await api.getResources();
       setResources(data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+      setLoadError(false);
     } catch {
-      /* on garde les données déjà affichées */
+      // Une erreur ne doit pas se lire comme « aucune ressource ».
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -72,7 +76,9 @@ export default function Resources() {
         </div>
       )}
 
-      {!loading && filtered.length === 0 && (
+      {!loading && loadError && <LoadError onRetry={load} />}
+
+      {!loading && !loadError && filtered.length === 0 && (
         <div className="glass-card text-center py-10">
           <p className="text-3xl mb-3">📚</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
@@ -81,7 +87,7 @@ export default function Resources() {
         </div>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loading && !loadError && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {filtered.map((resource) => {
             const subjectLabel = SUBJECTS[resource.subject] || resource.subject;

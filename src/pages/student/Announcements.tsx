@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { getRelativeTime, CATEGORIES_ANNOUNCEMENT, generateFingerprint } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { LoadError } from '@/components/ui/LoadError';
 import type { Announcement } from '@/types';
 
 const ALL_CATEGORIES = Object.keys(CATEGORIES_ANNOUNCEMENT);
@@ -16,6 +17,7 @@ const REACTIONS = [
 export default function Announcements() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
@@ -27,8 +29,10 @@ export default function Announcements() {
           .filter((a) => a.published)
           .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       );
+      setLoadError(false);
     } catch {
-      /* on garde les données déjà affichées */
+      // Une erreur ne doit pas se lire comme « aucune information ».
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -119,7 +123,9 @@ export default function Announcements() {
         </div>
       )}
 
-      {!loading && filtered.length === 0 && (
+      {!loading && loadError && <LoadError onRetry={load} />}
+
+      {!loading && !loadError && filtered.length === 0 && (
         <div className="glass-card text-center py-10">
           <p className="text-3xl mb-3">📭</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
@@ -128,7 +134,7 @@ export default function Announcements() {
         </div>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loading && !loadError && filtered.length > 0 && (
         <div className="space-y-3">
           {filtered.map((a) => {
             const isImportant = a.importance === 'important' || a.category === 'important';

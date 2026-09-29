@@ -4,6 +4,7 @@ import { getRelativeTime, parseServerDate, CATEGORIES_IDEA, IDEA_STATUSES } from
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useFirstNamePrompt } from '@/hooks/useFirstNamePrompt';
 import { Modal } from '@/components/ui/Modal';
+import { IdeaReplies } from '@/components/student/IdeaReplies';
 import type { Idea } from '@/types';
 
 const CATEGORIES = Object.keys(CATEGORIES_IDEA);
@@ -207,6 +208,8 @@ export default function Ideas() {
                     </p>
                   </div>
                 )}
+
+                <IdeaReplies ideaId={idea.id} />
               </div>
             );
           })}

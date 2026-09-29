@@ -23,6 +23,116 @@ router.get('/', (req, res) => {
   }
 });
 
+/**
+ * Réponses des élèves sous une idée.
+ *
+ * Le fil est public : tout le monde voit les réponses, mais seul l'auteur peut
+ * supprimer la sienne (via son fingerprint). Le délégué peut tout supprimer.
+ */
+router.get('/:id/replies', (req, res) => {
+  try {
+    const { id } = req.params;
+    const idea = db.prepare('SELECT id FROM ideas WHERE id = ?').get(id);
+    if (!idea) {
+      res.status(404).json({ error: 'Idée introuvable' });
+      return;
+    }
+
+    const replies = db
+      .prepare(
+        `SELECT id, content, author_name, deleted_at, created_at
+         FROM idea_replies WHERE idea_id = ? ORDER BY id ASC`
+      )
+      .all(id) as any[];
+
+    res.json(
+      replies.map((r) => ({
+        ...r,
+        author_name: r.deleted_at ? null : r.author_name,
+        content: r.deleted_at ? 'Message supprimé' : r.content,
+      }))
+    );
+  } catch (err) {
+    console.error('Get idea replies error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+router.post('/:id/replies', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content, author_name, fingerprint } = req.body;
+
+    if (!content || typeof content !== 'string' || !content.trim()) {
+      res.status(400).json({ error: 'Réponse vide' });
+      return;
+    }
+
+    const idea = db.prepare('SELECT id FROM ideas WHERE id = ?').get(id);
+    if (!idea) {
+      res.status(404).json({ error: 'Idée introuvable' });
+      return;
+    }
+
+    const author = cleanFirstName(author_name);
+    if (!isValidFirstName(author)) {
+      res.status(400).json({ error: 'Un prénom est requis pour répondre' });
+      return;
+    }
+
+    const sender = typeof fingerprint === 'string' ? fingerprint.trim().slice(0, 64) : '';
+
+    const result = db
+      .prepare('INSERT INTO idea_replies (idea_id, content, author_name, fingerprint) VALUES (?, ?, ?, ?)')
+      .run(id, cleanText(content, 1000), author, sender || null);
+
+    // Notifie le délégué : une réponse est une nouvelle activité sur une idée.
+    db.prepare('INSERT INTO admin_log (action, target_type, target_id, detail) VALUES (?, ?, ?, ?)').run(
+      'reply',
+      'idea',
+      Number(id),
+      `Réponse de ${author}`
+    );
+
+    const reply = db
+      .prepare(
+        'SELECT id, content, author_name, deleted_at, created_at FROM idea_replies WHERE id = ?'
+      )
+      .get(Number(result.lastInsertRowid));
+
+    res.status(201).json(reply);
+  } catch (err) {
+    console.error('Create idea reply error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+router.delete('/replies/:replyId', (req, res) => {
+  try {
+    const { replyId } = req.params;
+    const { fingerprint } = req.body || {};
+
+    const reply = db.prepare('SELECT * FROM idea_replies WHERE id = ?').get(replyId) as any;
+    if (!reply) {
+      res.status(404).json({ error: 'Réponse introuvable' });
+      return;
+    }
+
+    const sender = typeof fingerprint === 'string' ? fingerprint.trim().slice(0, 64) : '';
+    if (!sender || reply.fingerprint !== sender) {
+      res.status(403).json({ error: 'Tu ne peux supprimer que tes propres réponses' });
+      return;
+    }
+
+    // Suppression logique : l'ordre du fil est conservé, comme dans le chat.
+    db.prepare('UPDATE idea_replies SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?').run(replyId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete idea reply error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 router.post('/', (req, res) => {
   try {
     const { title, description, category, anonymous, author_name } = req.body;
@@ -96,9 +206,10 @@ router.put('/:id', requireAuth, (req, res) => {
       `UPDATE ideas SET
         status = COALESCE(?, status),
         delegate_response = COALESCE(?, delegate_response),
+        delegate_replied_at = CASE WHEN ? IS NOT NULL THEN CURRENT_TIMESTAMP ELSE delegate_replied_at END,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`
-    ).run(nextStatus, response || null, id);
+    ).run(nextStatus, response || null, response || null, id);
 
     const updated = db.prepare('SELECT * FROM ideas WHERE id = ?').get(id);
     res.json(updated);

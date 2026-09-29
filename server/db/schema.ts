@@ -37,9 +37,23 @@ CREATE TABLE IF NOT EXISTS ideas (
   author_name TEXT,
   status TEXT DEFAULT 'a_etudier',
   delegate_response TEXT,
+  delegate_replied_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS idea_replies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  idea_id INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  author_name TEXT NOT NULL,
+  fingerprint TEXT,
+  deleted_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (idea_id) REFERENCES ideas(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_idea_replies_idea ON idea_replies(idea_id, id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

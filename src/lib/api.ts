@@ -2,6 +2,7 @@ import type {
   Settings,
   Announcement,
   Idea,
+  IdeaReply,
   Message,
   Poll,
   Event,
@@ -107,6 +108,16 @@ export const api = {
   createIdea: (data: any) => request<Idea>('/ideas', { method: 'POST', body: JSON.stringify(data) }),
   updateIdea: (id: number, data: any) => request<Idea>(`/ideas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteIdea: (id: number) => request<{ success: boolean }>(`/ideas/${id}`, { method: 'DELETE' }),
+
+  // Réponses aux idées (fil de discussion public sous chaque idée)
+  getIdeaReplies: (id: number) => request<IdeaReply[]>(`/ideas/${id}/replies`),
+  createIdeaReply: (id: number, data: any) =>
+    request<IdeaReply>(`/ideas/${id}/replies`, { method: 'POST', body: JSON.stringify(data) }),
+  deleteIdeaReply: (replyId: number, fingerprint: string) =>
+    request<{ success: boolean }>(`/ideas/replies/${replyId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ fingerprint }),
+    }),
   
   // Messages
   getMessages: () => request<Message[]>('/messages'),

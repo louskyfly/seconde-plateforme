@@ -37,6 +37,16 @@ export interface Idea {
   updated_at: string;
 }
 
+/** Réponse d'un élève sous une idée. Suppression logique via `deleted_at`. */
+export interface IdeaReply {
+  id: number;
+  content: string;
+  /** null quand la réponse a été supprimée. */
+  author_name: string | null;
+  deleted_at: string | null;
+  created_at: string;
+}
+
 export interface Message {
   id: number;
   content: string;

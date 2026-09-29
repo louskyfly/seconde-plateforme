@@ -619,6 +619,77 @@ describe('Idées', () => {
     assert.equal(res.data.author_name, null, 'le prénom ne doit pas fuiter sur une idée anonyme');
   });
 
+  test('les élèves peuvent répondre sous une idée', async () => {
+    const created = await student('POST', '/api/ideas', {
+      title: 'Idèce de discussion',
+      description: 'On en parle ?',
+      category: 'classe',
+      anonymous: 1,
+    });
+    assert.equal(created.status, 201);
+    const id = created.data.id;
+
+    // Une réponse exige un prénom.
+    const sansPrenom = await student('POST', `/api/ideas/${id}/replies`, {
+      content: 'Je suis d’accord',
+      fingerprint: ALICE,
+    });
+    assert.equal(sansPrenom.status, 400);
+
+    const reponse = await student('POST', `/api/ideas/${id}/replies`, {
+      content: 'Je suis d’accord',
+      author_name: 'Alice',
+      fingerprint: ALICE,
+    });
+    assert.equal(reponse.status, 201);
+    assert.equal(reponse.data.author_name, 'Alice');
+
+    const fil = await student('GET', `/api/ideas/${id}/replies`);
+    assert.equal(fil.data.length, 1);
+    assert.equal(fil.data[0].content, 'Je suis d’accord');
+  });
+
+  test('on ne supprime que sa propre réponse', async () => {
+    const created = await student('POST', '/api/ideas', {
+      title: 'Droits de suppression',
+      description: 'x',
+      category: 'classe',
+      anonymous: 1,
+    });
+    const id = created.data.id;
+
+    const reponse = await other('POST', `/api/ideas/${id}/replies`, {
+      content: 'Message de Bob',
+      author_name: 'Bob',
+      fingerprint: BOB,
+    });
+    assert.equal(reponse.status, 201);
+
+    // Alice tente de supprimer la réponse de Bob : refusé.
+    const parAlice = await student('DELETE', `/api/ideas/replies/${reponse.data.id}`, {
+      fingerprint: ALICE,
+    });
+    assert.equal(parAlice.status, 403);
+
+    // Bob supprime la sienne : accepté, et le fil le garde en place.
+    const parBob = await other('DELETE', `/api/ideas/replies/${reponse.data.id}`, { fingerprint: BOB });
+    assert.equal(parBob.status, 200);
+
+    const fil = await student('GET', `/api/ideas/${id}/replies`);
+    assert.equal(fil.data.length, 1, 'le fil conserve la place de la réponse supprimée');
+    assert.equal(fil.data[0].deleted_at !== null, true);
+    assert.equal(fil.data[0].author_name, null, 'le prénom ne doit pas rester après suppression');
+  });
+
+  test('une réponse sur une idée inexistante est refusée', async () => {
+    const res = await student('POST', '/api/ideas/999999/replies', {
+      content: 'x',
+      author_name: 'Alice',
+      fingerprint: ALICE,
+    });
+    assert.equal(res.status, 404);
+  });
+
   test('un message signé exige un prénom, sinon il est refusé', async () => {
     const sansPrenom = await student('POST', '/api/messages', {
       content: 'Sans prénom',
@@ -643,6 +714,27 @@ describe('Idées', () => {
     });
     assert.equal(anonyme.status, 201);
     assert.equal(anonyme.data.author_name, null);
+  });
+
+  test('supprimer une idée emporte ses réponses', async () => {
+    const created = await student('POST', '/api/ideas', {
+      title: 'Idée éphémère',
+      description: 'x',
+      category: 'classe',
+      anonymous: 1,
+    });
+    const id = created.data.id;
+    await student('POST', `/api/ideas/${id}/replies`, {
+      content: 'Une réponse',
+      author_name: 'Alice',
+      fingerprint: ALICE,
+    });
+    assert.equal((await student('GET', `/api/ideas/${id}/replies`)).data.length, 1);
+
+    assert.equal((await admin('DELETE', `/api/ideas/${id}`)).status, 200);
+
+    const fil = await student('GET', `/api/ideas/${id}/replies`);
+    assert.equal(fil.status, 404, 'les réponses ne doivent pas survivre à l’idée');
   });
 
   test('un élève ne peut pas changer le statut', async () => {

@@ -143,26 +143,36 @@ function GroupCard({
           </button>
         )}
 
-        {group.status === 'valide' && (
+        {(group.status === 'en_attente' || group.status === 'valide') && (
           <button
             type="button"
-            onClick={() => changerStatut('en_attente')}
-            disabled={busy}
-            className="px-2.5 py-1 rounded-lg glass text-[11px] font-semibold hover:bg-white/10 disabled:opacity-40"
-          >
-            Rouvrir
-          </button>
-        )}
-
-        {group.status === 'en_attente' && (
-          <button
-            type="button"
-            onClick={() => changerStatut('refuse')}
+            onClick={() => {
+              if (
+                group.status === 'valide' &&
+                !window.confirm(
+                  `Refuser « ${group.name} » ? Ses élèves seront libérés et pourront rejoindre un autre groupe.`
+                )
+              ) {
+                return;
+              }
+              void changerStatut('refuse');
+            }}
             disabled={busy}
             className="px-2.5 py-1 rounded-lg bg-red-500/80 text-white text-[11px] font-bold hover:bg-red-600 disabled:opacity-40"
+            title="Libère les élèves du groupe"
           >
             Refuser
           </button>
+        )}
+
+        {/* Un groupe validé n'est plus rouvrable : le bouton a été retiré parce que
+            le serveur le refuse désormais. L'écrire ici évite que l'absence de
+            bouton passe pour un oubli. Le refus et la suppression restent
+            possibles pour corriger un groupe mal constitué. */}
+        {fige && (
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            Composition figée. Pour le refaire autrement, refuse-le ou supprime-le.
+          </span>
         )}
 
         <button

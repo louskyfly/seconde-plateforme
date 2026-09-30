@@ -1571,6 +1571,69 @@ describe('Élèves et groupes', () => {
     assert.equal(validation.data.status, 'valide');
   });
 
+  test('un groupe privé ne fuite pas vers les élèves', async () => {
+    const eleve1 = (await admin('POST', '/api/students', { first_name: 'Yanis', last_name: 'Yilmaz' })).data;
+    const eleve2 = (await admin('POST', '/api/students', { first_name: 'Zoé', last_name: 'Ziani' })).data;
+    const eleve3 = (await admin('POST', '/api/students', { first_name: 'Aya', last_name: 'Amrani' })).data;
+
+    const prive = (await admin('POST', '/api/groups', {
+      name: 'Groupe confidentiel',
+      is_private: true,
+      student_ids: [eleve1.id, eleve2.id, eleve3.id],
+    })).data;
+
+    const public_ = (await admin('POST', '/api/groups', {
+      name: 'Groupe ouvert',
+      student_ids: [],
+      validate_now: false,
+    })).data;
+
+    // Le délégué voit tout, y compris le groupe privé.
+    const vueDelegue = (await admin('GET', '/api/groups')).data;
+    assert.ok(
+      vueDelegue.some((g) => g.id === prive.id && g.is_private === 1),
+      'le délégué voit ses groupes privés'
+    );
+
+    // Un élève, lui, ne doit rien voir du groupe privé : ni son nom, ni ses
+    // membres. Avant, la route était publique et renvoyait tout.
+    const vueEleve = (await student('GET', '/api/groups')).data;
+    assert.ok(
+      !vueEleve.some((g) => g.id === prive.id),
+      'le groupe privé est invisible pour un élève'
+    );
+    assert.ok(
+      !JSON.stringify(vueEleve).includes('Groupe confidentiel'),
+      'le nom du groupe privé ne fuite pas'
+    );
+    assert.ok(
+      vueEleve.some((g) => g.id === public_.id),
+      'les groupes non privés restent visibles'
+    );
+  });
+
+  test('un groupe validé ne peut pas être rouvert', async () => {
+    const e1 = (await admin('POST', '/api/students', { first_name: 'Nina', last_name: 'Nguyen' })).data;
+    const e2 = (await admin('POST', '/api/students', { first_name: 'Oscar', last_name: 'Olivier' })).data;
+    const e3 = (await admin('POST', '/api/students', { first_name: 'Sara', last_name: 'Sauvage' })).data;
+
+    const groupe = (await admin('POST', '/api/groups', {
+      name: 'Figé',
+      student_ids: [e1.id, e2.id, e3.id],
+    })).data;
+    assert.equal(groupe.status, 'valide');
+
+    const rouvrir = await admin('PUT', `/api/groups/${groupe.id}/status`, { status: 'en_attente' });
+    assert.equal(rouvrir.status, 409, 'un groupe validé ne se rouvre pas');
+    assert.match(rouvrir.data.error, /rouvert/i);
+
+    // Il reste bien validé, et sa composition est intouchable.
+    const apres = (await admin('GET', '/api/groups')).data.find((g) => g.id === groupe.id);
+    assert.equal(apres.status, 'valide');
+    assert.equal(apres.members.length, 3);
+    assert.equal((await admin('DELETE', `/api/groups/${groupe.id}/members/${e1.id}`)).status, 409);
+  });
+
   test('un groupe refusé libère ses élèves', async () => {
     const libere1 = (await admin('POST', '/api/students', { first_name: 'Hana', last_name: 'Hamon' })).data;
     const libere2 = (await admin('POST', '/api/students', { first_name: 'Ivan', last_name: 'Imbert' })).data;

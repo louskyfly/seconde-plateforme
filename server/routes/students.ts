@@ -140,9 +140,24 @@ router.delete('/students/:id', requireAuth, (req, res) => {
 
 /* ----------------------------------------------------------------- groupes */
 
-router.get('/groups', (_req, res) => {
+/**
+ * Liste des groupes.
+ *
+ * Un groupe privé n'est renvoyé qu'au délégué. Le rester visible à tout le
+ * monde — y compris son nom et la liste complète de ses membres — aurait fait
+ * d'un groupe « privé » une simple case à cocher dans un formulaire.
+ *
+ * La limite est technique, pas seulement de principe : l'appartenance est
+ * enregistrée par élève du tableau de classe, et rien ne relie une empreinte
+ * d'appareil à une ligne de ce tableau. Le serveur ne peut donc pas reconnaître
+ * « un élève de ce groupe » et ne peut donc pas décider qui a le droit de
+ * le voir. Le délégué reste la seule autorité sur les groupes privés.
+ */
+router.get('/groups', (req, res) => {
   try {
-    res.json(groupsWithMembers(db));
+    const tous = groupsWithMembers(db) as any[];
+    const estDelegue = req.session?.authenticated === true;
+    res.json(estDelegue ? tous : tous.filter((g) => !g.is_private));
   } catch (err) {
     console.error('Get groups error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -313,6 +328,18 @@ router.put('/groups/:id/status', requireAuth, (req, res) => {
     const status = req.body?.status;
     if (!isGroupStatus(status)) {
       res.status(400).json({ error: 'Statut invalide' });
+      return;
+    }
+
+    // Un groupe validé ne peut pas être rouvert : repasser « en attente »
+    // rendrait sa composition modifiable alors qu'elle était figée, et
+    // libérerait les élèves au moment précis où ils se sont inscrits ailleurs.
+    // Le refus reste possible : c'est la seule correction dont le délégué a
+    // besoin, elle rend le groupe aux élèves et n'ouvre pas la composition.
+    if (group.status === 'valide' && status === 'en_attente') {
+      res.status(409).json({
+        error: 'Un groupe validé ne peut pas être rouvert : refuse-le ou supprime-le',
+      });
       return;
     }
 

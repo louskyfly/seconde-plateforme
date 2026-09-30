@@ -1525,13 +1525,14 @@ describe('Élèves et groupes', () => {
     const eleve1 = (await admin('POST', '/api/students', { first_name: 'Emma', last_name: 'Elsa' })).data;
     const eleve2 = (await admin('POST', '/api/students', { first_name: 'Fanny', last_name: 'Fabre' })).data;
     const eleve3 = (await admin('POST', '/api/students', { first_name: 'Gaspard', last_name: 'Guerin' })).data;
+    const auteur = 'fingerprint-de-test-5678';
 
-    // Né en attente : les élèves complètent, le délégué valide ensuite.
-    const cree = await admin('POST', '/api/groups', {
+    // Né en attente : son auteur le complète, le délégué valide ensuite.
+    const cree = await student('POST', '/api/groups', {
       name: 'Groupe privé',
       is_private: true,
-      validate_now: false,
       student_ids: [eleve1.id],
+      fingerprint: auteur,
     });
     assert.equal(cree.status, 201);
     assert.equal(cree.data.status, 'en_attente');
@@ -1543,28 +1544,45 @@ describe('Élèves et groupes', () => {
     });
     assert.equal(sansEmpreinte.status, 401);
 
+    // Un groupe privé n'appartient pas à tout le monde : un autre élève ne peut
+    // pas s'y glisser, même en connaissant son identifiant.
+    const intrus = await other('POST', `/api/groups/${cree.data.id}/propose-member`, {
+      student_id: eleve2.id,
+      fingerprint: 'fingerprint-de-test-9012',
+    });
+    assert.equal(intrus.status, 403, 'un tiers ne complete pas un groupe privé');
+
     const proposition = await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
       student_id: eleve2.id,
-      fingerprint: 'fingerprint-de-test-5678',
+      fingerprint: auteur,
     });
     assert.equal(proposition.status, 200);
     assert.equal(proposition.data.members.length, 2);
 
-    // Tant que le groupe est en attente, on peut encore retirer un élève.
-    const retrait = await admin('DELETE', `/api/groups/${cree.data.id}/members/${eleve2.id}`);
+    // Tant que le groupe est en attente, l'auteur et le délégué peuvent encore
+    // retirer un élève.
+    const retrait = await student(
+      'DELETE',
+      `/api/groups/${cree.data.id}/members/${eleve2.id}?fingerprint=${auteur}`
+    );
     assert.equal(retrait.status, 200);
     assert.equal(retrait.data.members.length, 1);
 
-    await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
-      student_id: eleve2.id,
-      fingerprint: 'fingerprint-de-test-5678',
-    });
-    const troisieme = await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
-      student_id: eleve3.id,
-      fingerprint: 'fingerprint-de-test-9012',
-    });
-    assert.equal(troisieme.status, 200);
-    assert.equal(troisieme.data.members.length, 3);
+    // Le délégué n'est pas moins bien placé que l'auteur pour le faire.
+    const retraitDelegue = await admin('DELETE', `/api/groups/${cree.data.id}/members/${eleve1.id}`);
+    assert.equal(retraitDelegue.status, 200);
+    assert.equal(retraitDelegue.data.members.length, 0, 'le groupe est vide après les deux retraits');
+
+    // L'auteur reconstruit un groupe valide : 3 élèves, comme le demande la règle.
+    let dernierAjout;
+    for (const eleve of [eleve1, eleve2, eleve3]) {
+      dernierAjout = await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
+        student_id: eleve.id,
+        fingerprint: auteur,
+      });
+      assert.equal(dernierAjout.status, 200);
+    }
+    assert.equal(dernierAjout.data.members.length, 3);
 
     const validation = await admin('PUT', `/api/groups/${cree.data.id}/status`, { status: 'valide' });
     assert.equal(validation.status, 200);
@@ -1632,6 +1650,222 @@ describe('Élèves et groupes', () => {
     assert.equal(apres.status, 'valide');
     assert.equal(apres.members.length, 3);
     assert.equal((await admin('DELETE', `/api/groups/${groupe.id}/members/${e1.id}`)).status, 409);
+  });
+
+﻿  /**
+   * Trois élèves neufs, libres de tout groupe validé par un test précédent.
+   *
+   * Les prénoms ne contiennent que des lettres : le serveur retire les chiffres
+   * des noms, un prénom comme « A0 » se retrouverait à une lettre et serait
+   * refusé. C'est le comportement attendu de cleanName, pas un bug.
+   */
+  async function troisElevesLibres(prefixe, combien = 3) {
+    const liste = [];
+    for (let i = 0; i < combien; i += 1) {
+      const initiale = String.fromCharCode(97 + i); // a, b, c, d
+      liste.push(
+        (await admin('POST', '/api/students', { first_name: `${prefixe}${initiale}`, last_name: `Libre${prefixe}` }))
+          .data
+      );
+    }
+    return liste;
+  }
+
+  test('un élève crée son groupe mais ne peut pas le valider', async () => {
+    const [e1, e2, e3] = await troisElevesLibres('A');
+    const empreinte = 'fingerprint-eleve-groupe-0001';
+
+    const cree = await student('POST', '/api/groups', {
+      name: 'Groupe des élèves',
+      student_ids: [e1.id, e2.id, e3.id],
+      fingerprint: empreinte,
+    });
+    assert.equal(cree.status, 201, 'un élève peut créer son groupe');
+    assert.equal(cree.data.status, 'en_attente', 'il naît en attente, jamais validé');
+    assert.equal(cree.data.members.length, 3);
+
+    // Même en demandant explicitement la validation, le serveur l'ignore : la
+    // validation est une décision du délégué, pas une option du formulaire.
+    const [f1, f2, f3] = await troisElevesLibres('B');
+    const avecValidation = await student('POST', '/api/groups', {
+      name: 'Tentative',
+      student_ids: [f1.id, f2.id, f3.id],
+      validate_now: true,
+      validated_by: 'Moi-même',
+      fingerprint: 'fingerprint-eleve-groupe-0002',
+    });
+    assert.equal(avecValidation.status, 201);
+    assert.equal(avecValidation.data.status, 'en_attente', 'l’auto-validation est ignorée');
+
+    // Le groupe existe bien du côté du délégué, qui peut le valider.
+    const vueDelegue = (await admin('GET', '/api/groups')).data.find((g) => g.id === cree.data.id);
+    assert.equal(vueDelegue.status, 'en_attente');
+
+    const validation = await admin('PUT', `/api/groups/${cree.data.id}/status`, { status: 'valide' });
+    assert.equal(validation.status, 200);
+    assert.equal(validation.data.status, 'valide');
+  });
+
+  test('un élève ne peut pas empiler des groupes en attente', async () => {
+    const empreinte = 'fingerprint-eleve-pile-0001';
+    const [a, b, c] = await troisElevesLibres('C');
+    const noms = [a.id, b.id, c.id];
+
+    const premier = await student('POST', '/api/groups', {
+      name: 'Premier',
+      student_ids: noms,
+      fingerprint: empreinte,
+    });
+    assert.equal(premier.status, 201);
+
+    const second = await student('POST', '/api/groups', {
+      name: 'Second',
+      student_ids: noms,
+      fingerprint: empreinte,
+    });
+    assert.equal(second.status, 409, 'un seul groupe en attente à la fois');
+  });
+
+  test('un élève ne voit pas le groupe privé d’un camarade, mais voit le sien', async () => {
+    const empreinte = 'fingerprint-eleve-prive-0001';
+    const [a, b, c] = await troisElevesLibres('D');
+    const noms = [a.id, b.id, c.id];
+
+    const prive = await student('POST', '/api/groups', {
+      name: 'Le groupe secret',
+      is_private: true,
+      student_ids: noms,
+      fingerprint: empreinte,
+    });
+    assert.equal(prive.status, 201);
+    assert.equal(prive.data.is_private, 1);
+
+    // L'auteur voit son groupe privé, marqué comme le sien.
+    const chezMoi = (await student('GET', `/api/groups?fingerprint=${empreinte}`)).data;
+    const mien = chezMoi.find((g) => g.id === prive.data.id);
+    assert.ok(mien, 'le créateur voit son groupe privé');
+    assert.equal(mien.mine, true);
+    assert.equal(mien.peut_modifier, true);
+
+    // Un autre appareil ne voit ni le groupe, ni son nom.
+    const chezAutre = (await other('GET', '/api/groups?fingerprint=fingerprint-autre-appareil-9')).data;
+    assert.ok(!chezAutre.some((g) => g.id === prive.data.id), 'invisible pour les autres');
+    assert.ok(!JSON.stringify(chezAutre).includes('Le groupe secret'), 'le nom ne fuit pas');
+
+    // L'empreinte du signataire n'est jamais renvoyée.
+    assert.ok(
+      !JSON.stringify(chezMoi).includes('fingerprint-eleve-prive-0001'),
+      'l’empreinte de l’appareil ne sort pas'
+    );
+  });
+
+  test('un élève ne modifie que son propre groupe', async () => {
+    const empreinte = 'fingerprint-eleve-modif-0001';
+    const autre = 'fingerprint-eleve-modif-0002';
+    const [a, b, c, d] = await troisElevesLibres('E', 4);
+    const dehors = (await admin('POST', '/api/students', { first_name: 'Tintin', last_name: 'Tournesol' }))
+      .data;
+
+    const groupe = (await student('POST', '/api/groups', {
+      name: 'Groupe à protéger',
+      student_ids: [a.id, b.id, c.id, d.id],
+      fingerprint: empreinte,
+    })).data;
+
+    // Retirer un camarade : autorisé pour l'auteur.
+    const retrait = await student('DELETE', `/api/groups/${groupe.id}/members/${a.id}?fingerprint=${empreinte}`);
+    assert.equal(retrait.status, 200, 'l’auteur peut corriger son groupe');
+    assert.equal(retrait.data.members.length, 3);
+
+    // Le même retrait par un autre appareil : refusé.
+    const intrus = await other('DELETE', `/api/groups/${groupe.id}/members/${b.id}?fingerprint=${autre}`);
+    assert.equal(intrus.status, 403, 'un autre élève ne retire pas un camarade');
+
+    const ajoutIntrus = await other('POST', `/api/groups/${groupe.id}/propose-member`, {
+      student_id: dehors.id,
+      fingerprint: autre,
+    });
+    assert.equal(ajoutIntrus.status, 200, 'un groupe ouvert accepte la proposition');
+
+    const suppressionIntruse = await other('DELETE', `/api/groups/${groupe.id}?fingerprint=${autre}`);
+    assert.equal(suppressionIntruse.status, 403, 'un élève ne supprime pas le groupe d’un autre');
+
+    // La suppression par l'auteur, elle, passe.
+    assert.equal((await student('DELETE', `/api/groups/${groupe.id}?fingerprint=${empreinte}`)).status, 200);
+    assert.equal((await admin('GET', '/api/groups')).data.some((g) => g.id === groupe.id), false);
+  });
+
+  test('un groupe validé n’est plus modifiable par son auteur', async () => {
+    const empreinte = 'fingerprint-eleve-fige-0001';
+    const [a, b, c] = await troisElevesLibres('F');
+    const dehors = (await admin('POST', '/api/students', { first_name: 'Milou', last_name: 'Mornet' })).data;
+
+    const groupe = (await student('POST', '/api/groups', {
+      name: 'Groupe figé',
+      student_ids: [a.id, b.id, c.id],
+      fingerprint: empreinte,
+    })).data;
+
+    const validation = await admin('PUT', `/api/groups/${groupe.id}/status`, { status: 'valide' });
+    assert.equal(validation.status, 200, 'le délégué valide bien le groupe');
+    assert.equal(validation.data.status, 'valide');
+
+    // L'auteur ne peut plus rien changer, même avec la bonne empreinte.
+    const retrait = await student('DELETE', `/api/groups/${groupe.id}/members/${a.id}?fingerprint=${empreinte}`);
+    assert.equal(retrait.status, 409, 'la composition est figée');
+
+    const ajout = await student('POST', `/api/groups/${groupe.id}/propose-member`, {
+      student_id: dehors.id,
+      fingerprint: empreinte,
+    });
+    assert.equal(ajout.status, 409, 'pas d’ajout après validation');
+
+    const suppression = await student('DELETE', `/api/groups/${groupe.id}?fingerprint=${empreinte}`);
+    assert.equal(suppression.status, 409, 'un groupe validé ne se supprime que par le délégué');
+
+    // Et l'interface ne propose plus rien à modifier.
+    const vue = (await student('GET', `/api/groups?fingerprint=${empreinte}`)).data.find(
+      (g) => g.id === groupe.id
+    );
+    assert.equal(vue.peut_modifier, false, 'l’interface n’offrira plus rien à modifier');
+  });
+
+  test('un groupe privé ne se modifie que par son auteur ou le délégué', async () => {
+    const auteur = 'fingerprint-auteur-prive-01';
+    const [a, b, c] = await troisElevesLibres('G');
+    const dehors = (await admin('POST', '/api/students', { first_name: 'Nix', last_name: 'Nolan' })).data;
+
+    const prive = (await student('POST', '/api/groups', {
+      name: 'Prive',
+      is_private: true,
+      student_ids: [a.id, b.id, c.id],
+      fingerprint: auteur,
+    })).data;
+
+    const [d, e, f] = await troisElevesLibres('H');
+    const ouvert = (await student('POST', '/api/groups', {
+      name: 'Ouvert',
+      student_ids: [d.id, e.id, f.id],
+      fingerprint: 'fingerprint-auteur-ouvert-1',
+    })).data;
+
+    const hors = await other('POST', `/api/groups/${prive.id}/propose-member`, {
+      student_id: dehors.id,
+      fingerprint: 'fingerprint-intrus-prive-01',
+    });
+    assert.equal(hors.status, 403, 'le groupe privé se protège');
+
+    const surOuvert = await other('POST', `/api/groups/${ouvert.id}/propose-member`, {
+      student_id: dehors.id,
+      fingerprint: 'fingerprint-camarade-ouvert1',
+    });
+    assert.equal(surOuvert.status, 200, 'un groupe ouvert accepte les propositions');
+
+    // Le délégué garde la main partout, y compris sur un groupe privé d'élève.
+    const parDelegue = await admin('POST', `/api/groups/${prive.id}/propose-member`, {
+      student_id: dehors.id,
+    });
+    assert.equal(parDelegue.status, 200, 'le délégué complète un groupe privé');
   });
 
   test('un groupe refusé libère ses élèves', async () => {

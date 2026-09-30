@@ -247,6 +247,10 @@ export interface StudentGroup {
   members: Student[];
   validated_at: string | null;
   validated_by: string | null;
+  /** Ce groupe a été créé par l'appareil qui consulte. */
+  mine: boolean;
+  /** Le groupe est en attente et son auteur a le droit de le modifier. */
+  peut_modifier: boolean;
 }
 
 export interface Sheet {

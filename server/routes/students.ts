@@ -157,7 +157,26 @@ router.get('/groups', (req, res) => {
   try {
     const tous = groupsWithMembers(db) as any[];
     const estDelegue = req.session?.authenticated === true;
-    res.json(estDelegue ? tous : tous.filter((g) => !g.is_private));
+    const empreinte = cleanText(req.query.fingerprint, 64);
+    const identifie = empreinte.length >= 8;
+
+    // Pour un élève : les groupes ouverts, plus ses propres groupes privés. Un
+    // groupe privé créé par un camarade reste invisible, et son nom ne doit pas
+    // non plus apparaître dans la réponse.
+    const visibles = estDelegue
+      ? tous
+      : tous.filter((g) => !g.is_private || (identifie && g.created_by_fingerprint === empreinte));
+
+    // `created_by_fingerprint` n'est jamais renvoyé : c'est une empreinte
+    // d'appareil, elle n'a rien à faire dans une réponse envoyée à tous.
+    // L'interface n'a besoin que de savoir si le groupe est le sien.
+    res.json(
+      visibles.map(({ created_by_fingerprint, ...reste }) => ({
+        ...reste,
+        mine: identifie && created_by_fingerprint === empreinte,
+        peut_modifier: reste.status === 'en_attente' && (estDelegue || (identifie && created_by_fingerprint === empreinte)),
+      }))
+    );
   } catch (err) {
     console.error('Get groups error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -165,30 +184,60 @@ router.get('/groups', (req, res) => {
 });
 
 /**
- * Création d'un groupe, réservée au délégué.
+ * Création d'un groupe.
  *
- * Un groupe peut être privé : c'est lui qui décide, les élèves ne font que
- * proposer des membres (voir propose-member). Le groupe naît « en attente » puis
- * passe par la même validation que les autres, pour que la règle des 3-4 et
- * l'unicité d'appartenance soient appliquées au même endroit.
+ * Deux chemins :
+ *  - le délégué crée et peut valider dans la foulée ;
+ *  - un élève crée le sien, toujours en attente de validation. Il n'a aucun
+ *    moyen de s'auto-valider, donc le contrôle reste sur le serveur et pas
+ *    seulement dans l'interface.
+ *
+ * Le signataire est mémorisé : c'est lui qui pourra compléter son groupe tant
+ * qu'il est en attente, et c'est lui seul qui verra son groupe privé.
  */
-router.post('/groups', requireAuth, (req, res) => {
+router.post('/groups', (req, res) => {
   try {
+    const estDelegue = req.session?.authenticated === true;
     const name = cleanText(req.body?.name, 80);
     if (name.length < 2) {
       res.status(400).json({ error: 'Nom du groupe requis' });
       return;
     }
 
+    let signataire: string | null = null;
+    if (!estDelegue) {
+      signataire = cleanText(req.body?.fingerprint, 64);
+      if (signataire.length < 8) {
+        res.status(401).json({ error: 'Identifiant appareil manquant' });
+        return;
+      }
+
+      // Un élève ne peut pas empiler des groupes en attente : il en corrige un,
+      // ou il le supprime. Sans cette limite, une erreur de formulaire se
+      // transformerait en file d'attente que le délégué doit traiter une à une.
+      const enAttente = db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM student_groups
+           WHERE created_by_fingerprint = ? AND status = 'en_attente'`
+        )
+        .get(signataire) as { n: number };
+      if (enAttente.n > 0) {
+        res.status(409).json({
+          error: 'Tu as déjà un groupe en attente : modifie-le ou supprime-le avant d’en créer un autre',
+        });
+        return;
+      }
+    }
+
     const result = db
-      .prepare('INSERT INTO student_groups (name, is_private, status) VALUES (?, ?, ?)')
-      .run(name, req.body?.is_private ? 1 : 0, 'en_attente');
+      .prepare('INSERT INTO student_groups (name, is_private, status, created_by_fingerprint) VALUES (?, ?, ?, ?)')
+      .run(name, req.body?.is_private ? 1 : 0, 'en_attente', signataire);
 
     const id = Number(result.lastInsertRowid);
     const studentIds: number[] = Array.isArray(req.body?.student_ids) ? req.body.student_ids.map(Number) : [];
-    addMembers(db, id, studentIds, null);
+    addMembers(db, id, studentIds, signataire);
 
-    if (req.body?.validate_now !== false) {
+    if (estDelegue && req.body?.validate_now !== false) {
       const err = claimGroup(db, id, cleanText(req.body?.validated_by, 30) || 'Délégué');
       if (err) {
         db.prepare('DELETE FROM student_groups WHERE id = ?').run(id);
@@ -197,7 +246,9 @@ router.post('/groups', requireAuth, (req, res) => {
       }
     }
 
-    res.status(201).json(db.prepare('SELECT * FROM student_groups WHERE id = ?').get(id));
+    res
+      .status(201)
+      .json(groupsWithMembers(db).find((g: any) => g.id === id));
   } catch (err) {
     console.error('Create group error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -276,7 +327,13 @@ function claimGroup(
   }
 }
 
-/** Un élève propose un groupe privé ; le délégué doit le valider. */
+/**
+ * Un élève propose un groupe privé ; le délégué doit le valider.
+ *
+ * Pour un groupe privé, seuls son signataire et le délégué peuvent en changer
+ * les membres : sinon n'importe quel élève qui découvre l'identifiant du
+ * groupe pourrait se glisser dedans ou en retirer quelqu'un.
+ */
 router.post('/groups/:id/propose-member', (req, res) => {
   try {
     const groupId = Number(req.params.id);
@@ -288,11 +345,15 @@ router.post('/groups/:id/propose-member', (req, res) => {
 
     const studentId = Number(req.body?.student_id);
     const fingerprint = cleanText(req.body?.fingerprint, 64);
+    const estDelegue = req.session?.authenticated === true;
+
     if (!getStudent(db, studentId)) {
       res.status(404).json({ error: 'Élève introuvable' });
       return;
     }
-    if (fingerprint.length < 8) {
+    // Le délégué n'a pas d'empreinte d'appareil : il ne peut pas en avoir, et
+    // l'exiger l'aurait forcé à en fabriquer une, qui n'identifierait rien.
+    if (!estDelegue && fingerprint.length < 8) {
       res.status(401).json({ error: 'Identifiant appareil manquant' });
       return;
     }
@@ -303,7 +364,12 @@ router.post('/groups/:id/propose-member', (req, res) => {
       return;
     }
 
-    addMembers(db, groupId, [studentId], fingerprint);
+    if (group.is_private && !estDelegue && group.created_by_fingerprint !== fingerprint) {
+      res.status(403).json({ error: 'Ce groupe privé ne se modifie que par son créateur' });
+      return;
+    }
+
+    addMembers(db, groupId, [studentId], fingerprint || null);
     res.json({ success: true, members: membersOf(db, groupId) });
   } catch (err) {
     if (String(err).includes('UNIQUE')) {
@@ -369,8 +435,14 @@ router.put('/groups/:id/status', requireAuth, (req, res) => {
   }
 });
 
-/** Retirer un élève d'un groupe. Interdit une fois le groupe validé. */
-router.delete('/groups/:id/members/:studentId', requireAuth, (req, res) => {
+/**
+ * Retirer un élève d'un groupe. Interdit une fois le groupe validé.
+ *
+ * L'élève qui a créé le groupe peut retirer un camarade tant qu'il est en
+ * attente : il doit pouvoir corriger une coquille avant que le délégué valide.
+ * L'identité du demandeur est vérifiée par empreinte, comme partout ailleurs.
+ */
+router.delete('/groups/:id/members/:studentId', (req, res) => {
   try {
     const groupId = Number(req.params.id);
     const group = db.prepare('SELECT * FROM student_groups WHERE id = ?').get(groupId) as any;
@@ -381,6 +453,15 @@ router.delete('/groups/:id/members/:studentId', requireAuth, (req, res) => {
     if (group.status !== 'en_attente') {
       res.status(409).json({ error: 'Un groupe validé ne peut plus être modifié' });
       return;
+    }
+
+    const estDelegue = req.session?.authenticated === true;
+    if (!estDelegue) {
+      const empreinte = cleanText(req.query.fingerprint ?? req.body?.fingerprint, 64);
+      if (empreinte.length < 8 || group.created_by_fingerprint !== empreinte) {
+        res.status(403).json({ error: 'Tu ne peux modifier que les groupes que tu as créés' });
+        return;
+      }
     }
 
     db.prepare('DELETE FROM student_group_members WHERE group_id = ? AND student_id = ?').run(
@@ -394,13 +475,35 @@ router.delete('/groups/:id/members/:studentId', requireAuth, (req, res) => {
   }
 });
 
-router.delete('/groups/:id', requireAuth, (req, res) => {
+/**
+ * Suppression d'un groupe.
+ *
+ * Un élève ne peut supprimer que le groupe qu'il a créé, et seulement s'il est
+ * encore en attente : un groupe validé est une décision du délégué, il se
+ * refuse ou se supprime depuis l'espace délégué.
+ */
+router.delete('/groups/:id', (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!db.prepare('SELECT id FROM student_groups WHERE id = ?').get(id)) {
+    const group = db.prepare('SELECT * FROM student_groups WHERE id = ?').get(id) as any;
+    if (!group) {
       res.status(404).json({ error: 'Groupe introuvable' });
       return;
     }
+
+    const estDelegue = req.session?.authenticated === true;
+    if (!estDelegue) {
+      const empreinte = cleanText(req.query.fingerprint ?? req.body?.fingerprint, 64);
+      if (empreinte.length < 8 || group.created_by_fingerprint !== empreinte) {
+        res.status(403).json({ error: 'Tu ne peux supprimer que les groupes que tu as créés' });
+        return;
+      }
+      if (group.status !== 'en_attente') {
+        res.status(409).json({ error: 'Un groupe validé ne se supprime que par le délégué' });
+        return;
+      }
+    }
+
     db.prepare('DELETE FROM student_groups WHERE id = ?').run(id);
     res.json({ success: true });
   } catch (err) {

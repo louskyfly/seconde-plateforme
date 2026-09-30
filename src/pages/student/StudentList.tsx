@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { LoadError } from '@/components/ui/LoadError';
 import { StudentTable } from '@/components/students/StudentTable';
+import { StudentGroups } from '@/components/students/StudentGroups';
 import type { Student } from '@/types';
 
 /**
@@ -97,6 +98,8 @@ export default function StudentList() {
           {students.length} élève{students.length > 1 ? 's' : ''} — la liste est gérée par le délégué.
         </p>
       )}
+
+      <StudentGroups students={students} />
     </div>
   );
 }

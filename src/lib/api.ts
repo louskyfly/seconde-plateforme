@@ -170,9 +170,15 @@ export const api = {
   createStudent: (data: Partial<Student>) => request<Student>('/students', { method: 'POST', body: JSON.stringify(data) }),
   updateStudent: (id: number, data: Partial<Student>) => request<Student>(`/students/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteStudent: (id: number) => request<{ success: boolean }>(`/students/${id}`, { method: 'DELETE' }),
-  getStudentGroups: () => request<StudentGroup[]>('/groups'),
-  createStudentGroup: (data: { name: string; is_private?: boolean; student_ids?: number[]; validate_now?: boolean }) =>
-    request<StudentGroup>('/groups', { method: 'POST', body: JSON.stringify(data) }),
+  getStudentGroups: (fingerprint?: string) =>
+    request<StudentGroup[]>(`/groups${fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''}`),
+  createStudentGroup: (data: {
+    name: string;
+    is_private?: boolean;
+    student_ids?: number[];
+    validate_now?: boolean;
+    fingerprint?: string;
+  }) => request<StudentGroup>('/groups', { method: 'POST', body: JSON.stringify(data) }),
   updateGroupStatus: (id: number, status: StudentGroupStatus) =>
     request<StudentGroup>(`/groups/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
   proposeGroupMember: (id: number, studentId: number, fingerprint: string) =>
@@ -180,9 +186,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ student_id: studentId, fingerprint }),
     }),
-  removeGroupMember: (id: number, studentId: number) =>
-    request<{ success: boolean; members: Student[] }>(`/groups/${id}/members/${studentId}`, { method: 'DELETE' }),
-  deleteStudentGroup: (id: number) => request<{ success: boolean }>(`/groups/${id}`, { method: 'DELETE' }),
+  removeGroupMember: (id: number, studentId: number, fingerprint?: string) =>
+    request<{ success: boolean; members: Student[] }>(
+      `/groups/${id}/members/${studentId}${fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''}`,
+      { method: 'DELETE' }
+    ),
+  deleteStudentGroup: (id: number, fingerprint?: string) =>
+    request<{ success: boolean }>(`/groups/${id}${fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''}`, {
+      method: 'DELETE',
+    }),
   
   // Sessions de révision
   getRevisionSessions: (upcoming = true) =>

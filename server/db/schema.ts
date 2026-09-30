@@ -379,6 +379,9 @@ export function initDatabase(db: Database.Database): void {
   // déployée avant leur ajout.
   ensureColumn(db, 'ideas', 'delegate_response', 'TEXT');
   ensureColumn(db, 'ideas', 'delegate_replied_at', 'DATETIME');
+  // Signataire d'un groupe créé par un élève. Le serveur s'en sert pour
+  // savoir quel groupe privé lui appartient et qui a le droit de le modifier.
+  ensureColumn(db, 'student_groups', 'created_by_fingerprint', 'TEXT');
 }
 
 /**

@@ -364,6 +364,8 @@ function addMembersByName(db: Database.Database, groupId: number, rawNames: stri
  * réserve l'appartenance dans student_group_validated. Le statut passe à
  * « valide », ce qui le rend ensuite non modifiable.
  *
+ * Crée aussi la conversation de chat privée pour le groupe (élèves + délégué).
+ *
  * Renvoie `null` en cas de succès, sinon l'erreur à renvoyer au client.
  * Tout est fait dans une transaction : on ne veut pas d'un groupe marqué validé
  * alors que la réservation a échoué pour le deuxième élève.
@@ -416,6 +418,56 @@ function claimGroup(
     db.prepare(
       `UPDATE student_groups SET status = 'valide', validated_at = CURRENT_TIMESTAMP, validated_by = ? WHERE id = ?`
     ).run(validatedBy, id);
+
+    // --- Créer la conversation de chat privée pour ce groupe ---
+    const group = db.prepare('SELECT name FROM student_groups WHERE id = ?').get(id) as { name: string } | undefined;
+    if (group) {
+      // S'assurer que le délégué existe dans chat_users
+      let delegate = db.prepare(`SELECT id FROM chat_users WHERE kind = 'delegate'`).get() as { id: number } | undefined;
+      if (!delegate) {
+        const inserted = db
+          .prepare(`INSERT INTO chat_users (display_name, kind, fingerprint) VALUES (?, 'delegate', NULL)`)
+          .run('Délégué');
+        delegate = { id: Number(inserted.lastInsertRowid) };
+      }
+
+      // Créer la conversation liée au groupe
+      const conv = db
+        .prepare(`INSERT INTO chat_conversations (title, is_group, created_by, group_id, closed)
+                 VALUES (?, 1, ?, ?, 0)`)
+        .run(`${group.name} — Chat privé`, delegate.id, id);
+      const conversationId = Number(conv.lastInsertRowid);
+
+      // Ajouter le délégué comme membre
+      db.prepare(
+        `INSERT OR IGNORE INTO chat_members (conversation_id, user_id) VALUES (?, ?)`
+      ).run(conversationId, delegate.id);
+
+      // Pour chaque élève du groupe, créer/retrouver son chat_user et l'ajouter
+      for (const m of members) {
+        let chatUser: { id: number } | undefined;
+        if (m.student_id) {
+          // Élève du tableau : on cherche par fingerprint s'il a déjà discuté
+          const student = getStudent(db, m.student_id);
+          if (student && student.fingerprint) {
+            chatUser = db
+              .prepare(`SELECT id FROM chat_users WHERE fingerprint = ?`)
+              .get(student.fingerprint) as { id: number } | undefined;
+          }
+        }
+        if (!chatUser) {
+          // Pas de fingerprint connu (nom tapé) : on crée un utilisateur chat basé sur le nom
+          const displayName = m.member_name || `Élève ${m.id}`;
+          const inserted = db
+            .prepare(`INSERT INTO chat_users (display_name, kind, fingerprint) VALUES (?, 'student', ?)`)
+            .run(displayName, `group-${id}-${m.id}`);
+          chatUser = { id: Number(inserted.lastInsertRowid) };
+        }
+        db.prepare(
+          `INSERT OR IGNORE INTO chat_members (conversation_id, user_id) VALUES (?, ?)`
+        ).run(conversationId, chatUser.id);
+      }
+    }
   });
 
   try {

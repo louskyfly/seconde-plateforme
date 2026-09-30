@@ -24,6 +24,7 @@ import type {
   ChatReaction,
   ChatReactionCounts,
   BirthdayEntry,
+  GroupChatConversation,
   Sheet,
   SheetListResponse,
   AdminLogEntry,
@@ -300,6 +301,30 @@ export const api = {
     request<{ success: boolean; date_mmdd: string; first_name: string }>('/birthdays/me', {
       method: 'POST',
       body: JSON.stringify({ fingerprint, date_mmdd, first_name }),
+    }),
+
+  /** Conversation du groupe validé de l'élève connecté. */
+  getMyGroupChat: (fingerprint: string) =>
+    request<{ conversation: GroupChatConversation }>(`/chat/my-group?fingerprint=${encodeURIComponent(fingerprint)}`),
+
+  /** Liste des conversations de groupe (délégué). */
+  getGroupChats: () => request<{ conversations: GroupChatConversation[] }>('/chat/groups'),
+  /** Conversation d'un groupe précis (élève : son groupe ; délégué : n'importe lequel). */
+  getGroupChat: (groupId: number, fingerprint?: string | null) =>
+    request<{ conversation: GroupChatConversation }>(
+      `/chat/group/${groupId}` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : '')
+    ),
+  /** Fermer un groupe (délégué). */
+  closeGroupChat: (groupId: number) =>
+    request<{ success: boolean; closed: boolean }>(`/chat/group/${groupId}/close`, { method: 'POST' }),
+  /** Rouvrir un groupe (délégué). */
+  reopenGroupChat: (groupId: number) =>
+    request<{ success: boolean; closed: boolean }>(`/chat/group/${groupId}/reopen`, { method: 'POST' }),
+  /** Envoyer un message dans un groupe (membres + délégué). */
+  sendGroupChatMessage: (data: { groupId: number; content: string; image?: string | null; fingerprint?: string | null }) =>
+    request<{ message: ChatMessage }>(`/chat/group/${data.groupId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content: data.content, image: data.image, fingerprint: data.fingerprint }),
     }),
 
   // Fiches de révision

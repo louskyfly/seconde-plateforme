@@ -222,6 +222,18 @@ export interface ChatMessage {
   reactions: ChatReactionCounts;
 }
 
+/** Conversation de chat de groupe validé. */
+export interface GroupChatConversation {
+  id: number;
+  title: string;
+  group_id: number;
+  closed: number;
+  last_activity_at: string;
+  group_name: string;
+  group_status: string;
+  member_count: number;
+}
+
 /** Anniversaire saisi par un élève (clé = son empreinte). */
 export interface BirthdayEntry {
   fingerprint: string;

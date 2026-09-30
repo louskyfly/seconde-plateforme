@@ -316,8 +316,14 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
   is_group INTEGER DEFAULT 1,
   created_by INTEGER,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  last_activity_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  last_activity_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  -- Chat de groupe validé : lien vers student_groups, fermé par le délégué
+  group_id INTEGER,
+  closed INTEGER DEFAULT 0,
+  FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE SET NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_chat_conversations_group ON chat_conversations(group_id);
 
 CREATE TABLE IF NOT EXISTS chat_members (
   conversation_id INTEGER NOT NULL,
@@ -482,12 +488,15 @@ export function initDatabase(db: Database.Database): void {
   // Signataire d'un groupe créé par un élève. Le serveur s'en sert pour
   // savoir quel groupe privé lui appartient et qui a le droit de le modifier.
   ensureColumn(db, 'student_groups', 'created_by_fingerprint', 'TEXT');
-  // Signataire d'une session de révision créée par un élève. Les élèves
+// Signataire d'une session de révision créée par un élève. Les élèves
   // pratiquent entre eux, donc une session n'est pas réservée au délégué : sans
   // cette colonne, rien ne distinguait une session d'un élève d'une session
   // officielle, et personne ne pouvait savoir laquelle il avait le droit de
   // modifier ou de supprimer.
   ensureColumn(db, 'revision_sessions', 'created_by_fingerprint', 'TEXT');
+  // Chat de groupe : lien vers student_groups + flag fermé par le délégué
+  ensureColumn(db, 'chat_conversations', 'group_id', 'INTEGER');
+  ensureColumn(db, 'chat_conversations', 'closed', 'INTEGER DEFAULT 0');
 }
 
 /**

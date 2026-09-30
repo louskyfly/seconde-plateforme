@@ -671,4 +671,222 @@ router.delete('/messages/:id', (req, res) => {
   }
 });
 
+/**
+ * CHATS DE GROUPES VALIDÉS
+ *
+ * Chaque groupe validé a sa propre conversation privée.
+ * - Élèves : accès uniquement à leur propre groupe (via fingerprint).
+ * - Délégué : voit la liste, peut fermer/rouvrir/poster dans n'importe quel groupe.
+ */
+
+// Liste des conversations de groupe (délégué uniquement)
+router.get('/groups', requireAuth, (req, res) => {
+  try {
+    const rows = db
+      .prepare(
+        `SELECT c.id, c.title, c.group_id, c.closed, c.last_activity_at,
+                g.name AS group_name, g.status AS group_status,
+                (SELECT COUNT(*) FROM chat_members WHERE conversation_id = c.id) AS member_count
+         FROM chat_conversations c
+         JOIN student_groups g ON g.id = c.group_id
+         WHERE c.group_id IS NOT NULL
+         ORDER BY c.last_activity_at DESC`
+      )
+      .all() as any[];
+    res.json({ conversations: rows });
+  } catch (err) {
+    console.error('Get group chats error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Conversation du groupe validé de l'élève connecté
+router.get('/my-group', (req, res) => {
+  try {
+    const user = findUser(req);
+    if (!user || user.kind !== 'student') {
+      res.status(403).json({ error: 'Réservé aux élèves' });
+      return;
+    }
+    // Trouver le groupe validé dont l'élève est membre
+    // Via chat_members -> chat_conversations.group_id -> student_groups
+    // L'élève est identifié par son fingerprint dans chat_users
+    const conv = db
+      .prepare(
+        `SELECT c.*, g.name AS group_name, g.status AS group_status
+         FROM chat_conversations c
+         JOIN chat_members cm ON cm.conversation_id = c.id
+         JOIN chat_users cu ON cu.id = cm.user_id
+         JOIN student_groups g ON g.id = c.group_id
+         WHERE cu.fingerprint = ? AND c.group_id IS NOT NULL AND g.status = 'valide'
+         LIMIT 1`
+      )
+      .get(user.fingerprint) as any;
+    if (!conv) {
+      res.status(404).json({ error: 'Aucun groupe validé trouvé pour cet élève' });
+      return;
+    }
+    res.json({ conversation: conv });
+  } catch (err) {
+    console.error('Get my group chat error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Conversation d'un groupe précis
+// - Élève : seulement son groupe (fingerprint -> student_id -> groupe validé)
+// - Délégué : n'importe quel groupe
+router.get('/group/:groupId', (req, res) => {
+  try {
+    const groupId = Number(req.params.groupId);
+    const user = findUser(req);
+    if (!user) {
+      res.status(401).json({ error: 'Identifiant manquant' });
+      return;
+    }
+
+    const conv = db
+      .prepare(`SELECT * FROM chat_conversations WHERE group_id = ?`)
+      .get(groupId) as any;
+    if (!conv) {
+      res.status(404).json({ error: 'Conversation de groupe introuvable' });
+      return;
+    }
+
+    // Élève : vérifier qu'il est membre du groupe validé
+    if (user.kind === 'student') {
+      const isMember = db
+        .prepare(
+          `SELECT 1 FROM chat_members cm
+           JOIN chat_users cu ON cu.id = cm.user_id
+           WHERE cm.conversation_id = ? AND cu.id = ?`
+        )
+        .get(conv.id, user.id);
+      if (!isMember) {
+        res.status(403).json({ error: 'Accès refusé à ce groupe' });
+        return;
+      }
+    }
+
+    res.json({ conversation: conv });
+  } catch (err) {
+    console.error('Get group chat error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Fermer un groupe (délégué uniquement)
+router.post('/group/:groupId/close', requireAuth, (req, res) => {
+  try {
+    const groupId = Number(req.params.groupId);
+    const conv = db
+      .prepare(`SELECT id FROM chat_conversations WHERE group_id = ?`)
+      .get(groupId) as { id: number } | undefined;
+    if (!conv) {
+      res.status(404).json({ error: 'Conversation introuvable' });
+      return;
+    }
+    db.prepare(`UPDATE chat_conversations SET closed = 1 WHERE id = ?`).run(conv.id);
+    logAdminAction(db, 'chat_group_close', 'chat_conversation', conv.id, `Groupe ${groupId} fermé`);
+    res.json({ success: true, closed: true });
+  } catch (err) {
+    console.error('Close group chat error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Rouvrir un groupe (délégué uniquement)
+router.post('/group/:groupId/reopen', requireAuth, (req, res) => {
+  try {
+    const groupId = Number(req.params.groupId);
+    const conv = db
+      .prepare(`SELECT id FROM chat_conversations WHERE group_id = ?`)
+      .get(groupId) as { id: number } | undefined;
+    if (!conv) {
+      res.status(404).json({ error: 'Conversation introuvable' });
+      return;
+    }
+    db.prepare(`UPDATE chat_conversations SET closed = 0 WHERE id = ?`).run(conv.id);
+    logAdminAction(db, 'chat_group_reopen', 'chat_conversation', conv.id, `Groupe ${groupId} rouvert`);
+    res.json({ success: true, closed: false });
+  } catch (err) {
+    console.error('Reopen group chat error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Poster un message dans un groupe (membres + délégué)
+router.post('/group/:groupId/messages', (req, res) => {
+  try {
+    const groupId = Number(req.params.groupId);
+    const user = findUser(req);
+    if (!user) {
+      res.status(401).json({ error: 'Identifiant manquant' });
+      return;
+    }
+
+    const conv = db
+      .prepare(`SELECT * FROM chat_conversations WHERE group_id = ?`)
+      .get(groupId) as any;
+    if (!conv) {
+      res.status(404).json({ error: 'Conversation de groupe introuvable' });
+      return;
+    }
+    if (conv.closed && user.kind === 'student') {
+      res.status(403).json({ error: 'Ce chat est fermé par le délégué' });
+      return;
+    }
+
+    // Vérifier que l'utilisateur est membre de cette conversation
+    const isMember = db
+      .prepare(`SELECT 1 FROM chat_members WHERE conversation_id = ? AND user_id = ?`)
+      .get(conv.id, user.id);
+    if (!isMember && user.kind === 'student') {
+      res.status(403).json({ error: 'Accès refusé' });
+      return;
+    }
+
+    const content = cleanText(req.body?.content, MAX_CONTENT_LENGTH);
+    let imageData: string | null = null;
+    if (req.body?.image) {
+      const check = validateDataUri(req.body.image, ['image']);
+      if (!check.ok) {
+        res.status(400).json({ error: check.error });
+        return;
+      }
+      imageData = toDataUri(check.file);
+    }
+    if (!content && !imageData) {
+      res.status(400).json({ error: 'Message vide' });
+      return;
+    }
+
+    const inserted = db
+      .prepare(
+        `INSERT INTO chat_messages (conversation_id, sender_id, content, image)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(conv.id, user.id, content, imageData);
+
+    db.prepare('UPDATE chat_conversations SET last_activity_at = CURRENT_TIMESTAMP WHERE id = ?').run(conv.id);
+
+    const message = {
+      id: Number(inserted.lastInsertRowid),
+      conversation_id: conv.id,
+      sender_id: user.id,
+      sender_name: user.display_name,
+      sender_kind: user.kind,
+      content,
+      has_image: imageData ? 1 : 0,
+      created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      reactions: {} as Record<string, { total: number; mine: boolean }>,
+    };
+
+    res.status(201).json({ message });
+  } catch (err) {
+    console.error('Send group chat message error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 export default router;

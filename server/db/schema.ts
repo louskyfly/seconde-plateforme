@@ -553,6 +553,8 @@ function seedBirthdays(db: Database.Database): void {
 
   // Liste extraite de data/anniversaires/classe-_-seconde-09.xlsx
   const eleves: { nom: string; prenom: string; date_mmdd: string }[] = [
+    // TEST : aujourd'hui 09-30 (à retirer après test)
+    { nom: 'TEST', prenom: 'Test', date_mmdd: '09-30' },
     { nom: 'ABILY', prenom: 'Alyssa', date_mmdd: '05-17' },
     { nom: 'AGULHON', prenom: 'Louise', date_mmdd: '11-05' },
     { nom: 'AHYOUD', prenom: 'Lina', date_mmdd: '08-25' },

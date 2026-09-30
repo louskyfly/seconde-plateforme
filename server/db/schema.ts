@@ -497,6 +497,9 @@ export function initDatabase(db: Database.Database): void {
   // Chat de groupe : lien vers student_groups + flag fermé par le délégué
   ensureColumn(db, 'chat_conversations', 'group_id', 'INTEGER');
   ensureColumn(db, 'chat_conversations', 'closed', 'INTEGER DEFAULT 0');
+
+  // Seed des anniversaires (après création des tables)
+  seedBirthdays(db);
 }
 
 /**
@@ -536,4 +539,74 @@ export function ensureDefaultChatGroup(db: Database.Database): void {
   db.prepare(
     `INSERT OR IGNORE INTO chat_members (conversation_id, user_id) VALUES (?, ?)`
   ).run(conversation!.id, delegate!.id);
+}
+
+/**
+ * Seed des anniversaires depuis la liste de la classe.
+ * S'exécute au démarrage si la table est vide.
+ * Les empreintes sont déterministes (hash du nom) pour être reproductibles
+ * d'un déploiement à l'autre.
+ */
+function seedBirthdays(db: Database.Database): void {
+  const count = db.prepare('SELECT COUNT(*) AS n FROM birthdays').get() as { n: number };
+  if (count.n > 0) return;
+
+  // Liste extraite de data/anniversaires/classe-_-seconde-09.xlsx
+  const eleves: { nom: string; prenom: string; date_mmdd: string }[] = [
+    { nom: 'ABILY', prenom: 'Alyssa', date_mmdd: '05-17' },
+    { nom: 'AGULHON', prenom: 'Louise', date_mmdd: '11-05' },
+    { nom: 'AHYOUD', prenom: 'Lina', date_mmdd: '08-25' },
+    { nom: 'ANGEVIN', prenom: 'Victor', date_mmdd: '06-21' },
+    { nom: 'AVIAS', prenom: 'Nina', date_mmdd: '02-21' },
+    { nom: 'AZOULAY LAGA', prenom: 'Charlie', date_mmdd: '12-09' },
+    { nom: 'BACONNIER', prenom: 'Nathanaël', date_mmdd: '08-25' },
+    { nom: 'BALDÉ', prenom: 'Camélia', date_mmdd: '02-03' },
+    { nom: 'BEDOUX-DIEBOLT', prenom: 'Rodrigue', date_mmdd: '11-05' },
+    { nom: 'BEDOUX-DIEBOLT', prenom: 'Salome', date_mmdd: '11-05' },
+    { nom: 'BOGALE', prenom: 'Abigail', date_mmdd: '06-02' },
+    { nom: 'BOISSIN', prenom: 'Nais', date_mmdd: '01-29' },
+    { nom: 'BOUCHER', prenom: 'Lucas', date_mmdd: '03-17' },
+    { nom: 'BOUYER', prenom: 'Noélie', date_mmdd: '03-12' },
+    { nom: 'BRINGAY', prenom: 'Louise', date_mmdd: '10-22' },
+    { nom: 'CHASTAN', prenom: 'Guilhem', date_mmdd: '06-25' },
+    { nom: 'COADOU', prenom: 'Noé', date_mmdd: '02-06' },
+    { nom: 'DECOBECQ', prenom: 'Leyla', date_mmdd: '04-09' },
+    { nom: 'EDOUARD', prenom: 'Agathe', date_mmdd: '01-09' },
+    { nom: 'EL HANK EZ-ZAIDI', prenom: 'Malak', date_mmdd: '05-03' },
+    { nom: 'EL IDRISSI', prenom: 'Dina', date_mmdd: '05-05' },
+    { nom: 'GANDER', prenom: 'David', date_mmdd: '01-23' },
+    { nom: 'GOMIS', prenom: 'Paul', date_mmdd: '10-15' },
+    { nom: 'HERNANDEZ', prenom: 'Mathéo', date_mmdd: '08-16' },
+    { nom: 'LEFORT', prenom: 'Solal', date_mmdd: '04-03' },
+    { nom: 'LEVY', prenom: 'Charlotte', date_mmdd: '04-13' },
+    { nom: 'MALILE', prenom: 'Sirine', date_mmdd: '02-19' },
+    { nom: 'MARTIN', prenom: 'Ruben', date_mmdd: '10-05' },
+    { nom: 'MAZOUNI', prenom: 'Majda', date_mmdd: '05-27' },
+    { nom: 'OJO', prenom: 'Mayomikun', date_mmdd: '11-30' },
+    { nom: 'PIRONE', prenom: 'Lucas', date_mmdd: '12-03' },
+    { nom: 'RAMEAU', prenom: 'Adèle', date_mmdd: '08-23' },
+    { nom: 'SANCHEZ', prenom: 'Lucas', date_mmdd: '09-23' },
+    { nom: 'TORCHEUX', prenom: 'Laurelle', date_mmdd: '10-12' },
+    { nom: 'VERDELHAN', prenom: 'Manon', date_mmdd: '02-18' },
+  ];
+
+  // Empreinte déterministe = hash simple du nom complet (pour reproductibilité)
+  function fingerprintFor(nom: string, prenom: string): string {
+    const str = `${prenom.toLowerCase()}-${nom.toLowerCase()}`;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return 'birthday-' + Math.abs(hash).toString(36).padStart(12, '0');
+  }
+
+  const insert = db.prepare(
+    `INSERT INTO birthdays (fingerprint, date_mmdd, first_name) VALUES (?, ?, ?)`
+  );
+  for (const e of eleves) {
+    const fp = fingerprintFor(e.nom, e.prenom);
+    insert.run(fp, e.date_mmdd, e.prenom);
+  }
+  console.log(`[seed] ${eleves.length} anniversaires injectés`);
 }

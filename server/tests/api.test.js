@@ -185,6 +185,25 @@ describe('Chat', () => {
     assert.equal(res.status, 400);
   });
 
+  test('le chat refuse un nom complet, pas seulement un prénom', async () => {
+    // Sans cela, un appel direct à l'API autorisait d'écrire « Jean Dupont » dans
+    // le chat, alors que la règle du site est prénom seul.
+    const res = await other('POST', '/api/chat/join', {
+      fingerprint: 'nouvel-appareil-xyz',
+      display_name: 'Jean Dupont',
+    });
+    assert.equal(res.status, 400);
+    assert.match(res.data.error, /prénom/i);
+
+    // Un prénom composé d'un trait d'union reste accepté.
+    const valide = await other('POST', '/api/chat/join', {
+      fingerprint: 'nouvel-appareil-xyz',
+      display_name: 'Jean-Pierre',
+    });
+    assert.equal(valide.status, 200);
+    assert.equal(valide.data.user.display_name, 'Jean-Pierre');
+  });
+
   test('le chat garde sa limite de 3 Mo par image', async () => {
     const res = await student('POST', '/api/chat/messages', {
       fingerprint: ALICE,

@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { sendPushToAll } from '../lib/push.js';
 import { logAdminAction } from '../lib/maintenance.js';
 import { cleanText, toDataUri, validateDataUri } from '../lib/files.js';
+import { cleanFirstName, isValidFirstName } from '../lib/name.js';
 
 const router = Router();
 
@@ -126,7 +127,8 @@ router.post('/join', (req, res) => {
       return;
     }
 
-    const { fingerprint, display_name } = readBody(req);
+    const { fingerprint, display_name: rawName } = readBody(req);
+    let display_name = rawName;
     if (fingerprint.length < 8) {
       res.status(400).json({ error: 'Identifiant appareil manquant' });
       return;
@@ -136,8 +138,19 @@ router.post('/join', (req, res) => {
       .prepare('SELECT id, display_name, kind, fingerprint FROM chat_users WHERE fingerprint = ?')
       .get(fingerprint) as ChatUser | undefined;
 
-    if (!existing && (display_name.length < 2 || display_name.length > 30)) {
-      res.status(400).json({ error: 'Choisis un pseudo de 2 à 30 caractères' });
+    // Même règle que pour les idées et la messagerie : un prénom seul, sans
+    // espace. Le contrôle reste côté serveur, sinon un appel direct à l'API
+    // contournerait le formulaire. Un élève déjà inscrit peut choisir un autre
+    // prénom, mais pas un nom complet.
+    if (display_name) {
+      const firstName = cleanFirstName(display_name);
+      if (!isValidFirstName(firstName)) {
+        res.status(400).json({ error: 'Écris uniquement ton prénom, sans espace' });
+        return;
+      }
+      display_name = firstName;
+    } else if (!existing) {
+      res.status(400).json({ error: 'Choisis ton prénom' });
       return;
     }
 

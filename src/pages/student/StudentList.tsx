@@ -88,14 +88,9 @@ export default function StudentList() {
 
       <BirthdayBanner students={students} />
 
-      {/* Vue élève : ni bouton Modifier ni Retirer. Les deux callbacks sont donc
-          des no-op, la gestion réelle vit côté délégué. */}
-      <StudentTable
-        students={students}
-        onEdit={async () => undefined}
-        onDelete={async () => undefined}
-        onError={() => undefined}
-      />
+      {/* Vue élève : le tableau est en lecture seule, sans bouton Modifier ni
+          Retirer. La gestion réelle vit sur la page du délégué. */}
+      <StudentTable students={students} readOnly />
 
       {students.length > 0 && (
         <p className="text-[11px] text-gray-500 dark:text-gray-400">

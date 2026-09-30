@@ -217,6 +217,53 @@ describe('Chat', () => {
     assert.match(res.data.error, /volumineux/i);
   });
 
+  test('purge automatique au redémarrage', async () => {
+    // Sur Render, l'instance redémarre souvent : c'est là que la purge doit avoir
+    // lieu. On écrit donc directement dans la base, avec une date vieille de cinq
+    // jours, puis on relance le serveur et on vérifie que le message a disparu,
+    // sans rien ajouter ni retirer d'autre : les tests suivants comptent les
+    // messages de cette conversation.
+    const avant = await student('GET', `/api/chat/messages?fingerprint=${ALICE}&conversation_id=1`);
+    assert.equal(avant.status, 200);
+    const idsAvant = avant.data.messages.map((m) => m.id).sort((a, b) => a - b);
+
+    const base = new Database(path.join(tmpDir, 'test.db'));
+    base.pragma('busy_timeout = 5000');
+    const alice = base.prepare('SELECT id FROM chat_users WHERE fingerprint = ?').get(ALICE);
+    const veille = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 19)
+      .replace('T', ' ');
+    const insere = base
+      .prepare(
+        'INSERT INTO chat_messages (conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?)'
+      )
+      .run(1, alice.id, 'Message vieux, à purger', veille);
+    assert.equal(insere.changes, 1);
+    base.close();
+
+    await restartServer();
+
+    const apres = await student('GET', `/api/chat/messages?fingerprint=${ALICE}&conversation_id=1`);
+    assert.equal(apres.status, 200);
+
+    const contenu = apres.data.messages.map((m) => m.content);
+    assert.ok(!contenu.includes('Message vieux, à purger'), 'le message de plus de deux jours a été purgé');
+    assert.deepEqual(
+      apres.data.messages.map((m) => m.id).sort((a, b) => a - b),
+      idsAvant,
+      'seul le message vieux a disparu'
+    );
+
+    // La purge est inscrite au journal : c'est une suppression automatique, elle
+    // doit rester traçable même si personne n'a cliqué.
+    const journal = await admin('GET', '/api/admin/log');
+    assert.ok(
+      journal.data.some((e) => e.action === 'chat_purge'),
+      'la purge automatique est journalisée'
+    );
+  });
+
   test('envoi et réception d’un message', async () => {
     const join = await other('POST', '/api/chat/join', { fingerprint: BOB, display_name: 'Bob' });
     const conversationId = join.data.conversation.id;

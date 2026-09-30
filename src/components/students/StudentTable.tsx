@@ -24,9 +24,19 @@ function birthdayLabel(value: string | null): string {
 
 interface Props {
   students: Student[];
-  onEdit: (id: number, patch: Partial<Student>) => Promise<void>;
-  onDelete: (id: number) => Promise<void>;
-  onError: (message: string) => void;
+  onEdit?: (id: number, patch: Partial<Student>) => Promise<void>;
+  onDelete?: (id: number) => Promise<void>;
+  onError?: (message: string) => void;
+  /**
+   * Vue élève : le tableau est affiché sans les boutons Modifier et Retirer.
+   *
+   * Les deux callbacks sont optionnels et ne sont jamais appelés dans ce mode.
+   * Avant, la page élève passait des fonctions vides et les boutons restaient
+   * visibles : cliquer « Modifier » ouvrait un formulaire qui ne pouvait rien
+   * enregistrer, et « Retirer » demandait une confirmation avant de ne rien
+   * faire. Un bouton qui ne peut pas fonctionner ne doit pas être affiché.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -36,7 +46,7 @@ interface Props {
  * triée, et le re-trier ici permet de l'afficher tout de suite après une
  * modification, sans attendre un nouvel aller-retour.
  */
-export function StudentTable({ students, onEdit, onDelete, onError }: Props) {
+export function StudentTable({ students, onEdit, onDelete, onError, readOnly = false }: Props) {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const [prenom, setPrenom] = useState('');
@@ -49,6 +59,7 @@ export function StudentTable({ students, onEdit, onDelete, onError }: Props) {
   );
 
   const startEdit = (s: Student) => {
+    if (!onEdit) return;
     setEditing(s.id);
     setPrenom(s.first_name);
     setNom(s.last_name);
@@ -70,6 +81,7 @@ export function StudentTable({ students, onEdit, onDelete, onError }: Props) {
       setErreur('Anniversaire invalide : utilise le format MM-JJ (ex. 03-14).');
       return;
     }
+    if (!onEdit) return;
 
     setBusyId(id);
     setErreur('');
@@ -88,12 +100,13 @@ export function StudentTable({ students, onEdit, onDelete, onError }: Props) {
   };
 
   const remove = async (s: Student) => {
+    if (!onDelete) return;
     if (!window.confirm(`Retirer ${s.first_name} ${s.last_name} de la classe ?`)) return;
     setBusyId(s.id);
     try {
       await onDelete(s.id);
     } catch (err: any) {
-      onError(err.message || 'Suppression impossible');
+      onError?.(err.message || 'Suppression impossible');
     } finally {
       setBusyId(null);
     }
@@ -169,21 +182,25 @@ export function StudentTable({ students, onEdit, onDelete, onError }: Props) {
                   <span className="text-xs text-gray-500 dark:text-gray-400 flex-1 min-w-20">
                     {birthdayLabel(s.birthday)}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => startEdit(s)}
-                    className="px-2 py-1 rounded-lg glass text-[11px] font-semibold hover:bg-white/10"
-                  >
-                    Modifier
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(s)}
-                    disabled={busy}
-                    className="px-2 py-1 rounded-lg bg-red-500/80 text-white text-[11px] font-bold hover:bg-red-600 disabled:opacity-50"
-                  >
-                    Retirer
-                  </button>
+                  {!readOnly && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => startEdit(s)}
+                        className="px-2 py-1 rounded-lg glass text-[11px] font-semibold hover:bg-white/10"
+                      >
+                        Modifier
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => remove(s)}
+                        disabled={busy}
+                        className="px-2 py-1 rounded-lg bg-red-500/80 text-white text-[11px] font-bold hover:bg-red-600 disabled:opacity-50"
+                      >
+                        Retirer
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </li>

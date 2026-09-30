@@ -11,6 +11,8 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import Database from 'better-sqlite3';
+import { initDatabase } from '../../dist/server/db/schema.js';
 
 const PORT = 3947;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -1127,8 +1129,83 @@ describe('Messages au délégué', () => {
         `/api/messages/mine/${foreign.data.id}/read?fingerprint=${ALICE}`
       );
       assert.equal(res.status, 404, 'le fingerprint doit être vérifié');
-    });
   });
+});
+
+describe('Évolution du schéma', () => {
+  // Une base déjà en production ne rejoue pas les CREATE TABLE : ils portent
+  // tous « IF NOT EXISTS ». Les colonnes ajoutées après doivent donc être
+  // rattrapées au démarrage, sinon les routes qui les lisent échouent avec une
+  // erreur SQLite « no such column » alors que la base est par ailleurs saine.
+  function colonnes(db, table) {
+    return db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  }
+
+  function baseAncienne() {
+    // Forme d'avant les colonnes d'arbitrage des idées, avec une ligne réelle
+    // pour vérifier que la remise à niveau ne perd rien.
+    const memoire = new Database(':memory:');
+    memoire.exec(`
+      CREATE TABLE ideas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'classe',
+        anonymous INTEGER DEFAULT 0,
+        author_name TEXT,
+        status TEXT DEFAULT 'a_etudier',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO ideas (title, description) VALUES ('Idée existante', 'déjà en base');
+    `);
+    return memoire;
+  }
+
+  test('les colonnes ajoutées après la création de la table sont ajoutées', () => {
+    const db = baseAncienne();
+    assert.ok(!colonnes(db, 'ideas').includes('delegate_replied_at'));
+
+    initDatabase(db);
+
+    const ideas = colonnes(db, 'ideas');
+    assert.ok(ideas.includes('delegate_response'), 'delegate_response ajoutée');
+    assert.ok(ideas.includes('delegate_replied_at'), 'delegate_replied_at ajoutée');
+  });
+
+  test('les idées déjà enregistrées survivent à la remise à niveau', () => {
+    const db = baseAncienne();
+    initDatabase(db);
+
+    const idee = db.prepare('SELECT title FROM ideas WHERE id = 1').get();
+    assert.equal(idee.title, 'Idée existante');
+    assert.equal(
+      db.prepare('SELECT COUNT(*) AS n FROM ideas').get().n,
+      1,
+      'aucune ligne perdue ni dupliquée'
+    );
+  });
+
+  test('la remise à niveau est idempotente', () => {
+    const db = baseAncienne();
+    initDatabase(db);
+    // Relancer l'initialisation ne doit pas échouer sur une colonne existante,
+    // ce qui arriverait à chaque redémarrage du serveur.
+    initDatabase(db);
+    initDatabase(db);
+
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ideas').get().n, 1);
+  });
+
+  test('la purge du chat ne dépend d\'aucune colonne marquée', () => {
+    // La purge supprime physiquement les messages de plus de deux jours : aucune
+    // colonne « purgée » n'est nécessaire, et le schéma ne doit pas en garder
+    // une qui ferait croire à un second mécanisme.
+    const db = new Database(':memory:');
+    initDatabase(db);
+    assert.ok(!colonnes(db, 'chat_messages').includes('purged_at'));
+  });
+});
 
 describe('Sauvegarde des données', () => {
   test('le point de santé signale l’état du stockage', async () => {

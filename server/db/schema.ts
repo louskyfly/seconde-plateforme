@@ -300,7 +300,6 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   deleted_at DATETIME,
   deleted_by TEXT,
-  purged_at DATETIME,
   FOREIGN KEY (conversation_id) REFERENCES chat_conversations(id) ON DELETE CASCADE,
   FOREIGN KEY (sender_id) REFERENCES chat_users(id) ON DELETE CASCADE
 );
@@ -373,6 +372,13 @@ export function initDatabase(db: Database.Database): void {
   // option sans la déplacer. Les lignes existantes retombent sur leur id.
   ensureColumn(db, 'poll_options', 'position', 'INTEGER');
   db.prepare('UPDATE poll_options SET position = id WHERE position IS NULL').run();
+  // Colonnes d'arbitrage des idées ajoutées après la création de la table.
+  // Le schéma les déclare pour les bases neuves, mais `CREATE TABLE IF NOT
+  // EXISTS` ne touche pas une table déjà existante : sans ces appels, les
+  // routes qui répondent ou transmettent une idée échoueraient sur une base
+  // déployée avant leur ajout.
+  ensureColumn(db, 'ideas', 'delegate_response', 'TEXT');
+  ensureColumn(db, 'ideas', 'delegate_replied_at', 'DATETIME');
 }
 
 /**

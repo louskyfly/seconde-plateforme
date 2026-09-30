@@ -6,6 +6,7 @@ import { AuthProvider } from './hooks/useAuth';
 import { PageLoader } from './components/ui/PageLoader';
 import { MaintenanceGate } from './components/MaintenanceGate';
 import { useVisitTracker } from './hooks/useVisitTracker';
+import { BirthdayAnimation } from './components/BirthdayAnimation';
 
 const Home = lazy(() => import('./pages/student/Home'));
 const Announcements = lazy(() => import('./pages/student/Announcements'));
@@ -44,6 +45,7 @@ export default function App() {
   return (
     <AuthProvider>
       <VisitTracker />
+      <BirthdayAnimation />
       <Suspense fallback={<PageLoader />}>
         <MaintenanceGate>
           <Routes>

@@ -23,6 +23,7 @@ import type {
   ChatMessage,
   ChatReaction,
   ChatReactionCounts,
+  BirthdayEntry,
   Sheet,
   SheetListResponse,
   AdminLogEntry,
@@ -291,6 +292,15 @@ export const api = {
       `/chat/messages/${messageId}/reactions`,
       { method: 'POST', body: JSON.stringify({ reaction, fingerprint }) }
     ),
+
+  /** Liste de tous les anniversaires (pour l'animation au chargement). */
+  getBirthdays: () => request<{ birthdays: BirthdayEntry[] }>('/birthdays'),
+  /** L'élève connecté enregistre sa date d'anniversaire (MM-JJ). */
+  setMyBirthday: (fingerprint: string, date_mmdd: string) =>
+    request<{ success: boolean; date_mmdd: string }>('/birthdays/me', {
+      method: 'POST',
+      body: JSON.stringify({ fingerprint, date_mmdd }),
+    }),
 
   // Fiches de révision
   getSheets: (params: { subject?: string | null; q?: string | null; page?: number; fingerprint?: string | null; status?: string | null } = {}) => {

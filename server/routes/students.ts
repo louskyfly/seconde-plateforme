@@ -630,4 +630,58 @@ router.delete('/groups/:id', (req, res) => {
   }
 });
 
+/**
+ * Anniversaires — élèves
+ *
+ * GET  /api/birthdays           → liste { fingerprint, date_mmdd } (public, pour l'animation)
+ * POST /api/birthdays/me        → l'élève connecté (via fingerprint) enregistre sa date
+ */
+
+function cleanMmDd(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const m = value.match(/^(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const mm = Number(m[1]), dd = Number(m[2]);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  return `${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+/** Liste de tous les anniversaires — publique, pour l'animation au chargement. */
+router.get('/birthdays', (_req, res) => {
+  try {
+    const rows = db
+      .prepare('SELECT fingerprint, date_mmdd FROM birthdays')
+      .all() as { fingerprint: string; date_mmdd: string }[];
+    res.json({ birthdays: rows });
+  } catch (err) {
+    console.error('Get birthdays error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+/** L'élève enregistre sa propre date d'anniversaire. */
+router.post('/birthdays/me', (req, res) => {
+  try {
+    const fingerprint = cleanText(req.body?.fingerprint, 64);
+    if (fingerprint.length < 8) {
+      res.status(401).json({ error: 'Identifiant appareil manquant' });
+      return;
+    }
+    const date_mmdd = cleanMmDd(req.body?.date_mmdd);
+    if (!date_mmdd) {
+      res.status(400).json({ error: 'Format de date invalide (attendu MM-JJ)' });
+      return;
+    }
+    db.prepare(
+      `INSERT INTO birthdays (fingerprint, date_mmdd, updated_at)
+       VALUES (?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(fingerprint) DO UPDATE SET date_mmdd = excluded.date_mmdd, updated_at = CURRENT_TIMESTAMP`
+    ).run(fingerprint, date_mmdd);
+    res.json({ success: true, date_mmdd });
+  } catch (err) {
+    console.error('Set birthday error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 export default router;

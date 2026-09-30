@@ -222,6 +222,12 @@ export interface ChatMessage {
   reactions: ChatReactionCounts;
 }
 
+/** Anniversaire saisi par un élève (clé = son empreinte). */
+export interface BirthdayEntry {
+  fingerprint: string;
+  date_mmdd: string;
+}
+
 export interface VisitDay {
   day: string;
   visitors: number;

@@ -3,6 +3,7 @@ import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { cleanText } from '../lib/files.js';
 import { cleanFirstName, isValidFirstName } from '../lib/name.js';
+import { logAdminAction } from '../lib/maintenance.js';
 
 const router = Router();
 
@@ -40,16 +41,25 @@ router.get('/:id/replies', (req, res) => {
 
     const replies = db
       .prepare(
-        `SELECT id, content, author_name, deleted_at, created_at
+        `SELECT id, content, author_name, fingerprint, deleted_at, created_at
          FROM idea_replies WHERE idea_id = ? ORDER BY id ASC`
       )
       .all(id) as any[];
 
+    // `fingerprint` permet à l'interface de distinguer « mes réponses » des
+    // réponses des autres. Il n'est jamais renvoyé tel quel, seulement un booléen.
+    const mien = cleanText(req.query.fingerprint, 64);
+    const isDelegate = req.session?.authenticated === true;
+
     res.json(
       replies.map((r) => ({
-        ...r,
-        author_name: r.deleted_at ? null : r.author_name,
+        id: r.id,
         content: r.deleted_at ? 'Message supprimé' : r.content,
+        author_name: r.deleted_at ? null : r.author_name,
+        created_at: r.created_at,
+        deleted_at: r.deleted_at,
+        mine: Boolean(mien) && r.fingerprint === mien,
+        can_delete: isDelegate || (Boolean(mien) && r.fingerprint === mien),
       }))
     );
   } catch (err) {
@@ -118,10 +128,17 @@ router.delete('/replies/:replyId', (req, res) => {
       return;
     }
 
+    // Le délégué modère toutes les réponses, comme pour le chat.
+    const isDelegate = req.session?.authenticated === true;
     const sender = typeof fingerprint === 'string' ? fingerprint.trim().slice(0, 64) : '';
-    if (!sender || reply.fingerprint !== sender) {
+
+    if (!isDelegate && (!sender || reply.fingerprint !== sender)) {
       res.status(403).json({ error: 'Tu ne peux supprimer que tes propres réponses' });
       return;
+    }
+
+    if (isDelegate) {
+      logAdminAction(db, 'idea_reply_delete', 'idea_reply', Number(replyId), 'Réponse supprimée par le délégué');
     }
 
     // Suppression logique : l'ordre du fil est conservé, comme dans le chat.

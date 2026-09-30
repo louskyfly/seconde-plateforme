@@ -739,9 +739,11 @@ describe('Idées', () => {
     assert.equal(reponse.status, 201);
     assert.equal(reponse.data.author_name, 'Alice');
 
-    const fil = await student('GET', `/api/ideas/${id}/replies`);
-    assert.equal(fil.data.length, 1);
-    assert.equal(fil.data[0].content, 'Je suis d’accord');
+    // Le flag « mine » est bien retourné pour son auteur, pas pour les autres.
+    const filAlice = await student('GET', `/api/ideas/${id}/replies?fingerprint=${ALICE}`);
+    assert.equal(filAlice.data[0].mine, true);
+    const filOther = await other('GET', `/api/ideas/${id}/replies?fingerprint=${BOB}`);
+    assert.equal(filOther.data[0].mine, false);
   });
 
   test('on ne supprime que sa propre réponse', async () => {

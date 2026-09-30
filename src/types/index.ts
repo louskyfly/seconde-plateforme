@@ -45,6 +45,10 @@ export interface IdeaReply {
   author_name: string | null;
   deleted_at: string | null;
   created_at: string;
+  /** Calculé côté serveur à partir de l'empreinte, jamais renvoyée en clair. */
+  mine: boolean;
+  /** L'élève peut-il la supprimer : auteur, ou délégué connecté. */
+  can_delete: boolean;
 }
 
 export interface Message {

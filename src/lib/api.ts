@@ -116,7 +116,8 @@ export const api = {
   deleteIdea: (id: number) => request<{ success: boolean }>(`/ideas/${id}`, { method: 'DELETE' }),
 
   // Réponses aux idées (fil de discussion public sous chaque idée)
-  getIdeaReplies: (id: number) => request<IdeaReply[]>(`/ideas/${id}/replies`),
+  getIdeaReplies: (id: number, fingerprint?: string) =>
+    request<IdeaReply[]>(`/ideas/${id}/replies` + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : '')),
   createIdeaReply: (id: number, data: any) =>
     request<IdeaReply>(`/ideas/${id}/replies`, { method: 'POST', body: JSON.stringify(data) }),
   deleteIdeaReply: (replyId: number, fingerprint: string) =>

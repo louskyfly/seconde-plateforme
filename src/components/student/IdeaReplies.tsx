@@ -24,7 +24,7 @@ export function IdeaReplies({ ideaId, onCountChange }: { ideaId: number; onCount
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.getIdeaReplies(ideaId);
+      const data = await api.getIdeaReplies(ideaId, generateFingerprint());
       setReplies(data);
       onCountChange?.(data.filter((r) => !r.deleted_at).length);
     } catch {
@@ -74,6 +74,9 @@ export function IdeaReplies({ ideaId, onCountChange }: { ideaId: number; onCount
   };
 
   const live = replies.filter((r) => !r.deleted_at).length;
+  // `mine` vient du serveur : la comparaison se fait là-bas, où l'empreinte
+  // n'est jamais exposée dans la réponse.
+  const mesReponses = replies.filter((r) => !r.deleted_at && r.mine);
 
   return (
     <div className="mt-2 border-t border-gray-200/60 dark:border-white/10 pt-2">
@@ -142,15 +145,15 @@ export function IdeaReplies({ ideaId, onCountChange }: { ideaId: number; onCount
 
           {error && <p className="text-[11px] text-red-500">{error}</p>}
 
-          {/* Suppression réservée à l'auteur : la liste ne montre que ses
-              propres réponses grâce au fingerprint envoyé à l'API. */}
-          {replies.some((r) => !r.deleted_at) && (
+          {/* Le détail ne liste que les réponses de l'élève : le serveur les a
+              déjà filtrées, l'interface n'a plus qu'à les afficher. */}
+          {mesReponses.length > 0 && (
             <details className="text-[10px] text-gray-500 dark:text-gray-400">
-              <summary className="cursor-pointer hover:underline">Gérer mes réponses</summary>
+              <summary className="cursor-pointer hover:underline">
+                Gérer mes réponses ({mesReponses.length})
+              </summary>
               <ul className="mt-1 space-y-1">
-                {replies
-                  .filter((r) => !r.deleted_at)
-                  .map((r) => (
+                {mesReponses.map((r) => (
                     <li key={r.id} className="flex items-center justify-between gap-2">
                       <span className="truncate">
                         {r.content.slice(0, 40)}

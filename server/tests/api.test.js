@@ -2061,8 +2061,8 @@ describe('Sessions de révision', () => {
   });
 
   test('une session se crée, se lit et se modifie', async () => {
-    const refuse = await student('POST', '/api/revisions', { title: ' maths', date: '2030-01-10' });
-    assert.equal(refuse.status, 401, 'un élève ne planifie pas les sessions');
+    // Sans session de délégué ni empreinte, la création reste fermée.
+    assert.equal((await student('POST', '/api/revisions', { title: ' maths', date: '2030-01-10' })).status, 401);
 
     const cree = await admin('POST', '/api/revisions', {
       title: 'Révisions fractions',
@@ -2143,5 +2143,117 @@ describe('Sessions de révision', () => {
 
     // Supprimer deux fois n'est pas une erreur fatale, la session n'existe plus.
     assert.equal((await admin('PUT', `/api/revisions/${session.id}`, { title: 'X' })).status, 404);
+  });
+});
+
+describe('Sessions de révision proposées par les élèves', () => {
+  const ALICE = 'empreinte-eleve-alice-01';
+  const BOB = 'empreinte-eleve-bob-001';
+
+  test('un élève propose sa propre session', async () => {
+    const res = await student('POST', '/api/revisions', {
+      title: 'Fractions entre nous',
+      subject: 'maths',
+      date: '2030-03-04',
+      time: '17:00',
+      duration: 60,
+      location: 'Salle B',
+      description: 'Fiches 3 et 4',
+      fingerprint: ALICE,
+    });
+
+    assert.equal(res.status, 201, 'un élève peut créer une session');
+    assert.equal(res.data.title, 'Fractions entre nous');
+    assert.equal(res.data.mine, true);
+    assert.equal(res.data.peut_modifier, true);
+
+    // L'empreinte est ce qui identifie l'auteur : elle ne doit jamais sortir,
+    // sinon n'importe qui pourrait s'approprier une session qu'il n'a pas créée.
+    assert.ok(
+      !('created_by_fingerprint' in res.data),
+      'l’empreinte du signataire n’est pas renvoyée'
+    );
+  });
+
+  test('les autres élèves voient la session mais ne peuvent pas la gérer', async () => {
+    const vue = await student('GET', `/api/revisions?fingerprint=${BOB}`);
+    assert.equal(vue.status, 200);
+
+    const session = vue.data.find((s) => s.title === 'Fractions entre nous');
+    assert.ok(session, 'la session d’un autre élève reste visible');
+    assert.equal(session.mine, false, 'elle n’est pas la sienne');
+    assert.equal(session.peut_modifier, false, 'il ne peut donc pas la modifier');
+    assert.ok(!('created_by_fingerprint' in session), 'l’empreinte ne sort pas dans la liste');
+
+    // Et le serveur refuse, même en appelant l'API directement.
+    const modif = await student('PUT', `/api/revisions/${session.id}`, {
+      location: 'Salle A',
+      fingerprint: BOB,
+    });
+    assert.equal(modif.status, 403);
+
+    const suppr = await student('DELETE', `/api/revisions/${session.id}?fingerprint=${BOB}`);
+    assert.equal(suppr.status, 403);
+
+    // Sans empreinte non plus : personne n'est identifiable, donc 401 et non 403.
+    assert.equal((await student('PUT', `/api/revisions/${session.id}`, { location: 'Salle A' })).status, 401);
+    assert.equal((await student('DELETE', `/api/revisions/${session.id}`)).status, 401);
+
+    // La session est intacte.
+    const apres = await admin('GET', '/api/revisions?upcoming=false');
+    assert.equal(apres.data.find((s) => s.id === session.id).location, 'Salle B');
+  });
+
+  test('l’auteur peut corriger et supprimer sa session', async () => {
+    const liste = await student('GET', `/api/revisions?fingerprint=${ALICE}`);
+    const session = liste.data.find((s) => s.title === 'Fractions entre nous');
+    assert.ok(session, 'l’élève retrouve la session qu’il a proposée');
+    assert.equal(session.mine, true);
+
+    const modif = await student('PUT', `/api/revisions/${session.id}`, {
+      duration: 120,
+      fingerprint: ALICE,
+    });
+    assert.equal(modif.status, 200);
+    assert.equal(modif.data.duration, 120);
+
+    const suppr = await student('DELETE', `/api/revisions/${session.id}?fingerprint=${ALICE}`);
+    assert.equal(suppr.status, 200);
+    assert.equal(
+      (await student('GET', `/api/revisions?fingerprint=${ALICE}`)).data.some((s) => s.id === session.id),
+      false
+    );
+  });
+
+  test('le délégué garde la main sur toutes les sessions', async () => {
+    const res = await student('POST', '/api/revisions', {
+      title: 'Session élève',
+      date: '2030-03-05',
+      fingerprint: BOB,
+    });
+    assert.equal(res.status, 201);
+
+    const vue = await admin('GET', '/api/revisions?upcoming=false');
+    assert.equal(vue.data.find((s) => s.id === res.data.id).peut_modifier, true);
+
+    // Même proposée par un élève, il peut la corriger et l'annuler.
+    assert.equal((await admin('PUT', `/api/revisions/${res.data.id}`, { title: 'Session annulée' })).status, 200);
+    assert.equal((await admin('DELETE', `/api/revisions/${res.data.id}`)).status, 200);
+  });
+
+  test('une session d’élève reste lisible sans empreinte', async () => {
+    const res = await student('POST', '/api/revisions', {
+      title: 'Session ouverte',
+      date: '2030-03-06',
+      fingerprint: ALICE,
+    });
+    assert.equal(res.status, 201);
+
+    // Lecture anonyme : c'est le principe de la page, tout le monde voit le planning.
+    const anonyme = await student('GET', '/api/revisions');
+    const session = anonyme.data.find((s) => s.id === res.data.id);
+    assert.ok(session, 'visible sans s’identifier');
+    assert.equal(session.mine, false);
+    assert.equal(session.peut_modifier, false);
   });
 });

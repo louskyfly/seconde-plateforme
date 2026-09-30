@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS revision_sessions (
   duration INTEGER NOT NULL DEFAULT 60,
   location TEXT DEFAULT '',
   description TEXT DEFAULT '',
+  created_by_fingerprint TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -388,6 +389,12 @@ export function initDatabase(db: Database.Database): void {
   // Signataire d'un groupe créé par un élève. Le serveur s'en sert pour
   // savoir quel groupe privé lui appartient et qui a le droit de le modifier.
   ensureColumn(db, 'student_groups', 'created_by_fingerprint', 'TEXT');
+  // Signataire d'une session de révision créée par un élève. Les élèves
+  // pratiquent entre eux, donc une session n'est pas réservée au délégué : sans
+  // cette colonne, rien ne distinguait une session d'un élève d'une session
+  // officielle, et personne ne pouvait savoir laquelle il avait le droit de
+  // modifier ou de supprimer.
+  ensureColumn(db, 'revision_sessions', 'created_by_fingerprint', 'TEXT');
 }
 
 /**

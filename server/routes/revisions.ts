@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import db from '../db/index.js';
-import { requireAuth } from '../middleware/auth.js';
 import { cleanText } from '../lib/files.js';
 
 const router = Router();
@@ -40,6 +39,10 @@ function cleanDuration(value: unknown): number {
  * quand et où se tient la prochaine session. Seuls les élèves connectés
  * voient les sessions déjà passées, et encore seulement si `upcoming=false` est
  * demandé explicitement.
+ *
+ * `mine` et `peut_modifier` sont ajoutés à la volée, jamais stockés. Une session
+ * peut être créée par un élève comme par le délégué, et l'interface ne doit
+ * proposer de modifier que ce que l'appelant a le droit de modifier.
  */
 router.get('/', (req, res) => {
   try {
@@ -50,16 +53,50 @@ router.get('/', (req, res) => {
          ${seulementAVenir ? "WHERE date >= date('now')" : ''}
          ORDER BY date ASC, time IS NULL, time ASC`
       )
-      .all();
-    res.json(sessions);
+      .all() as any[];
+
+    const estDelegue = req.session?.authenticated === true;
+    const empreinte = cleanText(req.query.fingerprint, 64);
+
+    res.json(
+      sessions.map(({ created_by_fingerprint, ...reste }) => ({
+        ...reste,
+        mine: !estDelegue && empreinte.length >= 8 && created_by_fingerprint === empreinte,
+        // Le délégué modifie n'importe quelle session, l'élève seulement la
+        // sienne, et seulement si elle n'a pas encore eu lieu.
+        peut_modifier:
+          estDelegue || (empreinte.length >= 8 && created_by_fingerprint === empreinte),
+      }))
+    );
   } catch (err) {
     console.error('Get revision sessions error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-router.post('/', requireAuth, (req, res) => {
+/**
+ * Le délégué possède une session ; un élève s'identifie par son empreinte, comme
+ * partout ailleurs dans l'application. Les deux sont acceptés : au moins l'un des
+ * deux est exigé, sinon la route resterait ouverte à toute requête anonyme.
+ *
+ * Renvoie `null` si l'appelant n'est identifiable par aucun des deux.
+ */
+function identifier(req: { session?: { authenticated?: boolean }; body?: any; query?: any }) {
+  if (req.session?.authenticated === true) return { estDelegue: true, empreinte: '' as string };
+  const empreinte = cleanText(req.body?.fingerprint ?? req.query?.fingerprint, 64);
+  if (empreinte.length < 8) return null;
+  return { estDelegue: false, empreinte };
+}
+
+router.post('/', (req, res) => {
   try {
+    const qui = identifier(req);
+    if (!qui) {
+      res.status(401).json({ error: 'Non autorisé' });
+      return;
+    }
+    const { estDelegue, empreinte } = qui;
+
     const title = cleanText(req.body?.title, 100);
     const date = cleanDate(req.body?.date);
     if (title.length < 2) {
@@ -73,8 +110,8 @@ router.post('/', requireAuth, (req, res) => {
 
     const result = db
       .prepare(
-        `INSERT INTO revision_sessions (title, subject, date, time, duration, location, description)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO revision_sessions (title, subject, date, time, duration, location, description, created_by_fingerprint)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         title,
@@ -83,22 +120,37 @@ router.post('/', requireAuth, (req, res) => {
         cleanTime(req.body?.time),
         cleanDuration(req.body?.duration),
         cleanText(req.body?.location, 80),
-        cleanText(req.body?.description, 1000)
+        cleanText(req.body?.description, 1000),
+        estDelegue ? null : empreinte
       );
 
-    res.status(201).json(db.prepare('SELECT * FROM revision_sessions WHERE id = ?').get(result.lastInsertRowid));
+    const { created_by_fingerprint, ...session } = db
+      .prepare('SELECT * FROM revision_sessions WHERE id = ?')
+      .get(result.lastInsertRowid) as any;
+
+    res.status(201).json({ ...session, mine: !estDelegue, peut_modifier: true });
   } catch (err) {
     console.error('Create revision session error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', (req, res) => {
   try {
+    const qui = identifier(req);
+    if (!qui) {
+      res.status(401).json({ error: 'Non autorisé' });
+      return;
+    }
+    const { estDelegue, empreinte } = qui;
     const id = Number(req.params.id);
     const existing = db.prepare('SELECT * FROM revision_sessions WHERE id = ?').get(id) as any;
     if (!existing) {
       res.status(404).json({ error: 'Session introuvable' });
+      return;
+    }
+    if (!estDelegue && existing.created_by_fingerprint !== empreinte) {
+      res.status(403).json({ error: 'Tu ne peux modifier que les sessions que tu as créées' });
       return;
     }
 
@@ -125,18 +177,32 @@ router.put('/:id', requireAuth, (req, res) => {
       id
     );
 
-    res.json(db.prepare('SELECT * FROM revision_sessions WHERE id = ?').get(id));
+    const { created_by_fingerprint, ...session } = db
+      .prepare('SELECT * FROM revision_sessions WHERE id = ?')
+      .get(id) as any;
+    res.json({ ...session, mine: !estDelegue, peut_modifier: true });
   } catch (err) {
     console.error('Update revision session error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', (req, res) => {
   try {
+    const qui = identifier(req);
+    if (!qui) {
+      res.status(401).json({ error: 'Non autorisé' });
+      return;
+    }
+    const { estDelegue, empreinte } = qui;
     const id = Number(req.params.id);
-    if (!db.prepare('SELECT id FROM revision_sessions WHERE id = ?').get(id)) {
+    const existing = db.prepare('SELECT * FROM revision_sessions WHERE id = ?').get(id) as any;
+    if (!existing) {
       res.status(404).json({ error: 'Session introuvable' });
+      return;
+    }
+    if (!estDelegue && existing.created_by_fingerprint !== empreinte) {
+      res.status(403).json({ error: 'Tu ne peux supprimer que les sessions que tu as créées' });
       return;
     }
     db.prepare('DELETE FROM revision_sessions WHERE id = ?').run(id);

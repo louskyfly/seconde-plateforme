@@ -196,15 +196,22 @@ export const api = {
       method: 'DELETE',
     }),
   
-  // Sessions de révision
-  getRevisionSessions: (upcoming = true) =>
-    request<RevisionSession[]>(`/revisions${upcoming ? '' : '?upcoming=false'}`),
-  createRevisionSession: (data: Partial<RevisionSession>) =>
+  // Sessions de révision. Les élèves peuvent en créer eux aussi : l'empreinte
+  // est envoyée pour que le serveur sache qui est l'auteur, et qu'il ne
+  // renvoie ni la valeur brute ni un droit de modification à quelqu'un d'autre.
+  getRevisionSessions: (upcoming = true, fingerprint?: string) =>
+    request<RevisionSession[]>(
+      `/revisions${upcoming ? '' : '?upcoming=false'}${fingerprint ? `${upcoming ? '?' : '&'}fingerprint=${encodeURIComponent(fingerprint)}` : ''}`
+    ),
+  createRevisionSession: (data: Partial<RevisionSession> & { fingerprint?: string }) =>
     request<RevisionSession>('/revisions', { method: 'POST', body: JSON.stringify(data) }),
-  updateRevisionSession: (id: number, data: Partial<RevisionSession>) =>
+  updateRevisionSession: (id: number, data: Partial<RevisionSession> & { fingerprint?: string }) =>
     request<RevisionSession>(`/revisions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  deleteRevisionSession: (id: number) =>
-    request<{ success: boolean }>(`/revisions/${id}`, { method: 'DELETE' }),
+  deleteRevisionSession: (id: number, fingerprint?: string) =>
+    request<{ success: boolean }>(
+      `/revisions/${id}${fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''}`,
+      { method: 'DELETE' }
+    ),
 
   // Stats
   getStats: () => request<Stats>('/stats'),

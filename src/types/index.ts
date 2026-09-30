@@ -116,6 +116,10 @@ export interface RevisionSession {
   description: string;
   created_at: string;
   updated_at: string;
+  /** Vrai si l'appelant est l'élève qui a créé la session. */
+  mine?: boolean;
+  /** Vrai si l'appelant a le droit de la modifier ou de la supprimer. */
+  peut_modifier?: boolean;
 }
 
 export interface Resource {

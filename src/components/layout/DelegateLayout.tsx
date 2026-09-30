@@ -45,7 +45,8 @@ function Sidebar({ token }: { token: string }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
   // La pastille disparaît quand on ouvre la page « Idées » elle-même.
-  const pendingIdeas = usePendingIdeas(true, 30000);
+  const location = useLocation();
+  const pendingIdeas = usePendingIdeas(!location.pathname.endsWith('/idees'), 30000);
 
   const handleLogout = async () => {
     await logout();

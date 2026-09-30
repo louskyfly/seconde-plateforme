@@ -413,6 +413,30 @@ describe('Chat', () => {
     assert.equal(message.reactions.coeur.mine, true, 'Alice voit sa propre réaction');
   });
 
+  test('les réactions des messages déjà chargés reviennent à chaque rafraîchissement', async () => {
+    // 1. Alice envoie un message.
+    const msg = await student('POST', '/api/chat/messages', { fingerprint: ALICE, conversation_id: 1, content: 'sync' });
+    const messageId = msg.data.message.id;
+
+    // 2. Bob réagit.
+    await other('POST', `/api/chat/messages/${messageId}/reactions`, { fingerprint: BOB, reaction: 'pouce' });
+
+    // 3. Alice rafraîchit le fil AVANT le message (after = 0 pour charger tout).
+    let fil = await student('GET', `/api/chat/messages?fingerprint=${ALICE}&conversation_id=1&after=0`);
+    let message = fil.data.messages.find((m) => m.id === messageId);
+    assert.equal(message.reactions.pouce.total, 1, 'réaction de Bob visible dès le chargement initial');
+    assert.equal(message.reactions.pouce.mine, false, 'Alice ne l\'a pas posée');
+
+    // 4. Alice rafraîchit avec after = messageId (simule le polling normal).
+    //    Le message n'est pas renvoyé (son id n'est pas > after), mais reaction_updates doit l'être.
+    fil = await student('GET', `/api/chat/messages?fingerprint=${ALICE}&conversation_id=1&after=${messageId}`);
+    assert.equal(fil.data.messages.length, 0, 'aucun nouveau message');
+    assert.ok(fil.data.reaction_updates, 'reaction_updates présent dans la réponse');
+    assert.ok(fil.data.reaction_updates[messageId], 'mise à jour pour notre message');
+    assert.equal(fil.data.reaction_updates[messageId].pouce.total, 1);
+    assert.equal(fil.data.reaction_updates[messageId].pouce.mine, false);
+  });
+
   test('le délégué supprime une journée entière de discussion', async () => {
     await student('POST', '/api/chat/messages', { fingerprint: ALICE, conversation_id: 1, content: 'Jour 1 A' });
     await student('POST', '/api/chat/messages', { fingerprint: ALICE, conversation_id: 1, content: 'Jour 1 B' });

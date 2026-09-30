@@ -21,6 +21,8 @@ import type {
   ChatConversation,
   ChatMemberInfo,
   ChatMessage,
+  ChatReaction,
+  ChatReactionCounts,
   Sheet,
   SheetListResponse,
   AdminLogEntry,
@@ -249,8 +251,16 @@ export const api = {
     request<{ conversation: ChatConversation; user: ChatUser | null; unread: number }>(
       '/chat/conversation' + (fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : '')
     ),
+  /**
+   * Lit le fil.
+   *
+   * `after` ne demande que les messages plus récents que cet identifiant, pour
+   * ne pas renvoyer tout le fil à chaque rafraîchissement. Les réactions des
+   * messages déjà chargés reviennent alors dans `reaction_updates`, sans leur
+   * texte : sans elles, les puces d'un message ancien resteraient figées.
+   */
   getChatMessages: (fingerprint: string | null, conversation_id: number, after = 0) =>
-    request<{ messages: ChatMessage[]; conversation_id: number }>(
+    request<{ messages: ChatMessage[]; conversation_id: number; reaction_updates?: Record<string, ChatReactionCounts> }>(
       `/chat/messages?conversation_id=${conversation_id}&after=${after}` +
         (fingerprint ? `&fingerprint=${encodeURIComponent(fingerprint)}` : '')
     ),
@@ -269,9 +279,15 @@ export const api = {
   /** Supprime tous les messages d'une journée. Réservé au délégué. */
   deleteChatDay: (date: string) =>
     request<{ success: boolean; deleted: number; date: string }>(`/chat/day/${date}`, { method: 'DELETE' }),
-  /** Ajoute ou retire une réaction. Réservée aux élèves. */
-  toggleChatReaction: (messageId: number, reaction: string, fingerprint?: string | null) =>
-    request<{ reaction: string; active: number; mine: boolean; counts: Record<string, { total: number; mine: boolean }> }>(
+  /**
+   * Ajoute ou retire une réaction. Réservée aux élèves.
+   *
+   * Le type de réaction est fermé côté client comme côté serveur : sans cela une
+   * faute de frappe produirait une chaîne libre dans les types, et le serveur
+   * répondrait 400.
+   */
+  toggleChatReaction: (messageId: number, reaction: ChatReaction, fingerprint?: string | null) =>
+    request<{ reaction: ChatReaction; active: number; mine: boolean; counts: ChatReactionCounts }>(
       `/chat/messages/${messageId}/reactions`,
       { method: 'POST', body: JSON.stringify({ reaction, fingerprint }) }
     ),

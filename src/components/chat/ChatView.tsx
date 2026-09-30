@@ -98,14 +98,14 @@ const [newCount, setNewCount] = useState(0);
     };
   }, [fingerprint]);
 
-  /* Rafraîchissement des nouveaux messages */
+  /* Rafraîchissement des nouveaux messages + réactions */
   const refresh = useCallback(
     async (silent = true) => {
       if (!conversation) return;
       const after = lastIdRef.current;
       try {
         const data = await api.getChatMessages(fingerprint, conversation.id, after);
-        if (data.messages.length === 0) {
+        if (data.messages.length === 0 && !data.reaction_updates) {
           if (!silent) setError('');
           return;
         }
@@ -115,6 +115,16 @@ const [newCount, setNewCount] = useState(0);
           if (fresh.length && prev.length && !stickToBottom.current) setNewCount((c) => c + fresh.length);
           return [...prev, ...fresh];
         });
+        // Appliquer les mises à jour de réaction pour les messages déjà connus.
+        if (data.reaction_updates) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              const upd = data.reaction_updates![m.id];
+              if (!upd) return m;
+              return { ...m, reactions: upd };
+            })
+          );
+        }
         if (!silent) setError('');
       } catch (err: any) {
         if (err?.message === 'Profil inconnu') setNeedsProfile(true);

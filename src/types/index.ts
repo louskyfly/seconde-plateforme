@@ -200,6 +200,15 @@ export interface ChatMemberInfo {
 
 export type ChatReaction = 'pouce' | 'rire' | 'coeur';
 
+/**
+ * Compteurs d'un message, par réaction.
+ *
+ * `mine` dit si l'élève courant a posé cette réaction : la puce se dessine
+ * alors pleine plutôt que creuse. Un objet vide signifie « aucune réaction »,
+ * et non « pas encore chargé ».
+ */
+export type ChatReactionCounts = Record<string, { total: number; mine: boolean }>;
+
 export interface ChatMessage {
   id: number;
   conversation_id: number;
@@ -210,7 +219,7 @@ export interface ChatMessage {
   has_image: number;
   created_at: string;
   /** Compteurs par réaction, avec `mine` pour celles de l'élève courant. */
-  reactions: Record<string, { total: number; mine: boolean }>;
+  reactions: ChatReactionCounts;
 }
 
 export interface VisitDay {

@@ -265,8 +265,17 @@ router.get('/unread', (req, res) => {
 });
 
 /** Réactions autorisées : la liste est fermée, aucune valeur libre. */
-const REACTIONS = ['pouce', 'rire', 'coeur'] as const;
-type Reaction = (typeof REACTIONS)[number];
+export const REACTIONS = ['pouce', 'rire', 'coeur'] as const;
+
+/**
+ * Nombre de messages dont les réactions sont renvoyées à chaque rafraîchissement.
+ *
+ * Assez pour que les puces de l'écran restent justes, assez peu pour que le
+ * rafraîchissement toutes les trois secondes ne fasse pas une requête par
+ * message affiché.
+ */
+const REACTION_SYNC_MESSAGES = 50;
+export type Reaction = (typeof REACTIONS)[number];
 
 function isReaction(value: unknown): value is Reaction {
   return typeof value === 'string' && (REACTIONS as readonly string[]).includes(value);
@@ -298,17 +307,20 @@ router.post('/messages/:id/reactions', (req, res) => {
     }
 
     const messageId = Number(req.params.id);
-    const message = db.prepare('SELECT id FROM chat_messages WHERE id = ?').get(messageId) as
-      | { id: number }
-      | undefined;
-    if (!message) {
-      res.status(404).json({ error: 'Message introuvable' });
-      return;
-    }
-
     const group = getDefaultGroup();
     if (!group || !isMember(group.id, user.id)) {
       res.status(403).json({ error: 'Accès refusé' });
+      return;
+    }
+
+    // Le message doit appartenir à la conversation dont l'appelant a le droit
+    // de parler. Vérifier seulement qu'il existe laisserait réagir sur un
+    // message d'une autre conversation dès qu'il y en aura une.
+    const message = db
+      .prepare('SELECT id FROM chat_messages WHERE id = ? AND conversation_id = ?')
+      .get(messageId, group.id) as { id: number } | undefined;
+    if (!message) {
+      res.status(404).json({ error: 'Message introuvable' });
       return;
     }
 
@@ -402,7 +414,31 @@ router.get('/messages', (req, res) => {
       message.reactions = reactionCounts(message.id, user.id);
     }
 
-    res.json({ messages, conversation_id: conversation.id });
+    // Les réactions des messages DÉJÀ chargés voyagent à part.
+    //
+    // Le fil se rafraîchit toutes les trois secondes, mais en ne demandant que
+    // les messages plus récents que le dernier connu. Les réactions des autres
+    // élèves sur un message ancien ne seraient donc jamais reçues : la puce
+    // restait figée jusqu'au rechargement complet de la page. On renvoie donc,
+    // à chaque rafraîchissement, les compteurs des derniers messages, même
+    // quand leur texte n'est pas renvoyé.
+    const recent = after
+      ? (db
+          .prepare(
+            `SELECT m.id FROM chat_messages m
+             WHERE m.conversation_id = ?
+             ORDER BY m.id DESC
+             LIMIT ?`
+          )
+          .all(conversation.id, REACTION_SYNC_MESSAGES) as { id: number }[])
+      : [];
+
+    const reactionUpdates: Record<number, Record<string, { total: number; mine: boolean }>> = {};
+    for (const { id } of recent) {
+      reactionUpdates[id] = reactionCounts(id, user.id);
+    }
+
+    res.json({ messages, conversation_id: conversation.id, reaction_updates: reactionUpdates });
   } catch (err) {
     console.error('Get chat messages error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -464,6 +500,11 @@ router.post('/messages', (req, res) => {
       content,
       has_image: imageData ? 1 : 0,
       created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      // Un message neuf n'a aucune réaction. Le champ est renvoyé vide pour que
+      // la réponse ait la même forme que celle de la lecture du fil : sans lui,
+      // le message de l'élève qui vient d'envoyer s'affiche sans ses réactions,
+      // alors que le fil le relit ensuite avec un objet vide.
+      reactions: {} as Record<string, { total: number; mine: boolean }>,
     };
 
     if (user.kind !== 'delegate' && now - lastPushAt > PUSH_THROTTLE_MS) {

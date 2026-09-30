@@ -10,6 +10,7 @@ import type {
   Project,
   RevisionSession,
   Student,
+  GroupMember,
   StudentGroup,
   StudentGroupStatus,
   Stats,
@@ -176,19 +177,26 @@ export const api = {
     name: string;
     is_private?: boolean;
     student_ids?: number[];
+    /** Noms tapés, pour les élèves qui n'ont pas la liste sous les yeux. */
+    member_names?: string[];
     validate_now?: boolean;
     fingerprint?: string;
   }) => request<StudentGroup>('/groups', { method: 'POST', body: JSON.stringify(data) }),
   updateGroupStatus: (id: number, status: StudentGroupStatus) =>
     request<StudentGroup>(`/groups/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
-  proposeGroupMember: (id: number, studentId: number, fingerprint: string) =>
-    request<{ success: boolean; members: Student[] }>(`/groups/${id}/propose-member`, {
+  /** Ajoute un membre, soit par fiche du tableau, soit par nom tapé. */
+  proposeGroupMember: (
+    id: number,
+    member: { student_id?: number; member_name?: string },
+    fingerprint?: string
+  ) =>
+    request<{ success: boolean; members: GroupMember[] }>(`/groups/${id}/propose-member`, {
       method: 'POST',
-      body: JSON.stringify({ student_id: studentId, fingerprint }),
+      body: JSON.stringify({ ...member, fingerprint }),
     }),
-  removeGroupMember: (id: number, studentId: number, fingerprint?: string) =>
-    request<{ success: boolean; members: Student[] }>(
-      `/groups/${id}/members/${studentId}${fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''}`,
+  removeGroupMember: (id: number, memberKey: string, fingerprint?: string) =>
+    request<{ success: boolean; members: GroupMember[] }>(
+      `/groups/${id}/members/${encodeURIComponent(memberKey)}${fingerprint ? `?fingerprint=${encodeURIComponent(fingerprint)}` : ''}`,
       { method: 'DELETE' }
     ),
   deleteStudentGroup: (id: number, fingerprint?: string) =>

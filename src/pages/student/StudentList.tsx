@@ -99,7 +99,9 @@ export default function StudentList() {
         </p>
       )}
 
-      <StudentGroups students={students} />
+      {/* Les groupes se renseignent à la main : un élève n'est pas obligé de se
+          retrouver dans le tableau ci-dessus pour former son groupe. */}
+      <StudentGroups />
     </div>
   );
 }

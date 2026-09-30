@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import { LoadError } from '@/components/ui/LoadError';
 import { StudentTable, StudentForm } from '@/components/students/StudentTable';
-import { generateFingerprint } from '@/lib/utils';
 import type { Student, StudentGroup, StudentGroupStatus } from '@/types';
 
 const STATUTS: { valeur: StudentGroupStatus; label: string; classe: string }[] = [
@@ -26,7 +25,7 @@ function GroupCard({
   group: StudentGroup;
   students: Student[];
   onStatus: (id: number, status: StudentGroupStatus) => Promise<void>;
-  onRemoveMember: (groupId: number, studentId: number) => Promise<void>;
+  onRemoveMember: (groupId: number, memberKey: string) => Promise<void>;
   onJoin: (groupId: number, studentId: number) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
 }) {
@@ -39,7 +38,10 @@ function GroupCard({
   // qui modifierait la composition.
   const fige = group.status === 'valide';
 
-  const choisis = group.members.map((m) => m.id);
+  // La composition d'un groupe comporte des fiches du tableau et des noms que
+  // les élèves ont tapés. Seules les fiches ont un `student_id`, et c'est
+  //elles qui sont comparées ici pour proposer les élèves qui manquent.
+  const choisis = group.members.map((m) => m.student_id).filter((v): v is number => typeof v === 'number');
   const disponibles = students.filter((s) => !choisis.includes(s.id));
 
   const changerStatut = async (status: StudentGroupStatus) => {
@@ -69,11 +71,11 @@ function GroupCard({
     }
   };
 
-  const retirer = async (studentId: number) => {
+  const retirer = async (memberKey: string) => {
     setBusy(true);
     setErreur('');
     try {
-      await onRemoveMember(group.id, studentId);
+      await onRemoveMember(group.id, memberKey);
     } catch (err: any) {
       setErreur(err.message || 'Retrait impossible');
     } finally {
@@ -106,17 +108,24 @@ function GroupCard({
           <li
             key={m.id}
             className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5 dark:bg-white/10 text-[11px]"
+            title={m.student_id === null ? 'Nom écrit par un élève, absent du tableau' : undefined}
           >
-            <span className="text-gray-700 dark:text-gray-200">
-              {m.first_name} {m.last_name}
-            </span>
+            <span className="text-gray-700 dark:text-gray-200">{m.name}</span>
+            {m.student_id === null && (
+              <span
+                className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[9px] font-bold"
+                title="Cet élève n’est pas dans le tableau. Ajoute-le au tableau pour que la règle « un élève, un groupe » s’applique à lui aussi."
+              >
+                hors tableau
+              </span>
+            )}
             {!fige && (
               <button
                 type="button"
-                onClick={() => retirer(m.id)}
+                onClick={() => retirer(m.member_key)}
                 disabled={busy}
                 className="text-red-400 hover:text-red-600 font-bold"
-                aria-label={`Retirer ${m.first_name}`}
+                aria-label={`Retirer ${m.name}`}
               >
                 ×
               </button>
@@ -305,12 +314,12 @@ export default function ManageStudents() {
   };
 
   const rejoindre = async (groupId: number, studentId: number) => {
-    await api.proposeGroupMember(groupId, studentId, generateFingerprint());
+    await api.proposeGroupMember(groupId, { student_id: studentId });
     setGroups(await api.getStudentGroups());
   };
 
-  const retirerMembre = async (groupId: number, studentId: number) => {
-    await api.removeGroupMember(groupId, studentId);
+  const retirerMembre = async (groupId: number, memberKey: string) => {
+    await api.removeGroupMember(groupId, memberKey);
     setGroups(await api.getStudentGroups());
   };
 

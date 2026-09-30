@@ -201,15 +201,36 @@ CREATE TABLE IF NOT EXISTS student_groups (
   validated_by TEXT
 );
 
+-- Membres d'un groupe.
+--
+-- student_id est facultatif : un élève tape les noms de son groupe, il n'est
+-- pas obligé de les prendre dans le tableau. Un nom tapé est rattaché à une
+-- fiche du tableau dès que c'est possible, mais si l'élève n'y figure pas, le
+-- membre existe quand même. C'est pourquoi member_name porte le nom tel que
+-- tapé, et member_key sa forme normalisée (minuscules, sans accents) qui sert
+-- à repérer les doublons.
+--
+-- student_id n'est pas NULL dans les tables créées avant ce changement : la
+-- migration assouplirLesMembresDeGroupe reconstruit la table pour le rendre
+-- facultatif.
 CREATE TABLE IF NOT EXISTS student_group_members (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   group_id INTEGER NOT NULL,
-  student_id INTEGER NOT NULL,
+  student_id INTEGER,
+  member_name TEXT,
+  member_key TEXT,
   added_by_fingerprint TEXT,
   added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (group_id, student_id),
   FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
   FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 );
+
+-- Un même élève ne peut pas figurer deux fois dans un groupe, et un même nom
+-- non plus. Les index partiels laissent passer les membres sans fiche.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_group_member_student
+  ON student_group_members(group_id, student_id) WHERE student_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_group_member_key
+  ON student_group_members(group_id, member_key);
 
 -- Un élève ne peut appartenir qu'à un seul groupe VALIDÉ : c'est ce qui rend le
 -- tableau cohérent, sans qu'un même nom apparaisse dans deux équipes.
@@ -358,7 +379,68 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
   }
 }
 
+/**
+ * Rend `student_id` facultatif dans `student_group_members`.
+ *
+ * Un élève tape les noms de son groupe au lieu de les choisir dans le tableau,
+ * donc un membre n'a pas toujours de fiche élève. SQLite ne sait pas retirer
+ * une contrainte `NOT NULL` : il faut reconstruire la table. C'est fait une
+ * seule fois — la présence de `member_key` sert de témoin — et dans une
+ * transaction, pour qu'une base déjà déployée ne reste pas à moitié convertie.
+ */
+function assouplirLesMembresDeGroupe(db: Database.Database): void {
+  const colonnes = db.prepare('PRAGMA table_info(student_group_members)').all() as {
+    name: string;
+  }[];
+  if (colonnes.some((c) => c.name === 'member_key')) return;
+
+  const existante = db
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'student_group_members'`)
+    .get();
+  // Base neuve : le `CREATE TABLE` de SCHEMA_SQL vient de la créer correctement.
+  if (!existante) return;
+
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE student_group_members_souple (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL,
+        student_id INTEGER,
+        member_name TEXT,
+        member_key TEXT,
+        added_by_fingerprint TEXT,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (group_id) REFERENCES student_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+      );
+
+      INSERT INTO student_group_members_souple
+        (group_id, student_id, member_name, member_key, added_by_fingerprint, added_at)
+      SELECT m.group_id,
+             m.student_id,
+             TRIM(s.first_name || ' ' || s.last_name),
+             lower(TRIM(s.first_name || ' ' || s.last_name)),
+             m.added_by_fingerprint,
+             m.added_at
+      FROM student_group_members m
+      LEFT JOIN students s ON s.id = m.student_id;
+
+      DROP TABLE student_group_members;
+      ALTER TABLE student_group_members_souple RENAME TO student_group_members;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_group_member_student
+        ON student_group_members(group_id, student_id) WHERE student_id IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_group_member_key
+        ON student_group_members(group_id, member_key);
+    `);
+  })();
+}
+
 export function initDatabase(db: Database.Database): void {
+  // Avant `SCHEMA_SQL`, et non après : le schéma déclare un index sur
+  // `member_key`, colonne que les bases anciennes n'ont pas. Appliqué en
+  // premier, cet index échouerait sur une base déployée avant ce changement.
+  assouplirLesMembresDeGroupe(db);
   db.exec(SCHEMA_SQL);
   ensureColumn(db, 'announcements', 'image', 'TEXT');
   ensureColumn(db, 'settings', 'home_image', 'TEXT');

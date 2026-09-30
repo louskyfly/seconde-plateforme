@@ -243,12 +243,31 @@ export interface Student {
 
 export type StudentGroupStatus = 'en_attente' | 'valide' | 'refuse';
 
+/**
+ * Membre d'un groupe.
+ *
+ * `student_id` est présent quand le nom correspond à une fiche du tableau des
+ * élèves, et absent sinon : les élèves tapent les noms de leur groupe, et un
+ * nom tapé reste valide même s'il ne figure dans aucune liste.
+ */
+export interface GroupMember {
+  /** Identifiant de la ligne du membre, stable même sans fiche élève. */
+  id: number;
+  student_id: number | null;
+  /** Nom à afficher, tel que tapé. */
+  name: string;
+  /** Nom normalisé (minuscules, sans accents) : sert à retirer un membre. */
+  member_key: string;
+  birthday: string | null;
+  added_at: string;
+}
+
 export interface StudentGroup {
   id: number;
   name: string;
   is_private: number;
   status: StudentGroupStatus;
-  members: Student[];
+  members: GroupMember[];
   validated_at: string | null;
   validated_by: string | null;
   /** Ce groupe a été créé par l'appareil qui consulte. */

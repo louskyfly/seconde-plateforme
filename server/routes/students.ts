@@ -27,14 +27,55 @@ function cleanName(value: unknown): string {
     .slice(0, 60);
 }
 
-/** Date d'anniversaire au format MM-JJ, l'année étant inutile. */
-function cleanBirthday(value: unknown): string | null {
-  if (typeof value !== 'string' || !/^\d{2}-\d{2}$/.test(value.trim())) return null;
-  const [month, day] = value.trim().split('-').map(Number);
-  // Rejette le 31 février et le 00/13, que le navigateur laisse passer.
-  const probe = new Date(2024, month - 1, day);
-  if (probe.getMonth() !== month - 1 || probe.getDate() !== day) return null;
-  return `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+/**
+ * Forme normalisée d'un nom, pour repérer « Lucas », « lucas » ou « LUCAS » comme
+ * le même élève. Les accents sont retirés : sans cela, un élève qui tape son
+ * prénom sans accent se retrouve en doublon de lui-même.
+ */
+function normalizeName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Nettoie un nom tapé dans un groupe.
+ *
+ * Contrairement à `cleanName`, un caractère interdit devient un espace et n'est
+ * pas simplement effacé : un élève qui tape `Jean@Paul` veut dire Jean Paul, et
+ * `JeanPaul` serait deux mots collés. C'est aussi ce qui rend la virgule
+ * utilisable comme séparateur quand on colle une liste de noms.
+ */
+function cleanMemberName(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[^\p{L}\s'-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+}
+
+/**
+ * Retrouve la fiche d'un élève à partir d'un nom tapé.
+ *
+ * C'est ce qui permet de conserver la règle « un élève ne peut être que dans un
+ * groupe validé » pour tous ceux que le délégué a bien enregistrés. Un nom sans
+ * correspondance reste un membre sans fiche : le groupe est valide quand même,
+ * mais cet élève-là n'est pas verrouillé ailleurs.
+ */
+function studentByName(db: Database.Database, memberName: string) {
+  const wanted = normalizeName(memberName);
+  if (!wanted) return undefined;
+  const students = db.prepare('SELECT * FROM students').all() as any[];
+  return students.find((s) => normalizeName(`${s.first_name} ${s.last_name}`) === wanted);
+}
+
+/** Fiche d'un élève du tableau correspondant à un nom tapé, sinon rien. */
+function getStudentByName(db: Database.Database, memberName: string) {
+  return studentByName(db, memberName);
 }
 
 function getStudent(db: Database.Database, id: number) {
@@ -45,13 +86,30 @@ function getStudent(db: Database.Database, id: number) {
 function membersOf(db: Database.Database, groupId: number) {
   return db
     .prepare(
-      `SELECT s.id, s.first_name, s.last_name, s.birthday, m.added_at
+      `SELECT m.id, m.student_id, m.member_name, m.member_key, m.added_at, s.birthday
        FROM student_group_members m
-       JOIN students s ON s.id = m.student_id
+       LEFT JOIN students s ON s.id = m.student_id
        WHERE m.group_id = ?
-       ORDER BY s.last_name, s.first_name`
+       ORDER BY m.added_at, m.id`
     )
-    .all(groupId) as any[];
+    .all(groupId)
+    .map((m: any) => ({
+      ...m,
+      // `id` reste l'identifiant de la fiche élève quand il y en a une : le
+      // délégué s'en sert pour choisir des élèves dans le tableau.
+      name: m.member_name || '',
+      birthday: m.birthday ?? null,
+    })) as any[];
+}
+
+/** Date d'anniversaire au format MM-JJ, l'année étant inutile. */
+function cleanBirthday(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^\d{2}-\d{2}$/.test(value.trim())) return null;
+  const [month, day] = value.trim().split('-').map(Number);
+  // Rejette le 31 février et le 00/13, que le navigateur laisse passer.
+  const probe = new Date(2024, month - 1, day);
+  if (probe.getMonth() !== month - 1 || probe.getDate() !== day) return null;
+  return `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 function groupsWithMembers(db: Database.Database) {
@@ -234,8 +292,13 @@ router.post('/groups', (req, res) => {
       .run(name, req.body?.is_private ? 1 : 0, 'en_attente', signataire);
 
     const id = Number(result.lastInsertRowid);
+    // Deux façons de renseigner la composition : des fiches du tableau (le
+    // délégué les choisit dans une liste) ou des noms tapés (les élèves n'ont
+    // pas la liste sous les yeux). Les deux se mélangent.
     const studentIds: number[] = Array.isArray(req.body?.student_ids) ? req.body.student_ids.map(Number) : [];
-    addMembers(db, id, studentIds, signataire);
+    const memberNames: string[] = Array.isArray(req.body?.member_names) ? req.body.member_names : [];
+    addMembersById(db, id, studentIds, signataire);
+    addMembersByName(db, id, memberNames, signataire);
 
     if (estDelegue && req.body?.validate_now !== false) {
       const err = claimGroup(db, id, cleanText(req.body?.validated_by, 30) || 'Délégué');
@@ -255,15 +318,43 @@ router.post('/groups', (req, res) => {
   }
 });
 
-/** Ajoute des élèves à un groupe en attente, en ignorant les doublons. */
-function addMembers(db: Database.Database, groupId: number, studentIds: number[], by: string | null): number {
+/** Ajoute des élèves du tableau à un groupe, en ignorant les doublons. */
+function addMembersById(db: Database.Database, groupId: number, studentIds: number[], by: string | null): number {
   let added = 0;
   const insert = db.prepare(
-    'INSERT OR IGNORE INTO student_group_members (group_id, student_id, added_by_fingerprint) VALUES (?, ?, ?)'
+    'INSERT OR IGNORE INTO student_group_members (group_id, student_id, member_name, member_key, added_by_fingerprint) VALUES (?, ?, ?, ?, ?)'
   );
   for (const sid of studentIds) {
-    if (!getStudent(db, sid)) continue;
-    if (insert.run(groupId, sid, by).changes > 0) added += 1;
+    const student = getStudent(db, sid);
+    if (!student) continue;
+    const name = `${student.first_name} ${student.last_name}`;
+    if (insert.run(groupId, sid, name, normalizeName(name), by).changes > 0) added += 1;
+  }
+  return added;
+}
+
+/**
+ * Ajoute des noms tapés à un groupe.
+ *
+ * Un nom tapé n'a pas besoin d'exister dans le tableau : c'est tout l'intérêt,
+ * l'élève écrit le nom de ses camarades tel qu'il le connaît. Si le nom
+ * correspond à une fiche du tableau, on rattache quand même le membre à cette
+ * fiche, ce qui permet d'appliquer la règle « un élève dans un seul groupe
+ * validé ». Sinon le membre reste sans fiche, et rien d'autre ne change.
+ *
+ * Les doublons sont ignorés, sans distinction de casse ni d'accents.
+ */
+function addMembersByName(db: Database.Database, groupId: number, rawNames: string[], by: string | null): number {
+  let added = 0;
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO student_group_members (group_id, student_id, member_name, member_key, added_by_fingerprint) VALUES (?, ?, ?, ?, ?)'
+  );
+  for (const raw of rawNames) {
+    const name = cleanMemberName(raw);
+    if (name.length < 2) continue;
+
+    const fiche = getStudentByName(db, name);
+    if (insert.run(groupId, fiche?.id ?? null, name, normalizeName(name), by).changes > 0) added += 1;
   }
   return added;
 }
@@ -291,28 +382,36 @@ function claimGroup(
       throw Object.assign(new Error(`Un groupe ne peut pas dépasser ${MAX_GROUP} élèves`), { status: 400 });
     }
 
-    const placeholders = members.map(() => '?').join(',');
-    const conflicts = db
-      .prepare(
-        `SELECT v.student_id, g.name FROM student_group_validated v
-         JOIN student_groups g ON g.id = v.group_id
-         WHERE v.group_id <> ? AND v.student_id IN (${placeholders})`
-      )
-      .all(id, ...members.map((m) => m.id)) as { student_id: number; name: string }[];
+    // Le verrou « un élève dans un seul groupe validé » ne porte que sur les
+    // membres rattachés à une fiche du tableau. Un nom tapé qui n'y correspond
+    // pas n'a personne à verrouiller : le groupe est valide quand même, et c'est
+    // une limite assumée de l'absence de comptes élèves.
+    const ids = members.map((m) => m.student_id).filter((v): v is number => typeof v === 'number');
 
-    if (conflicts.length > 0) {
-      const names = conflicts
-        .map((c) => {
-          const s = getStudent(db, c.student_id);
-          return `${s.first_name} ${s.last_name} (${c.name})`;
-        })
-        .join(', ');
-      throw Object.assign(new Error(`Déjà dans un groupe validé : ${names}`), { status: 409 });
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      const conflicts = db
+        .prepare(
+          `SELECT v.student_id, g.name FROM student_group_validated v
+           JOIN student_groups g ON g.id = v.group_id
+           WHERE v.group_id <> ? AND v.student_id IN (${placeholders})`
+        )
+        .all(id, ...ids) as { student_id: number; name: string }[];
+
+      if (conflicts.length > 0) {
+        const names = conflicts
+          .map((c) => {
+            const s = getStudent(db, c.student_id);
+            return s ? `${s.first_name} ${s.last_name} (${c.name})` : c.name;
+          })
+          .join(', ');
+        throw Object.assign(new Error(`Déjà dans un groupe validé : ${names}`), { status: 409 });
+      }
     }
 
     db.prepare('DELETE FROM student_group_validated WHERE group_id = ?').run(id);
     const claim = db.prepare('INSERT INTO student_group_validated (student_id, group_id) VALUES (?, ?)');
-    for (const m of members) claim.run(m.id, id);
+    for (const sid of ids) claim.run(sid, id);
 
     db.prepare(
       `UPDATE student_groups SET status = 'valide', validated_at = CURRENT_TIMESTAMP, validated_by = ? WHERE id = ?`
@@ -343,12 +442,21 @@ router.post('/groups/:id/propose-member', (req, res) => {
       return;
     }
 
-    const studentId = Number(req.body?.student_id);
     const fingerprint = cleanText(req.body?.fingerprint, 64);
     const estDelegue = req.session?.authenticated === true;
 
-    if (!getStudent(db, studentId)) {
+    // Deux façons d'ajouter un membre : une fiche du tableau (`student_id`),
+    // pour le délégué, ou un nom tapé (`member_name`), pour les élèves.
+    const studentId = Number(req.body?.student_id);
+    const memberName = cleanMemberName(req.body?.member_name);
+    const parFiche = Number.isFinite(studentId) && studentId > 0;
+
+    if (parFiche && !getStudent(db, studentId)) {
       res.status(404).json({ error: 'Élève introuvable' });
+      return;
+    }
+    if (!parFiche && memberName.length < 2) {
+      res.status(400).json({ error: 'Indique le nom d’un élève' });
       return;
     }
     // Le délégué n'a pas d'empreinte d'appareil : il ne peut pas en avoir, et
@@ -369,7 +477,11 @@ router.post('/groups/:id/propose-member', (req, res) => {
       return;
     }
 
-    addMembers(db, groupId, [studentId], fingerprint || null);
+    if (parFiche) {
+      addMembersById(db, groupId, [studentId], fingerprint || null);
+    } else {
+      addMembersByName(db, groupId, [memberName], fingerprint || null);
+    }
     res.json({ success: true, members: membersOf(db, groupId) });
   } catch (err) {
     if (String(err).includes('UNIQUE')) {
@@ -442,7 +554,7 @@ router.put('/groups/:id/status', requireAuth, (req, res) => {
  * attente : il doit pouvoir corriger une coquille avant que le délégué valide.
  * L'identité du demandeur est vérifiée par empreinte, comme partout ailleurs.
  */
-router.delete('/groups/:id/members/:studentId', (req, res) => {
+router.delete('/groups/:id/members/:memberKey', (req, res) => {
   try {
     const groupId = Number(req.params.id);
     const group = db.prepare('SELECT * FROM student_groups WHERE id = ?').get(groupId) as any;
@@ -464,10 +576,16 @@ router.delete('/groups/:id/members/:studentId', (req, res) => {
       }
     }
 
-    db.prepare('DELETE FROM student_group_members WHERE group_id = ? AND student_id = ?').run(
-      groupId,
-      Number(req.params.studentId)
-    );
+    // Le membre est désigné par sa clé normalisée et non par son identifiant de
+    // fiche : un nom tapé n'a pas d'identifiant. Retirer un élève du tableau ou
+    // un nom tapé passe donc par la même route.
+    const memberKey = normalizeName(decodeURIComponent(String(req.params.memberKey)));
+    if (!memberKey) {
+      res.status(400).json({ error: 'Élève introuvable dans ce groupe' });
+      return;
+    }
+
+    db.prepare('DELETE FROM student_group_members WHERE group_id = ? AND member_key = ?').run(groupId, memberKey);
     res.json({ success: true, members: membersOf(db, groupId) });
   } catch (err) {
     console.error('Delete group member error:', err);

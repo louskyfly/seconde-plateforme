@@ -2,18 +2,25 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { generateFingerprint } from '@/lib/utils';
 import { LoadError } from '@/components/ui/LoadError';
-import type { Student, StudentGroup, StudentGroupStatus } from '@/types';
+import type { StudentGroup, StudentGroupStatus } from '@/types';
 
 /**
  * Espace « groupes » côté élève.
+ *
+ * Un élève écrit les noms de son groupe au lieu de les choisir dans le tableau :
+ * le délégué n'a pas forcément enregistré tout le monde, et un élève doit
+ * pouvoir former son groupe même si sa liste est incomplète. Le serveur
+ * rattache quand même chaque nom à une fiche du tableau si elle existe, ce qui
+ * permet d'appliquer la règle « un élève dans un seul groupe validé » pour
+ * ceux qu'il a enregistrés.
  *
  * Un élève peut créer son groupe et le compléter, mais il ne peut jamais le
  * valider lui-même : la validation reste une décision du délégué, contrôlée par
  * le serveur et pas seulement masquée dans l'interface.
  *
  * Tant que le groupe est « en attente », son auteur peut encore ajouter ou
- * retirer un camarade. Dès qu'il est validé, plus personne n'y touche : c'est ce
- * que le texte ci-dessous annonce, pour qu'un élève ne découvre pas la règle
+ * retirer un camarade. Dès qu'il est validé, plus personne n'y touche : c'est
+ * ce que le texte ci-dessous annonce, pour qu'un élève ne découvre pas la règle
  * après coup.
  */
 
@@ -29,18 +36,75 @@ const STATUTS: Record<StudentGroupStatus, { label: string; classe: string }> = {
 const MIN_GROUP = 3;
 const MAX_GROUP = 4;
 
-function nomComplet(s: Student): string {
-  return `${s.first_name} ${s.last_name.toUpperCase()}`;
+/** Même normalisation que le serveur : sans elle, `Lucas` et `lucas` seraient deux membres. */
+function normalizeName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
-export function StudentGroups({ students }: { students: Student[] }) {
+function memberKey(name: string): string {
+  return normalizeName(name);
+}
+
+/**
+ * Champ où l'élève écrit le nom d'un camarade.
+ *
+ * La touche Entrée valide, parce qu'un élève tape vite des noms à la suite et
+ * n'a pas envie de cliquer sur un bouton à chaque fois. La virgule et le
+ * point-virgule font la même chose, pour ceux qui tapent une liste d'un trait.
+ */
+function NameField({
+  onAdd,
+  disabled,
+  placeholder,
+}: {
+  onAdd: (name: string) => void;
+  disabled?: boolean;
+  placeholder: string;
+}) {
+  const [saisie, setSaisie] = useState('');
+
+  const valider = () => {
+    const propre = saisie.replace(/\s+/g, ' ').trim();
+    if (propre.length < 2) return;
+    onAdd(propre);
+    setSaisie('');
+  };
+
+  return (
+    <input
+      className="w-full px-3 py-2 rounded-xl glass text-xs outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:opacity-50"
+      value={saisie}
+      onChange={(e) => setSaisie(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ',' || e.key === ';') {
+          // Sans preventDefault, la virgule et le point-virgule seraient
+          // envoyés dans le formulaire et la page se rechargerait.
+          e.preventDefault();
+          valider();
+        }
+      }}
+      onBlur={valider}
+      placeholder={placeholder}
+      aria-label={placeholder}
+      maxLength={60}
+      disabled={disabled}
+    />
+  );
+}
+
+export function StudentGroups() {
   const [groups, setGroups] = useState<StudentGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
   const [nom, setNom] = useState('');
   const [prive, setPrive] = useState(false);
-  const [choisis, setChoisis] = useState<number[]>([]);
+  const [membres, setMembres] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState('');
 
@@ -65,9 +129,23 @@ export function StudentGroups({ students }: { students: Student[] }) {
   const monGroupe = groups.find((g) => g.mine && g.status === 'en_attente');
   const monGroupeFige = groups.find((g) => g.mine && g.status !== 'en_attente');
 
-  const basculer = (id: number) => {
+  /**
+   * Ajoute un nom à la liste du formulaire.
+   *
+   * Le doublon est écarté ici, avec la même comparaison que le serveur, pour
+   * que l'élève voie tout de suite qu'il a déjà écrit ce nom.
+   */
+  const ajouterNom = (name: string) => {
     setErreur('');
-    setChoisis((actuels) => (actuels.includes(id) ? actuels.filter((x) => x !== id) : [...actuels, id]));
+    const cle = memberKey(name);
+    setMembres((actuels) =>
+      actuels.some((m) => memberKey(m) === cle) ? actuels : [...actuels, name]
+    );
+  };
+
+  const retirerNom = (name: string) => {
+    setErreur('');
+    setMembres((actuels) => actuels.filter((m) => memberKey(m) !== memberKey(name)));
   };
 
   const creer = async (e: React.FormEvent) => {
@@ -76,11 +154,11 @@ export function StudentGroups({ students }: { students: Student[] }) {
       setErreur('Donne un nom à ton groupe.');
       return;
     }
-    if (choisis.length < MIN_GROUP) {
-      setErreur(`Choisis au moins ${MIN_GROUP} élèves, toi compris.`);
+    if (membres.length < MIN_GROUP) {
+      setErreur(`Écris au moins ${MIN_GROUP} noms, le tien compris.`);
       return;
     }
-    if (choisis.length > MAX_GROUP) {
+    if (membres.length > MAX_GROUP) {
       setErreur(`Un groupe ne peut pas dépasser ${MAX_GROUP} élèves.`);
       return;
     }
@@ -91,12 +169,12 @@ export function StudentGroups({ students }: { students: Student[] }) {
       await api.createStudentGroup({
         name: nom.trim(),
         is_private: prive,
-        student_ids: choisis,
+        member_names: membres,
         fingerprint: generateFingerprint(),
       });
       setNom('');
       setPrive(false);
-      setChoisis([]);
+      setMembres([]);
       await load();
     } catch (err: any) {
       setErreur(err.message || 'Création impossible');
@@ -105,15 +183,24 @@ export function StudentGroups({ students }: { students: Student[] }) {
     }
   };
 
-  const basculerMembre = async (groupId: number, studentId: number, present: boolean) => {
+  const ajouterMembre = async (groupId: number, name: string) => {
     setBusy(true);
     setErreur('');
     try {
-      if (present) {
-        await api.removeGroupMember(groupId, studentId, generateFingerprint());
-      } else {
-        await api.proposeGroupMember(groupId, studentId, generateFingerprint());
-      }
+      await api.proposeGroupMember(groupId, { member_name: name }, generateFingerprint());
+      await load();
+    } catch (err: any) {
+      setErreur(err.message || 'Modification impossible');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const retirerMembre = async (groupId: number, cle: string) => {
+    setBusy(true);
+    setErreur('');
+    try {
+      await api.removeGroupMember(groupId, cle, generateFingerprint());
       await load();
     } catch (err: any) {
       setErreur(err.message || 'Modification impossible');
@@ -143,9 +230,9 @@ export function StudentGroups({ students }: { students: Student[] }) {
       <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100">Mes groupes</h2>
 
       <p className="text-[11px] text-gray-500 dark:text-gray-400">
-        Espace pour renseigner les groupes. Choisis {MIN_GROUP} ou {MAX_GROUP} élèves, toi compris. Tu
-        peux encore les changer tant que le groupe est en attente. Une fois validé par le délégué, il
-        ne sera plus possible de les modifier.
+        Espace pour renseigner les groupes. Écris les {MIN_GROUP} ou {MAX_GROUP} noms de ton groupe, le
+        tien compris, puis valide avec Entrée à chaque nom. Tu peux encore les changer tant que le
+        groupe est en attente. Une fois validé par le délégué, il ne sera plus possible de les modifier.
       </p>
 
       {erreur && <p className="text-xs text-red-500">{erreur}</p>}
@@ -175,30 +262,47 @@ export function StudentGroups({ students }: { students: Student[] }) {
 
           <div>
             <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
-              Les élèves du groupe ({choisis.length}/{MAX_GROUP})
+              Les élèves du groupe ({membres.length}/{MAX_GROUP})
             </p>
-            <div className="max-h-40 overflow-y-auto rounded-xl glass p-2 space-y-0.5">
-              {students.length === 0 ? (
-                <p className="text-[11px] text-gray-500 p-1">
-                  Le délégué n’a pas encore enregistré la liste des élèves.
-                </p>
-              ) : (
-                students.map((s) => (
-                  <label
-                    key={s.id}
-                    className="flex items-center gap-2 px-1 py-0.5 rounded text-[11px] text-gray-700 dark:text-gray-200 cursor-pointer hover:bg-white/5"
+
+            <NameField
+              onAdd={ajouterNom}
+              disabled={membres.length >= MAX_GROUP}
+              placeholder="Écris un prénom et un nom, puis Entrée"
+            />
+
+            {membres.length > 0 && (
+              <ul className="flex flex-wrap gap-1 mt-1.5">
+                {membres.map((m) => (
+                  <li
+                    key={memberKey(m)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-500/15 text-[11px] font-semibold text-indigo-700 dark:text-indigo-200"
                   >
-                    <input type="checkbox" checked={choisis.includes(s.id)} onChange={() => basculer(s.id)} />
-                    {nomComplet(s)}
-                  </label>
-                ))
-              )}
-            </div>
+                    {m}
+                    <button
+                      type="button"
+                      onClick={() => retirerNom(m)}
+                      aria-label={`Retirer ${m}`}
+                      className="text-indigo-400 hover:text-red-500 font-bold"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {membres.length < MIN_GROUP && (
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+                Il manque encore {MIN_GROUP - membres.length} nom
+                {MIN_GROUP - membres.length > 1 ? 's' : ''}.
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
-            disabled={busy || students.length === 0}
+            disabled={busy}
             className="px-3 py-2 rounded-xl bg-indigo-500 text-white text-xs font-bold hover:bg-indigo-600 transition-all disabled:opacity-50"
           >
             {busy ? 'Création...' : 'Créer mon groupe'}
@@ -219,7 +323,6 @@ export function StudentGroups({ students }: { students: Student[] }) {
         <ul className="space-y-2">
           {groups.map((g) => {
             const statut = STATUTS[g.status];
-            const membres = new Set(g.members.map((m) => m.id));
 
             return (
               <li key={g.id} className="px-3 py-2 rounded-xl glass space-y-1.5">
@@ -242,49 +345,43 @@ export function StudentGroups({ students }: { students: Student[] }) {
 
                 <p className="text-[11px] text-gray-600 dark:text-gray-300">
                   {g.members.length > 0
-                    ? g.members.map(nomComplet).join(', ')
+                    ? g.members.map((m) => m.name).join(', ')
                     : 'Aucun élève pour l’instant'}
                 </p>
 
                 {g.peut_modifier ? (
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    <select
-                      className="px-2 py-1 rounded-lg glass text-[11px] outline-none focus:ring-2 focus:ring-indigo-500/40"
-                      value=""
-                      onChange={(e) => e.target.value && void basculerMembre(g.id, Number(e.target.value), false)}
-                      disabled={busy}
-                      aria-label="Ajouter un élève au groupe"
-                    >
-                      <option value="">Ajouter un élève…</option>
-                      {students
-                        .filter((s) => !membres.has(s.id))
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {nomComplet(s)}
-                          </option>
-                        ))}
-                    </select>
-
-                    {g.members.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => void basculerMembre(g.id, m.id, true)}
+                  <div className="space-y-2 pt-1">
+                    {g.members.length < MAX_GROUP && (
+                      <NameField
+                        onAdd={(n) => void ajouterMembre(g.id, n)}
                         disabled={busy}
-                        className="px-2 py-1 rounded-lg bg-red-500/80 text-white text-[10px] font-bold hover:bg-red-600 disabled:opacity-50"
-                      >
-                        Retirer {m.first_name}
-                      </button>
-                    ))}
+                        placeholder="Ajouter un élève au groupe"
+                      />
+                    )}
 
-                    <button
-                      type="button"
-                      onClick={() => void supprimer(g.id)}
-                      disabled={busy}
-                      className="px-2 py-1 rounded-lg glass text-[10px] font-semibold text-red-500 hover:bg-red-500/15"
-                    >
-                      Supprimer le groupe
-                    </button>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {g.members.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => void retirerMembre(g.id, m.member_key)}
+                          disabled={busy}
+                          title="Retirer cet élève"
+                          className="px-2 py-1 rounded-lg bg-red-500/80 text-white text-[10px] font-bold hover:bg-red-600 disabled:opacity-50"
+                        >
+                          Retirer {m.name}
+                        </button>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={() => void supprimer(g.id)}
+                        disabled={busy}
+                        className="px-2 py-1 rounded-lg glass text-[10px] font-semibold text-red-500 hover:bg-red-500/15"
+                      >
+                        Supprimer le groupe
+                      </button>
+                    </div>
                   </div>
                 ) : g.status === 'valide' ? (
                   <p className="text-[10px] text-gray-500 dark:text-gray-400">

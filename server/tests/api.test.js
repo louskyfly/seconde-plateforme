@@ -1244,6 +1244,116 @@ describe('Évolution du schéma', () => {
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM ideas').get().n, 1);
   });
 
+  test('la table des membres de groupe accepte un nom sans fiche élève', () => {
+    const db = new Database(':memory:');
+    initDatabase(db);
+
+    // `student_id` est facultatif : c'est ce qui permet à un élève d'écrire un
+    // nom qui ne figure dans aucune fiche.
+    const membre = colonnes(db, 'student_group_members');
+    assert.ok(membre.includes('member_name'), 'le nom tapé est conservé');
+    assert.ok(membre.includes('member_key'), 'le nom normalisé est conservé');
+
+    const notnull = db.prepare('PRAGMA table_info(student_group_members)').all();
+    const studentId = notnull.find((c) => c.name === 'student_id');
+    assert.equal(studentId.notnull, 0, 'student_id n’est plus obligatoire');
+  });
+
+  test('une base ancienne est convertie sans perdre ses membres', () => {
+    // Base d'avant le passage aux noms libres : student_id était obligatoire.
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        birthday TEXT
+      );
+      INSERT INTO students (first_name, last_name) VALUES ('Camille', 'Roussel');
+
+      CREATE TABLE student_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        is_private INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'en_attente',
+        created_by_fingerprint TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        validated_at DATETIME,
+        validated_by TEXT
+      );
+      INSERT INTO student_groups (name) VALUES ('Ancien groupe');
+
+      CREATE TABLE student_group_members (
+        group_id INTEGER NOT NULL,
+        student_id INTEGER NOT NULL,
+        added_by_fingerprint TEXT,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (group_id, student_id)
+      );
+      INSERT INTO student_group_members (group_id, student_id) VALUES (1, 1);
+    `);
+
+    assert.ok(!colonnes(db, 'student_group_members').includes('member_key'), 'base au format ancien');
+
+    initDatabase(db);
+
+    const membre = db.prepare('SELECT * FROM student_group_members WHERE group_id = 1').get();
+    assert.equal(membre.student_id, 1, 'le membre garde sa fiche élève');
+    assert.equal(membre.member_name, 'Camille Roussel', 'son nom est reconstitué');
+    assert.equal(membre.member_key, 'camille roussel');
+
+    // Et la table est bien devenue assouplie.
+    const studentId = db
+      .prepare('PRAGMA table_info(student_group_members)')
+      .all()
+      .find((c) => c.name === 'student_id');
+    assert.equal(studentId.notnull, 0);
+  });
+
+  test('la conversion des membres de groupe est idempotente', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        birthday TEXT
+      );
+      CREATE TABLE student_groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        is_private INTEGER DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'en_attente',
+        created_by_fingerprint TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        validated_at DATETIME,
+        validated_by TEXT
+      );
+      CREATE TABLE student_group_members (
+        group_id INTEGER NOT NULL,
+        student_id INTEGER NOT NULL,
+        added_by_fingerprint TEXT,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (group_id, student_id)
+      );
+      INSERT INTO students (first_name, last_name) VALUES ('Camille', 'Roussel');
+      INSERT INTO student_groups (name) VALUES ('Ancien groupe');
+      INSERT INTO student_group_members (group_id, student_id) VALUES (1, 1);
+    `);
+
+    initDatabase(db);
+    // Relancer l'initialisation ne doit pas reconvertir la table, ce qui
+    // arriverait à chaque redémarrage du serveur.
+    initDatabase(db);
+    initDatabase(db);
+
+    assert.equal(
+      db.prepare('SELECT COUNT(*) AS n FROM student_group_members').get().n,
+      1,
+      'le membre n’est ni perdu ni dupliqué'
+    );
+  });
+
   test('la purge du chat ne dépend d\'aucune colonne marquée', () => {
     // La purge supprime physiquement les messages de plus de deux jours : aucune
     // colonne « purgée » n'est nécessaire, et le schéma ne doit pas en garder
@@ -1419,6 +1529,17 @@ describe('Élèves et groupes', () => {
   let clara;
   let dan;
 
+  /** Clé normalisée d'un membre, celle que la route de retrait attend. */
+  const memberKey = (s) =>
+    encodeURIComponent(
+      `${s.first_name} ${s.last_name}`
+        .normalize('NFD')
+        .replace(/\p{Diacritic}/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+    );
+
   test('inscription du délégué', async () => {
     const res = await admin('POST', '/api/auth/login', { password: ADMIN_PASSWORD });
     assert.equal(res.status, 200);
@@ -1508,7 +1629,9 @@ describe('Élèves et groupes', () => {
     });
     assert.equal(ajout.status, 409, 'un groupe validé ne se complète plus');
 
-    const retrait = await admin('DELETE', `/api/groups/${groupe.id}/members/${alice.id}`);
+    // Le membre est désigné par sa clé normalisée, pas par son identifiant de
+    // fiche : c'est ce qui permet de retirer aussi un nom tapé.
+    const retrait = await admin('DELETE', `/api/groups/${groupe.id}/members/${memberKey(alice)}`);
     assert.equal(retrait.status, 409);
   });
 
@@ -1563,13 +1686,13 @@ describe('Élèves et groupes', () => {
     // retirer un élève.
     const retrait = await student(
       'DELETE',
-      `/api/groups/${cree.data.id}/members/${eleve2.id}?fingerprint=${auteur}`
+      `/api/groups/${cree.data.id}/members/${memberKey(eleve2)}?fingerprint=${auteur}`
     );
     assert.equal(retrait.status, 200);
     assert.equal(retrait.data.members.length, 1);
 
     // Le délégué n'est pas moins bien placé que l'auteur pour le faire.
-    const retraitDelegue = await admin('DELETE', `/api/groups/${cree.data.id}/members/${eleve1.id}`);
+    const retraitDelegue = await admin('DELETE', `/api/groups/${cree.data.id}/members/${memberKey(eleve1)}`);
     assert.equal(retraitDelegue.status, 200);
     assert.equal(retraitDelegue.data.members.length, 0, 'le groupe est vide après les deux retraits');
 
@@ -1773,12 +1896,12 @@ describe('Élèves et groupes', () => {
     })).data;
 
     // Retirer un camarade : autorisé pour l'auteur.
-    const retrait = await student('DELETE', `/api/groups/${groupe.id}/members/${a.id}?fingerprint=${empreinte}`);
+    const retrait = await student('DELETE', `/api/groups/${groupe.id}/members/${memberKey(a)}?fingerprint=${empreinte}`);
     assert.equal(retrait.status, 200, 'l’auteur peut corriger son groupe');
     assert.equal(retrait.data.members.length, 3);
 
     // Le même retrait par un autre appareil : refusé.
-    const intrus = await other('DELETE', `/api/groups/${groupe.id}/members/${b.id}?fingerprint=${autre}`);
+    const intrus = await other('DELETE', `/api/groups/${groupe.id}/members/${memberKey(b)}?fingerprint=${autre}`);
     assert.equal(intrus.status, 403, 'un autre élève ne retire pas un camarade');
 
     const ajoutIntrus = await other('POST', `/api/groups/${groupe.id}/propose-member`, {
@@ -1793,6 +1916,121 @@ describe('Élèves et groupes', () => {
     // La suppression par l'auteur, elle, passe.
     assert.equal((await student('DELETE', `/api/groups/${groupe.id}?fingerprint=${empreinte}`)).status, 200);
     assert.equal((await admin('GET', '/api/groups')).data.some((g) => g.id === groupe.id), false);
+  });
+
+  test('un élève écrit les noms de son groupe sans passer par le tableau', async () => {
+    const empreinte = 'fingerprint-noms-libres-001';
+    // Aucun de ces noms n'est dans le tableau des élèves : c'est tout l'intérêt,
+    // un élève doit pouvoir former son groupe même si le délégué n'a pas
+    // enregistré tout le monde.
+    const cree = await student('POST', '/api/groups', {
+      name: 'Noms libres',
+      member_names: ['Lucas Rey', 'Emma Zola', 'Noé Vidal'],
+      fingerprint: empreinte,
+    });
+
+    assert.equal(cree.status, 201);
+    assert.equal(cree.data.status, 'en_attente', 'un élève ne valide pas lui-même');
+    assert.equal(cree.data.members.length, 3);
+    assert.equal(cree.data.members.map((m) => m.name).join(', '), 'Lucas Rey, Emma Zola, Noé Vidal');
+    assert.ok(
+      cree.data.members.every((m) => m.student_id === null),
+      'aucun nom ne correspond à une fiche du tableau'
+    );
+
+    // Le délégué peut quand même valider : c'est bien 3 élèves.
+    const validation = await admin('PUT', `/api/groups/${cree.data.id}/status`, { status: 'valide' });
+    assert.equal(validation.status, 200);
+  });
+
+  test('un nom tapé qui existe dans le tableau y est rattaché', async () => {
+    const empreinte = 'fingerprint-noms-lies-0001';
+    // Alice Aubry est dans le tableau depuis plus haut. Lucas Rey n'y est pas.
+    const cree = await student('POST', '/api/groups', {
+      name: 'Mélange',
+      member_names: ['Alice Aubry', 'Lucas Rey', 'Emma Zola'],
+      fingerprint: empreinte,
+    });
+    assert.equal(cree.status, 201);
+
+    const aliceMembre = cree.data.members.find((m) => m.name === 'Alice Aubry');
+    const lucasMembre = cree.data.members.find((m) => m.name === 'Lucas Rey');
+
+    assert.equal(aliceMembre.student_id, alice.id, 'Alice est rattachée à sa fiche');
+    assert.equal(lucasMembre.student_id, null, 'Lucas n’a pas de fiche');
+
+    // Conséquence : la règle « un élève dans un seul groupe validé » vaut pour
+    // Alice, et Alice est déjà dans un groupe validé plus haut.
+    const validation = await admin('PUT', `/api/groups/${cree.data.id}/status`, { status: 'valide' });
+    assert.equal(validation.status, 409, 'Alice est déjà dans un groupe validé');
+    assert.match(validation.data.error, /déjà dans un groupe validé/i);
+  });
+
+  test('les doublons tapés sont écartés, quelle que soit la casse et les accents', async () => {
+    const cree = await student('POST', '/api/groups', {
+      name: 'Doublons',
+      member_names: ['Zoé Petit', 'zoé petit', '  Zoe   Petit  ', 'Paul Arns'],
+      fingerprint: 'fingerprint-doublons-0001',
+    });
+
+    assert.equal(cree.status, 201);
+    assert.equal(cree.data.members.length, 2, 'Zoé n’apparaît qu’une fois, Paul une fois');
+    assert.deepEqual(
+      cree.data.members.map((m) => m.name).sort(),
+      ['Paul Arns', 'Zoé Petit']
+    );
+  });
+
+  test('un nom hors tableau se retire avec sa clé, pas avec un identifiant', async () => {
+    const empreinte = 'fingerprint-retrait-nom-01';
+    const cree = await student('POST', '/api/groups', {
+      name: 'Retrait par nom',
+      member_names: ['Hector Malot', 'Iris Vandel', 'Karim Nez'],
+      fingerprint: empreinte,
+    });
+    assert.equal(cree.status, 201);
+
+    const cle = encodeURIComponent('iris vandel');
+    const retrait = await student('DELETE', `/api/groups/${cree.data.id}/members/${cle}?fingerprint=${empreinte}`);
+    assert.equal(retrait.status, 200);
+    assert.equal(retrait.data.members.length, 2);
+    assert.ok(!retrait.data.members.some((m) => m.name === 'Iris Vandel'), 'Iris est retirée');
+
+    // Et on peut la remettre par son nom, pas par un identifiant.
+    const ajout = await student('POST', `/api/groups/${cree.data.id}/propose-member`, {
+      member_name: 'Iris Vandel',
+      fingerprint: empreinte,
+    });
+    assert.equal(ajout.status, 200);
+    assert.equal(ajout.data.members.length, 3);
+  });
+
+  test('un groupe composé de noms hors tableau se valide normalement', async () => {
+    const groupe = (await student('POST', '/api/groups', {
+      name: 'Tous hors tableau',
+      member_names: ['Sarah Kalfon', 'Yanis Berrebi', 'Lou Marceau'],
+      fingerprint: 'fingerprint-hors-tableau-01',
+    })).data;
+
+    // La règle « un élève dans un seul groupe » ne peut pas s'appliquer : ces
+    // trois élèves n'ont pas de fiche. Le groupe est donc valide normalement.
+    const validation = await admin('PUT', `/api/groups/${groupe.id}/status`, { status: 'valide' });
+    assert.equal(validation.status, 200, 'des élèves absents du tableau n’empêchent pas la validation');
+  });
+
+  test('un nom tapé est nettoyé comme un nom de fiche', async () => {
+    const cree = await student('POST', '/api/groups', {
+      name: 'Nettoyage',
+      member_names: ['Jean@Paul#Dupont', 'A', '   ', 'Marie Curie'],
+      fingerprint: 'fingerprint-nettoyage-0001',
+    });
+
+    assert.equal(cree.status, 201);
+    assert.deepEqual(
+      cree.data.members.map((m) => m.name),
+      ['Jean Paul Dupont', 'Marie Curie'],
+      'les caractères interdits tombent, les noms trop courts sont ignorés'
+    );
   });
 
   test('un groupe validé n’est plus modifiable par son auteur', async () => {
@@ -1811,7 +2049,7 @@ describe('Élèves et groupes', () => {
     assert.equal(validation.data.status, 'valide');
 
     // L'auteur ne peut plus rien changer, même avec la bonne empreinte.
-    const retrait = await student('DELETE', `/api/groups/${groupe.id}/members/${a.id}?fingerprint=${empreinte}`);
+    const retrait = await student('DELETE', `/api/groups/${groupe.id}/members/${memberKey(a)}?fingerprint=${empreinte}`);
     assert.equal(retrait.status, 409, 'la composition est figée');
 
     const ajout = await student('POST', `/api/groups/${groupe.id}/propose-member`, {

@@ -2,6 +2,12 @@ import { Router } from 'express';
 import db from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { cleanText } from '../lib/files.js';
+import {
+  hacherEmpreinte,
+  purgerVisitesAnciennes,
+  MAX_HITS_PER_DAY,
+  VISIT_RETENTION_DAYS,
+} from '../lib/visits.js';
 
 const router = Router();
 
@@ -9,9 +15,15 @@ const router = Router();
  * Enregistre une visite.
  *
  * Route publique : c'est le premier appel que fait l'application, avant toute
- * authentification. On se contente de l'empreinte appareil, sans IP ni donnée
- * personnelle. Recharger la page incrémente `hits` mais ne crée pas de nouvelle
- * ligne, pour que le compteur d'élèves reste juste.
+ * authentification. L'empreinte n'est ni en clair ni reverse, et ni l'adresse IP
+ * ni le user-agent ne sont conservés — l'IP serait une donnée personnelle et le
+ * user-agent n'est jamais affiché. Recharger la page incrémente `hits` mais ne
+ * crée pas de nouvelle ligne, pour que le compteur d'élèves reste juste.
+ *
+ * Limite honnête : sans authentification, cette route ne peut pas distinguer un
+ * élève d'un appel automatique. Le nombre d'élèves distincts reste donc
+ * indicatif : un seul appareil peut se faire passer pour plusieurs, et rien ici
+ * ne l'en empêche. Seul le total d'ouvertures est plafonné.
  */
 router.post('/visit', (req, res) => {
   try {
@@ -21,18 +33,23 @@ router.post('/visit', (req, res) => {
       return;
     }
 
+    const empreinte = hacherEmpreinte(fingerprint);
     const page = cleanText(req.body?.page, 60) || null;
     const jour = new Date().toISOString().slice(0, 10);
-    const ua = cleanText(req.headers['user-agent'] ?? '', 200) || null;
 
     db.prepare(
-      `INSERT INTO visits (fingerprint, day, page, user_agent)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO visits (fingerprint, day, page)
+       VALUES (?, ?, ?)
        ON CONFLICT(fingerprint, day) DO UPDATE SET
-         hits = hits + 1,
+         hits = MIN(hits + 1, ?),
          last_seen_at = CURRENT_TIMESTAMP,
          page = COALESCE(excluded.page, page)`
-    ).run(fingerprint, jour, page, ua);
+    ).run(empreinte, jour, page, MAX_HITS_PER_DAY);
+
+    const purges = purgerVisitesAnciennes(db);
+    if (purges > 0) {
+      console.log(`Visites : ${purges} ligne(s) de plus de ${VISIT_RETENTION_DAYS} jours supprimée(s)`);
+    }
 
     res.json({ success: true });
   } catch (err) {
@@ -46,13 +63,14 @@ router.post('/visit', (req, res) => {
  *
  * `days` renvoie, jour par jour, le nombre d'élèves distincts et le total
  * d'ouvertures. `identites` donne, pour aujourd'hui, qui est venu et à quelle
- * heure — c'est la partie « identité » demandée. L'empreinte n'est jamais
- * exposée telle quelle : seul un libellé court et stable est renvoyé.
+ * heure — c'est la partie « identité » demandée. L'empreinte n'est ni renvoyée
+ * ni stockée en clair : seul un libellé court et stable, tiré du condensat, est
+ * renvoyé.
  */
 router.get('/visits', requireAuth, (req, res) => {
   try {
     const jours = Number(req.query.days);
-    const limite = Number.isFinite(jours) ? Math.min(Math.max(Math.trunc(jours), 1), 90) : 14;
+    const limite = Number.isFinite(jours) ? Math.min(Math.max(Math.trunc(jours), 1), VISIT_RETENTION_DAYS) : 14;
 
     const days = db
       .prepare(
@@ -79,8 +97,9 @@ router.get('/visits', requireAuth, (req, res) => {
     res.json({
       days,
       identites: identites.map((row) => ({
-        // Identifiant court et anonyme : les 6 premiers caractères suffisent à
-        // distinguer deux visiteurs d'un jour à l'autre sans exposer l'empreinte.
+        // Libellé court tiré du condensat : assez pour distinguer deux visiteurs
+        // d'un jour à l'autre, insuffisant pour relier l'un d'eux à un vote ou à
+        // un message, puisque le condensat n'est pas stocké ailleurs.
         label: `Appareil ${String(row.fingerprint).slice(0, 6)}`,
         first_seen_at: row.first_seen_at,
         last_seen_at: row.last_seen_at,

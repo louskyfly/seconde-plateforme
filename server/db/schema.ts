@@ -157,13 +157,19 @@ CREATE TABLE IF NOT EXISTS projects (
 --
 -- L'identité est l'empreinte appareil (voter_fp) déjà utilisée ailleurs, ce qui
 -- permet de distinguer « 12 élèves présents » de « 40 ouvertures de page ».
+-- Elle est stockée hachée et non en clair : la route des visites s'en charge,
+-- donc la base ne contient pas d'identifiant réutilisable ailleurs.
+--
 -- Une seule ligne par empreinte et par jour : recharger dix fois la page ne
--- gonfle pas le compteur, et le total reste lisible.
+-- gonfle pas le compteur, et le total reste lisible. Les lignes de plus de
+-- 90 jours sont supprimées à l'écriture.
+--
+-- Ni adresse IP ni user-agent ne sont conservés : l'IP serait une donnée
+-- personnelle, et le user-agent n'a jamais été affiché.
 CREATE TABLE IF NOT EXISTS visits (
   fingerprint TEXT NOT NULL,
   day TEXT NOT NULL,
   page TEXT,
-  user_agent TEXT,
   first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   hits INTEGER DEFAULT 1,

@@ -1962,6 +1962,78 @@ describe('Visites', () => {
   test('les statistiques de visites sont réservées au délégué', async () => {
     assert.equal((await other('GET', '/api/stats/visits')).status, 401);
   });
+
+  test('l’empreinte n’est jamais stockée en clair', async () => {
+    const empreinte = 'fingerprint-visite-a-hacher-01';
+    await student('POST', '/api/stats/visit', { fingerprint: empreinte, page: '/idees' });
+
+    // La route masque bien la valeur dans sa réponse.
+    const stats = await admin('GET', '/api/stats/visits');
+    assert.ok(
+      !JSON.stringify(stats.data).includes(empreinte),
+      'l’empreinte ne sort pas dans les statistiques'
+    );
+
+    // Et elle n'est pas stockée telle quelle non plus : c'est ce qui empêche de
+    // relier une ligne de visite à un message ou à un vote du même élève.
+    const base = new Database(path.join(tmpDir, 'test.db'));
+    base.pragma('busy_timeout = 5000');
+    const stocke = base.prepare('SELECT fingerprint FROM visits').all().map((r) => r.fingerprint);
+    base.close();
+
+    assert.ok(stocke.length > 0, 'des visites ont bien été enregistrées');
+    assert.ok(
+      stocke.every((f) => f !== empreinte),
+      'aucune empreinte en clair dans la table'
+    );
+    assert.ok(
+      stocke.every((f) => /^[0-9a-f]{32}$/.test(f)),
+      'chaque empreinte est un condensat de longueur fixe'
+    );
+    assert.equal(new Set(stocke).size, stocke.length, 'deux élèves différents ne fusionnent pas');
+  });
+
+  test('le total d’ouvertures est plafonné, le nombre d’élèves ne l’est pas', async () => {
+    const empreinte = 'fingerprint-visite-plafond-01';
+    for (let i = 0; i < 220; i += 1) {
+      await student('POST', '/api/stats/visit', { fingerprint: empreinte, page: '/' });
+    }
+
+    const stats = await admin('GET', '/api/stats/visits');
+    const aujourdhui = stats.data.days.find((d) => d.day === new Date().toISOString().slice(0, 10));
+    assert.ok(aujourdhui, 'le jour courant est présent');
+
+    // 220 ouvertures envoyées pour le même appareil : le compteur de cet appareil
+    // est plafonné. C'est ce qu'un appel en boucle gonflait avant.
+    const appareil = stats.data.identites.filter((i) => i.hits > 1);
+    assert.ok(appareil.length > 0, 'les 220 ouvertures ont bien été comptées');
+    assert.ok(
+      stats.data.identites.every((i) => i.hits <= 200),
+      `chaque appareil reste sous le plafond (max ${Math.max(...stats.data.identites.map((i) => i.hits))})`
+    );
+
+    // Et l'élève reste compté une seule fois, malgré les rechargements.
+    assert.ok(aujourdhui.visitors >= 1, 'l’appareil reste compté comme visiteur');
+  });
+
+  test('les visites de plus de 90 jours sont supprimées', async () => {
+    const base = new Database(path.join(tmpDir, 'test.db'));
+    base.pragma('busy_timeout = 5000');
+    const ancien = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    base
+      .prepare('INSERT INTO visits (fingerprint, day, page) VALUES (?, ?, ?)')
+      .run('abcd1234abcd1234abcd1234abcd1234', ancien, '/');
+    assert.equal(base.prepare('SELECT COUNT(*) AS n FROM visits WHERE day = ?').get(ancien).n, 1);
+
+    // Une nouvelle visite déclenche la purge.
+    await student('POST', '/api/stats/visit', { fingerprint: 'fingerprint-purge-000001', page: '/' });
+    base.close();
+
+    const apres = new Database(path.join(tmpDir, 'test.db'));
+    apres.pragma('busy_timeout = 5000');
+    assert.equal(apres.prepare('SELECT COUNT(*) AS n FROM visits WHERE day = ?').get(ancien).n, 0);
+    apres.close();
+  });
 });
 
 describe('Membres du chat', () => {

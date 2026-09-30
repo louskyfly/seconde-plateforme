@@ -4,7 +4,8 @@ import { generateFingerprint } from '@/lib/utils';
 
 export function BirthdayEntry() {
   const [date, setDate] = useState('');
-  const [saved, setSaved] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [saved, setSaved] = useState<{ date: string; name: string } | null>(null);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -15,7 +16,7 @@ export function BirthdayEntry() {
     api.getBirthdays()
       .then(({ birthdays }) => {
         const mine = birthdays.find((b) => b.fingerprint === fp);
-        if (mine) setSaved(mine.date_mmdd);
+        if (mine) setSaved({ date: mine.date_mmdd, name: mine.first_name });
       })
       .catch(() => {});
   }, [fp]);
@@ -32,10 +33,15 @@ export function BirthdayEntry() {
       setError('Date invalide');
       return;
     }
+    const name = firstName.trim();
+    if (!name) {
+      setError('Prénom requis');
+      return;
+    }
     setSaving(true);
     try {
-      await api.setMyBirthday(fp, date);
-      setSaved(date);
+      await api.setMyBirthday(fp, date, name);
+      setSaved({ date, name });
     } catch (err: any) {
       setError(err.message || 'Erreur serveur');
     } finally {
@@ -52,7 +58,7 @@ export function BirthdayEntry() {
         <div className="flex items-center gap-3 text-green-700 dark:text-green-300">
           <span className="text-2xl">✅</span>
           <div>
-            <p className="font-medium">Enregistré : <strong>{saved}</strong></p>
+            <p className="font-medium">Enregistré : <strong>{saved.name}</strong> — <strong>{saved.date}</strong></p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Tu pourras le changer en renvoyant le formulaire.
             </p>
@@ -60,6 +66,19 @@ export function BirthdayEntry() {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2">
+          <label htmlFor="bday-name" className="text-sm">
+            Prénom :
+          </label>
+          <input
+            id="bday-name"
+            type="text"
+            maxLength={30}
+            placeholder="Léa"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            className="w-28 px-2 py-1.5 border rounded-lg bg-white/80 dark:bg-gray-800/80 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            required
+          />
           <label htmlFor="bday" className="text-sm">
             Date (MM-JJ) :
           </label>
@@ -88,7 +107,7 @@ export function BirthdayEntry() {
         </form>
       )}
       <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-        Ta date est liée à ton appareil (pas de compte, pas de mot de passe).
+        Ton prénom + ta date sont liés à ton appareil (pas de compte, pas de mot de passe).
         Le jour J, une animation apparaîtra pour tout le monde à l'ouverture du site.
       </p>
     </section>

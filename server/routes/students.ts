@@ -633,8 +633,8 @@ router.delete('/groups/:id', (req, res) => {
 /**
  * Anniversaires — élèves
  *
- * GET  /api/birthdays           → liste { fingerprint, date_mmdd } (public, pour l'animation)
- * POST /api/birthdays/me        → l'élève connecté (via fingerprint) enregistre sa date
+ * GET  /api/birthdays           → liste { fingerprint, date_mmdd, first_name } (public, pour l'animation)
+ * POST /api/birthdays/me        → l'élève connecté (via fingerprint) enregistre sa date + son prénom
  */
 
 function cleanMmDd(value: unknown): string | null {
@@ -646,12 +646,23 @@ function cleanMmDd(value: unknown): string | null {
   return `${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
 }
 
+function cleanFirstNameOnly(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value
+    .replace(/[^\p{L}\s'-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 30);
+  // On ne garde que le premier mot (prénom)
+  return cleaned.split(' ')[0] || null;
+}
+
 /** Liste de tous les anniversaires — publique, pour l'animation au chargement. */
 router.get('/birthdays', (_req, res) => {
   try {
     const rows = db
-      .prepare('SELECT fingerprint, date_mmdd FROM birthdays')
-      .all() as { fingerprint: string; date_mmdd: string }[];
+      .prepare('SELECT fingerprint, date_mmdd, first_name FROM birthdays')
+      .all() as { fingerprint: string; date_mmdd: string; first_name: string }[];
     res.json({ birthdays: rows });
   } catch (err) {
     console.error('Get birthdays error:', err);
@@ -659,7 +670,7 @@ router.get('/birthdays', (_req, res) => {
   }
 });
 
-/** L'élève enregistre sa propre date d'anniversaire. */
+/** L'élève enregistre sa propre date d'anniversaire + son prénom. */
 router.post('/birthdays/me', (req, res) => {
   try {
     const fingerprint = cleanText(req.body?.fingerprint, 64);
@@ -672,12 +683,17 @@ router.post('/birthdays/me', (req, res) => {
       res.status(400).json({ error: 'Format de date invalide (attendu MM-JJ)' });
       return;
     }
+    const first_name = cleanFirstNameOnly(req.body?.first_name);
+    if (!first_name) {
+      res.status(400).json({ error: 'Prénom requis' });
+      return;
+    }
     db.prepare(
-      `INSERT INTO birthdays (fingerprint, date_mmdd, updated_at)
-       VALUES (?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(fingerprint) DO UPDATE SET date_mmdd = excluded.date_mmdd, updated_at = CURRENT_TIMESTAMP`
-    ).run(fingerprint, date_mmdd);
-    res.json({ success: true, date_mmdd });
+      `INSERT INTO birthdays (fingerprint, date_mmdd, first_name, updated_at)
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+       ON CONFLICT(fingerprint) DO UPDATE SET date_mmdd = excluded.date_mmdd, first_name = excluded.first_name, updated_at = CURRENT_TIMESTAMP`
+    ).run(fingerprint, date_mmdd, first_name);
+    res.json({ success: true, date_mmdd, first_name });
   } catch (err) {
     console.error('Set birthday error:', err);
     res.status(500).json({ error: 'Erreur serveur' });

@@ -192,9 +192,11 @@ CREATE TABLE IF NOT EXISTS students (
 
 -- Anniversaires saisis par les élèves eux-mêmes via leur empreinte (voter_fp).
 -- Une ligne par élève : l'empreinte est la clé. Le format est MM-JJ (sans année).
+-- Le prénom est stocké pour l'animation collective (pas de nom de famille).
 CREATE TABLE IF NOT EXISTS birthdays (
   fingerprint TEXT PRIMARY KEY,
   date_mmdd TEXT NOT NULL,
+  first_name TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

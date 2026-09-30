@@ -295,11 +295,11 @@ export const api = {
 
   /** Liste de tous les anniversaires (pour l'animation au chargement). */
   getBirthdays: () => request<{ birthdays: BirthdayEntry[] }>('/birthdays'),
-  /** L'élève connecté enregistre sa date d'anniversaire (MM-JJ). */
-  setMyBirthday: (fingerprint: string, date_mmdd: string) =>
-    request<{ success: boolean; date_mmdd: string }>('/birthdays/me', {
+  /** L'élève connecté enregistre sa date d'anniversaire (MM-JJ) + son prénom. */
+  setMyBirthday: (fingerprint: string, date_mmdd: string, first_name: string) =>
+    request<{ success: boolean; date_mmdd: string; first_name: string }>('/birthdays/me', {
       method: 'POST',
-      body: JSON.stringify({ fingerprint, date_mmdd }),
+      body: JSON.stringify({ fingerprint, date_mmdd, first_name }),
     }),
 
   // Fiches de révision

@@ -91,8 +91,8 @@ export function BirthdayAnimation() {
       .then(({ birthdays }) => {
         const todays = birthdays.filter((b) => b.date_mmdd === todayMmDd);
         if (todays.length > 0) {
-          // On ne connaît pas les prénoms, on affiche l'empreinte courte
-          setNames(todays.map((b) => b.fingerprint.slice(0, 6).toUpperCase()));
+          // On affiche le prénom saisi par l'élève
+          setNames(todays.map((b) => b.first_name));
           setShow(true);
         }
       })

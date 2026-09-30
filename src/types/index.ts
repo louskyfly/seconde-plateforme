@@ -226,6 +226,7 @@ export interface ChatMessage {
 export interface BirthdayEntry {
   fingerprint: string;
   date_mmdd: string;
+  first_name: string;
 }
 
 export interface VisitDay {

@@ -58,13 +58,82 @@ export function setAppBadge(count: number): void {
   }
 }
 
+/**
+ * Identifiant de l'appareil.
+ *
+ * C'est ce qui relie un élève à ses votes, ses messages et ses idées, sans
+ * compte ni mot de passe. Il est stocké deux fois : dans localStorage, et dans
+ * un cookie. Le double stockage n'est pas de la redondance gratuite, c'est la
+ * seule chose qui résiste à la perte du localStorage.
+ *
+ * localStorage seul suffisait le temps d'une session, mais il est fragile : une
+ * vidange de données de site, un nettoyage de navigateur ou une navigation
+ * privée réinitialisaient l'identité. Les messages de l'élève se retrouvaient
+ * alors orphelins et il pouvait voter deux fois dans le même sondage. Le cookie
+ * survit à ces cas, et le localStorage reste le cache rapide du quotidien.
+ *
+ * Limite honnête : effacer explicitement « cookies et données de site » depuis
+ * les réglages du navigateur supprime les deux. Sans compte ni base de données
+ * externe, le serveur ne peut pas deviner de quel ancien appareil il s'agit :
+ * il ne peut donc pas reconstituer une identité déjà perdue. C'est le prix de
+ * l'absence d'authentification, et il n'est pas contournable côté client.
+ */
 export function generateFingerprint(): string {
-  let fp = localStorage.getItem('voter_fp');
+  const CLE = 'voter_fp';
+  const COOKIE = 'voter_fp';
+
+  let fp = safeLocalGet(CLE);
+
+  if (!fp) {
+    // Récupération depuis le cookie : l'élève revient après avoir vidé les
+    // données de site, mais garde son identité.
+    fp = readCookie(COOKIE);
+    if (fp) safeLocalSet(CLE, fp);
+  }
+
   if (!fp) {
     fp = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    localStorage.setItem('voter_fp', fp);
+    writeCookie(COOKIE, fp);
+    safeLocalSet(CLE, fp);
   }
+
   return fp;
+}
+
+function safeLocalGet(cle: string): string | null {
+  try {
+    return localStorage.getItem(cle);
+  } catch {
+    // Navigation privée ou stockage refusé : on continue sans cache local.
+    return null;
+  }
+}
+
+function safeLocalSet(cle: string, valeur: string): void {
+  try {
+    localStorage.setItem(cle, valeur);
+  } catch {
+    /* sans effet si le stockage est indisponible */
+  }
+}
+
+function readCookie(nom: string): string | null {
+  const prefixe = `${nom}=`;
+  for (const partie of document.cookie.split(';')) {
+    const p = partie.trim();
+    if (p.startsWith(prefixe)) return decodeURIComponent(p.slice(prefixe.length)) || null;
+  }
+  return null;
+}
+
+/**
+ * Cookie « technique », donc sans `Secure` ici : le site est en HTTP en local.
+ * `SameSite=Lax` suffit, la valeur n'est jamais envoyée ailleurs.
+ */
+function writeCookie(nom: string, valeur: string): void {
+  const unAn = 60 * 60 * 24 * 365;
+  const base = `${nom}=${encodeURIComponent(valeur)}; path=/; max-age=${unAn}; SameSite=Lax`;
+  document.cookie = window.location.protocol === 'https:' ? `${base}; Secure` : base;
 }
 
 const FIRST_NAME_KEY = 'student_first_name';

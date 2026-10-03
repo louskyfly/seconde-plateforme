@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import type Database from 'better-sqlite3';
+import { queryOne, execute } from '../db/index.js';
 
 declare module 'express-session' {
   interface SessionData {
@@ -16,19 +16,21 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 }
 
-export function checkRateLimit(ip: string, db: Database.Database): boolean {
-  const row = db.prepare(
+export async function checkRateLimit(ip: string): Promise<boolean> {
+  const row = await queryOne<{ count: number }>(
     `SELECT COUNT(*) AS count FROM admin_login_attempts
-     WHERE ip_address = ? AND success = 0 AND attempted_at > datetime('now', '-15 minutes')`
-  ).get(ip) as { count: number } | undefined;
+     WHERE ip_address = $1 AND success = 0 AND attempted_at > CURRENT_TIMESTAMP - INTERVAL '15 minutes'`,
+    [ip]
+  );
 
   return (row?.count ?? 0) < 5;
 }
 
-export function recordAttempt(ip: string, db: Database.Database, success: boolean): void {
+export async function recordAttempt(ip: string, success: boolean): Promise<void> {
   if (!success) {
-    db.prepare(
-      'INSERT INTO admin_login_attempts (ip_address, success) VALUES (?, ?)'
-    ).run(ip, 0);
+    await execute(
+      'INSERT INTO admin_login_attempts (ip_address, success) VALUES ($1, $2)',
+      [ip, 0]
+    );
   }
 }

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import db from '../db/index.js';
+import { query, queryOne, execute } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendPushToAll } from '../lib/push.js';
 
@@ -7,30 +7,26 @@ const router = Router();
 
 export const REACTIONS = ['vu', 'jaime', 'question', 'important'] as const;
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const fingerprint = typeof req.query.fingerprint === 'string' ? req.query.fingerprint : '';
     const isDelegate = req.session?.authenticated === true;
-    const announcements = db
-      .prepare(
-        isDelegate
-          ? 'SELECT * FROM announcements ORDER BY created_at DESC'
-          : 'SELECT * FROM announcements WHERE published = 1 ORDER BY created_at DESC'
-      )
-      .all() as any[];
 
-    const counts = db
-      .prepare(
-        'SELECT announcement_id, reaction, COUNT(*) AS count FROM announcement_reactions GROUP BY announcement_id, reaction'
-      )
-      .all() as { announcement_id: number; reaction: string; count: number }[];
+    const announcements = await query(
+      isDelegate
+        ? 'SELECT * FROM announcements ORDER BY created_at DESC'
+        : 'SELECT * FROM announcements WHERE published = 1 ORDER BY created_at DESC'
+    ) as any[];
+
+    const counts = await query(
+      'SELECT announcement_id, reaction, COUNT(*) AS count FROM announcement_reactions GROUP BY announcement_id, reaction'
+    ) as { announcement_id: number; reaction: string; count: number }[];
 
     const mine = fingerprint
-      ? (db
-          .prepare(
-            'SELECT announcement_id, reaction FROM announcement_reactions WHERE reactor_fingerprint = ?'
-          )
-          .all(fingerprint) as { announcement_id: number; reaction: string }[])
+      ? await query(
+          'SELECT announcement_id, reaction FROM announcement_reactions WHERE reactor_fingerprint = $1',
+          [fingerprint]
+        ) as { announcement_id: number; reaction: string }[]
       : [];
 
     const countMap = new Map<number, Record<string, number>>();
@@ -59,7 +55,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
     const { title, description, category, importance, author, attachment_url, image, published } = req.body;
     if (!title || typeof title !== 'string' || !description || typeof description !== 'string') {
@@ -68,12 +64,10 @@ router.post('/', requireAuth, (req, res) => {
     }
     const isPublished = published === undefined ? 1 : published ? 1 : 0;
 
-    const result = db
-      .prepare(
-        `INSERT INTO announcements (title, description, category, importance, author, attachment_url, image, published)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
+    const result = await execute(
+      `INSERT INTO announcements (title, description, category, importance, author, attachment_url, image, published)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [
         title.trim(),
         description.trim(),
         (category || 'general').trim(),
@@ -82,11 +76,10 @@ router.post('/', requireAuth, (req, res) => {
         attachment_url || null,
         image || null,
         isPublished
-      );
+      ]
+    );
 
-    const announcement = db
-      .prepare('SELECT * FROM announcements WHERE id = ?')
-      .get(Number(result.lastInsertRowid));
+    const announcement = await queryOne('SELECT * FROM announcements WHERE id = $1', [result.lastInsertId]);
 
     if (announcement && (announcement as any).published === 1) {
       sendPushToAll({
@@ -103,7 +96,7 @@ router.post('/', requireAuth, (req, res) => {
   }
 });
 
-router.post('/:id/react', (req, res) => {
+router.post('/:id/react', async (req, res) => {
   try {
     const { id } = req.params;
     const { reaction, fingerprint } = req.body || {};
@@ -117,43 +110,42 @@ router.post('/:id/react', (req, res) => {
       return;
     }
 
-    const announcement = db.prepare('SELECT id FROM announcements WHERE id = ?').get(id);
+    const announcement = await queryOne('SELECT id FROM announcements WHERE id = $1', [id]);
     if (!announcement) {
       res.status(404).json({ error: 'Annonce introuvable' });
       return;
     }
 
-    const existing = db
-      .prepare(
-        'SELECT id FROM announcement_reactions WHERE announcement_id = ? AND reaction = ? AND reactor_fingerprint = ?'
-      )
-      .get(id, reaction, fingerprint);
+    const existing = await queryOne(
+      'SELECT id FROM announcement_reactions WHERE announcement_id = $1 AND reaction = $2 AND reactor_fingerprint = $3',
+      [id, reaction, fingerprint]
+    );
 
     if (existing) {
-      db.prepare(
-        'DELETE FROM announcement_reactions WHERE announcement_id = ? AND reaction = ? AND reactor_fingerprint = ?'
-      ).run(id, reaction, fingerprint);
+      await execute(
+        'DELETE FROM announcement_reactions WHERE announcement_id = $1 AND reaction = $2 AND reactor_fingerprint = $3',
+        [id, reaction, fingerprint]
+      );
     } else {
-      db.prepare(
-        'INSERT INTO announcement_reactions (announcement_id, reaction, reactor_fingerprint) VALUES (?, ?, ?)'
-      ).run(id, reaction, fingerprint);
+      await execute(
+        'INSERT INTO announcement_reactions (announcement_id, reaction, reactor_fingerprint) VALUES ($1, $2, $3)',
+        [id, reaction, fingerprint]
+      );
     }
 
-    const rows = db
-      .prepare(
-        'SELECT reaction, COUNT(*) AS count FROM announcement_reactions WHERE announcement_id = ? GROUP BY reaction'
-      )
-      .all(id) as { reaction: string; count: number }[];
+    const rows = await query(
+      'SELECT reaction, COUNT(*) AS count FROM announcement_reactions WHERE announcement_id = $1 GROUP BY reaction',
+      [id]
+    ) as { reaction: string; count: number }[];
 
     const reactions: Record<string, number> = {};
     for (const row of rows) reactions[row.reaction] = row.count;
 
     const myReactions = (
-      db
-        .prepare(
-          'SELECT reaction FROM announcement_reactions WHERE announcement_id = ? AND reactor_fingerprint = ?'
-        )
-        .all(id, fingerprint) as { reaction: string }[]
+      await query(
+        'SELECT reaction FROM announcement_reactions WHERE announcement_id = $1 AND reactor_fingerprint = $2',
+        [id, fingerprint]
+      ) as { reaction: string }[]
     ).map((r) => r.reaction);
 
     res.json({ reactions, my_reactions: myReactions });
@@ -163,41 +155,42 @@ router.post('/:id/react', (req, res) => {
   }
 });
 
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM announcements WHERE id = ?').get(id);
+    const existing = await queryOne('SELECT * FROM announcements WHERE id = $1', [id]);
     if (!existing) {
       res.status(404).json({ error: 'Annonce introuvable' });
       return;
     }
 
     const { title, description, category, importance, author, attachment_url, image, published } = req.body;
-    db.prepare(
+    await execute(
       `UPDATE announcements SET
-        title = COALESCE(?, title),
-        description = COALESCE(?, description),
-        category = COALESCE(?, category),
-        importance = COALESCE(?, importance),
-        author = COALESCE(?, author),
-        attachment_url = ?,
-        image = ?,
-        published = COALESCE(?, published),
+        title = COALESCE($1, title),
+        description = COALESCE($2, description),
+        category = COALESCE($3, category),
+        importance = COALESCE($4, importance),
+        author = COALESCE($5, author),
+        attachment_url = $6,
+        image = $7,
+        published = COALESCE($8, published),
         updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`
-    ).run(
-      title?.trim() ?? null,
-      description?.trim() ?? null,
-      category?.trim() ?? null,
-      importance?.trim() ?? null,
-      author?.trim() ?? null,
-      attachment_url !== undefined ? attachment_url : (existing as any).attachment_url,
-      image !== undefined ? image : (existing as any).image,
-      published !== undefined ? published : null,
-      id
+       WHERE id = $9`,
+      [
+        title?.trim() ?? null,
+        description?.trim() ?? null,
+        category?.trim() ?? null,
+        importance?.trim() ?? null,
+        author?.trim() ?? null,
+        attachment_url !== undefined ? attachment_url : (existing as any).attachment_url,
+        image !== undefined ? image : (existing as any).image,
+        published !== undefined ? published : null,
+        id
+      ]
     );
 
-    const updated = db.prepare('SELECT * FROM announcements WHERE id = ?').get(id);
+    const updated = await queryOne('SELECT * FROM announcements WHERE id = $1', [id]);
     res.json(updated);
   } catch (err) {
     console.error('Update announcement error:', err);
@@ -205,16 +198,16 @@ router.put('/:id', requireAuth, (req, res) => {
   }
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM announcements WHERE id = ?').get(id);
+    const existing = await queryOne('SELECT * FROM announcements WHERE id = $1', [id]);
     if (!existing) {
       res.status(404).json({ error: 'Annonce introuvable' });
       return;
     }
 
-    db.prepare('DELETE FROM announcements WHERE id = ?').run(id);
+    await execute('DELETE FROM announcements WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (err) {
     console.error('Delete announcement error:', err);

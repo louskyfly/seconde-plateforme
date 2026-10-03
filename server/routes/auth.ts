@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import db from '../db/index.js';
+import { queryOne, execute } from '../db/index.js';
 import { verifyPassword } from '../utils/password.js';
 import { requireAuth, checkRateLimit, recordAttempt } from '../middleware/auth.js';
 
@@ -14,17 +14,17 @@ router.post('/login', async (req, res) => {
     }
 
     const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
-    if (!checkRateLimit(ip, db)) {
+    if (!(await checkRateLimit(ip))) {
       res.status(429).json({ error: 'Trop de tentatives. Réessayez dans 15 minutes.' });
       return;
     }
 
-    const settings = db.prepare('SELECT password_hash, delegate_link_token FROM settings WHERE id = 1').get() as
-      | { password_hash: string; delegate_link_token: string }
-      | undefined;
+    const settings = await queryOne<{ password_hash: string; delegate_link_token: string }>(
+      'SELECT password_hash, delegate_link_token FROM settings WHERE id = 1'
+    );
 
     if (!settings) {
-      recordAttempt(ip, db, false);
+      await recordAttempt(ip, false);
       res.status(500).json({ error: 'Erreur de configuration' });
       return;
     }
@@ -36,12 +36,12 @@ router.post('/login', async (req, res) => {
 
     const valid = await verifyPassword(password, settings.password_hash);
     if (!valid) {
-      recordAttempt(ip, db, false);
+      await recordAttempt(ip, false);
       res.status(401).json({ error: 'Mot de passe incorrect' });
       return;
     }
 
-    recordAttempt(ip, db, true);
+    await recordAttempt(ip, true);
     req.session.authenticated = true;
     req.session.userId = 1;
     res.json({ success: true });
@@ -51,21 +51,21 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.get('/validate-token/:token', (req, res) => {
+router.get('/validate-token/:token', async (req, res) => {
   try {
     const { token } = req.params;
     if (!token) {
       res.status(400).json({ valid: false });
       return;
     }
-    const settings = db.prepare('SELECT delegate_link_token FROM settings WHERE id = 1').get() as
-      | { delegate_link_token: string }
-      | undefined;
+    const settings = await queryOne<{ delegate_link_token: string }>(
+      'SELECT delegate_link_token FROM settings WHERE id = 1'
+    );
     res.json({ valid: settings?.delegate_link_token === token });
   } catch (err) {
     console.error('Validate token error:', err);
     res.status(500).json({ valid: false });
-  }
+  });
 });
 
 router.post('/logout', (req, res) => {

@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { query, execute, queryOne } from './index.js';
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS settings (

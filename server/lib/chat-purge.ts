@@ -1,4 +1,4 @@
-import db from '../db/index.js';
+import { execute, queryOne } from '../db/index.js';
 import { logAdminAction } from './maintenance.js';
 
 /** Les messages de discussion disparaissent au bout de deux jours. */
@@ -16,14 +16,12 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
  * La purge est réelle (DELETE) et non logique : c'est le but, libérer l'espace
  * de la base, qui est de taille limitée sur le plan gratuit.
  */
-export function purgeExpiredChatMessages(now = Date.now()): number {
+export async function purgeExpiredChatMessages(now = Date.now()): Promise<number> {
   const cutoff = new Date(now - RETENTION_DAYS * ONE_DAY_MS).toISOString().slice(0, 19).replace('T', ' ');
 
-  const result = db
-    .prepare('DELETE FROM chat_messages WHERE created_at < ?')
-    .run(cutoff);
+  const result = await execute('DELETE FROM chat_messages WHERE created_at < $1', [cutoff]);
 
-  const deleted = result.changes;
+  const deleted = result.rowCount ?? 0;
   if (deleted > 0) {
     logAdminAction(
       'chat_purge',
@@ -44,9 +42,9 @@ export function purgeExpiredChatMessages(now = Date.now()): number {
  * doivent disparaître.
  */
 export function startChatPurge(): void {
-  const run = () => {
+  const run = async () => {
     try {
-      purgeExpiredChatMessages();
+      await purgeExpiredChatMessages();
     } catch (err) {
       console.error('Purge du chat impossible:', err);
     }

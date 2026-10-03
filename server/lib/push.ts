@@ -1,5 +1,5 @@
 import webpush from 'web-push';
-import db from '../db/index.js';
+import { query, execute } from '../db/index.js';
 import { VAPID_CONFIG } from '../config/vapid.js';
 
 webpush.setVapidDetails(
@@ -20,29 +20,28 @@ export function getVapidPublicKey(): string {
   return VAPID_CONFIG.publicKey;
 }
 
-export function saveSubscription(subscription: { endpoint: string; keys: { p256dh: string; auth: string } }): boolean {
+export async function saveSubscription(subscription: { endpoint: string; keys: { p256dh: string; auth: string } }): Promise<boolean> {
   if (!subscription?.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
     return false;
   }
-  db.prepare(
+  await execute(
     `INSERT INTO push_subscriptions (endpoint, p256dh, auth)
-     VALUES (?, ?, ?)
-     ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`
-  ).run(subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth);
+     VALUES ($1, $2, $3)
+     ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth`,
+    [subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth]
+  );
   return true;
 }
 
-export function removeSubscription(endpoint: string): void {
+export async function removeSubscription(endpoint: string): Promise<void> {
   if (!endpoint) return;
-  db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+  await execute('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint]);
 }
 
-export function sendPushToAll(payload: PushPayload): void {
-  const subscriptions = db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions').all() as {
-    endpoint: string;
-    p256dh: string;
-    auth: string;
-  }[];
+export async function sendPushToAll(payload: PushPayload): Promise<void> {
+  const subscriptions = await query<{ endpoint: string; p256dh: string; auth: string }>(
+    'SELECT endpoint, p256dh, auth FROM push_subscriptions'
+  );
   if (subscriptions.length === 0) return;
 
   const serialized = JSON.stringify(payload);

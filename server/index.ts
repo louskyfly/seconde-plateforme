@@ -5,8 +5,8 @@ import session from 'express-session';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import db, { isPersistentStorage } from './db/index.js';
-import { initDatabase, ensureDefaultChatGroup } from './db/schema.js';
+import db, { isPersistentStorage, isPostgres, initializeDatabase } from './db/index.js';
+import { initDatabase, ensureDefaultChatGroup, initDatabaseAsync, ensureDefaultChatGroupAsync } from './db/schema.js';
 import { SqliteSessionStore } from './db/session-store.js';
 import { startAutoBackup } from './db/backup.js';
 import { seedDatabase } from './db/seed.js';
@@ -38,11 +38,25 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
-initDatabase(db);
-seedDatabase(db);
-ensureDefaultChatGroup(db);
-startAutoBackup(db);
-startChatPurge();
+async function initialize(): Promise<void> {
+  await initializeDatabase();
+  
+  if (isPostgres()) {
+    await initDatabaseAsync();
+    await ensureDefaultChatGroupAsync();
+  } else {
+    initDatabase(db);
+    seedDatabase(db);
+    ensureDefaultChatGroup(db);
+    startAutoBackup(db);
+  }
+  startChatPurge();
+}
+
+initialize().catch((err) => {
+  console.error('Initialization failed:', err);
+  process.exit(1);
+});
 
 app.set('trust proxy', process.env.TRUST_PROXY ? parseInt(process.env.TRUST_PROXY, 10) : false);
 

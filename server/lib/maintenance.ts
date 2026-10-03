@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import { query, execute, queryOne } from '../db/index.js';
 
 export const DEFAULT_MAINTENANCE_MESSAGE =
   'Le site est temporairement indisponible pour maintenance. Merci de revenir plus tard.';
@@ -22,10 +22,10 @@ interface MaintenanceRow {
   deactivated_at: string | null;
 }
 
-export function getMaintenanceState(db: Database.Database): MaintenanceState {
-  const row = db
-    .prepare('SELECT * FROM maintenance_log ORDER BY id DESC LIMIT 1')
-    .get() as MaintenanceRow | undefined;
+export async function getMaintenanceState(): Promise<MaintenanceState> {
+  const row = await queryOne<MaintenanceRow>(
+    'SELECT * FROM maintenance_log ORDER BY id DESC LIMIT 1'
+  );
 
   if (!row) {
     return {
@@ -48,33 +48,35 @@ export function getMaintenanceState(db: Database.Database): MaintenanceState {
   };
 }
 
-export function activateMaintenance(db: Database.Database, by: string, message?: string): MaintenanceState {
-  db.prepare(
-    `INSERT INTO maintenance_log (active, message, activated_by) VALUES (1, ?, ?)`
-  ).run(message?.trim() || DEFAULT_MAINTENANCE_MESSAGE, by);
+export async function activateMaintenance(by: string, message?: string): Promise<MaintenanceState> {
+  await execute(
+    `INSERT INTO maintenance_log (active, message, activated_by) VALUES (1, $1, $2)`,
+    [message?.trim() || DEFAULT_MAINTENANCE_MESSAGE, by]
+  );
 
-  logAdminAction(db, 'maintenance_on', 'maintenance', null, `Mode maintenance activé par ${by}`);
-  return getMaintenanceState(db);
+  await logAdminAction('maintenance_on', 'maintenance', null, `Mode maintenance activé par ${by}`);
+  return getMaintenanceState();
 }
 
-export function deactivateMaintenance(db: Database.Database, by: string): MaintenanceState {
-  db.prepare(
+export async function deactivateMaintenance(by: string): Promise<MaintenanceState> {
+  await execute(
     `INSERT INTO maintenance_log (active, message, activated_by, deactivated_by, deactivated_at)
-     VALUES (0, NULL, ?, ?, CURRENT_TIMESTAMP)`
-  ).run(by, by);
+     VALUES (0, NULL, $1, $2, CURRENT_TIMESTAMP)`,
+    [by, by]
+  );
 
-  logAdminAction(db, 'maintenance_off', 'maintenance', null, `Mode maintenance désactivé par ${by}`);
-  return getMaintenanceState(db);
+  await logAdminAction('maintenance_off', 'maintenance', null, `Mode maintenance désactivé par ${by}`);
+  return getMaintenanceState();
 }
 
-export function logAdminAction(
-  db: Database.Database,
+export async function logAdminAction(
   action: string,
   targetType?: string | null,
   targetId?: number | null,
   detail?: string | null
-): void {
-  db.prepare(
-    'INSERT INTO admin_log (action, target_type, target_id, detail) VALUES (?, ?, ?, ?)'
-  ).run(action, targetType ?? null, targetId ?? null, detail ?? null);
+): Promise<void> {
+  await execute(
+    'INSERT INTO admin_log (action, target_type, target_id, detail) VALUES ($1, $2, $3, $4)',
+    [action, targetType ?? null, targetId ?? null, detail ?? null]
+  );
 }

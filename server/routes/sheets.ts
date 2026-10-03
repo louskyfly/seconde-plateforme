@@ -1,8 +1,26 @@
 import { Router } from 'express';
-import db from '../db/index.js';
+import { query, execute, queryOne } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { logAdminAction } from '../lib/maintenance.js';
 import { cleanText, safeFileName, toDataUri, validateDataUri, MAX_SHEET_IMAGE_BYTES } from '../lib/files.js';
+
+interface SheetRow {
+  id: number;
+  title: string;
+  subject: string;
+  class_level: string;
+  description: string;
+  author_name: string;
+  author_fingerprint: string | null;
+  kind: string;
+  mime_type: string | null;
+  file_size: number | null;
+  file_name: string | null;
+  status: string;
+  created_at: string;
+  file_data: string | null;
+  updated_at: string | null;
+}
 
 const router = Router();
 
@@ -15,12 +33,6 @@ function isAdmin(req: any): boolean {
   return req.session?.authenticated === true;
 }
 
-/**
- * Colonnes utilisées pour la LISTE et les réponses JSON.
- * `file_data` est volontairement exclu : c'est un data URI qui peut peser 15 Mo,
- * et un `SELECT *` sur 24 lignes saturation la RAM de l'instance (512 Mo) et fait
- * tomber le site. Le fichier n'est chargé que sur `GET /:id/file`.
- */
 const SHEET_LIST_COLUMNS = `id, title, subject, class_level, description, author_name,
   author_fingerprint, kind, mime_type, file_size, file_name, status, created_at`;
 
@@ -35,16 +47,14 @@ function shapeSheet(row: any) {
     kind: row.kind,
     mime_type: row.mime_type,
     file_size: row.file_size,
-    // `file_data` n'est pas chargé dans les listes : on se fie à la taille.
-    has_file: (row.file_data !== undefined ? row.file_data : row.file_size) ? 1 : 0,
+    has_file: row.file_size ? 1 : 0,
     status: row.status,
     created_at: row.created_at,
     is_mine: row.author_fingerprint ? row.__mine === 1 : false,
   };
 }
 
-/** Liste des fiches : les fiches masquées ne sont visibles que par le délégué. */
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const subject = cleanText(req.query.subject, 40);
     const search = cleanText(req.query.q, 60);
@@ -53,34 +63,31 @@ router.get('/', (req, res) => {
 
     const where: string[] = [];
     const params: any[] = [];
-    if (!isAdmin(req)) {
+    if (!req.session?.authenticated) {
       where.push("status = 'active'");
     } else if (req.query.status && ['active', 'hidden'].includes(String(req.query.status))) {
-      where.push('status = ?');
+      where.push('status = $' + (params.length + 1));
       params.push(String(req.query.status));
     }
     if (subject) {
-      where.push('subject = ?');
+      where.push('subject = $' + (params.length + 1));
       params.push(subject);
     }
     if (search) {
-      where.push('(title LIKE ? OR description LIKE ? OR author_name LIKE ?)');
+      where.push('(title LIKE $' + (params.length + 1) + ' OR description LIKE $' + (params.length + 2) + ' OR author_name LIKE $' + (params.length + 3) + ')');
       const like = `%${search}%`;
       params.push(like, like, like);
     }
-    const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
 
-    const total = (
-      db.prepare(`SELECT COUNT(*) AS count FROM sheets ${clause}`).get(...params) as { count: number }
-    ).count;
+    const total = (await queryOne<{ count: number }>(`SELECT COUNT(*) AS count FROM sheets ${clause}`, params))?.count ?? 0;
 
-    const rows = db
-      .prepare(
-        `SELECT ${SHEET_LIST_COLUMNS} FROM sheets ${clause} ORDER BY id DESC LIMIT ? OFFSET ?`
-      )
-      .all(...params, limit, (page - 1) * limit) as any[];
+    const rows = await query<SheetRow>(
+      `SELECT ${SHEET_LIST_COLUMNS} FROM sheets ${clause} ORDER BY id DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, (page - 1) * limit]
+    );
 
-    const mine = isAdmin(req) ? null : String(req.query.fingerprint || '');
+    const mine = req.session?.authenticated ? null : String(req.query.fingerprint || '');
     res.json({
       items: rows.map((row) => shapeSheet({ ...row, __mine: mine && row.author_fingerprint === mine ? 1 : 0 })),
       total,
@@ -94,165 +101,173 @@ router.get('/', (req, res) => {
   }
 });
 
-/**
- * Fichier de la fiche : servi par l'API avec des en-têtes durcis.
- * Jamais de fichier exécutable ni servi depuis un dossier statique public.
- */
-router.get('/:id/file', (req, res) => {
+router.get('/:id/file', async (req, res) => {
   try {
-    const row = db.prepare('SELECT * FROM sheets WHERE id = ?').get(req.params.id) as any;
-    if (!row || !row.file_data) {
-      res.status(404).json({ error: 'Fichier introuvable' });
-      return;
-    }
-    if (row.status !== 'active' && !isAdmin(req)) {
-      res.status(404).json({ error: 'Fichier introuvable' });
-      return;
-    }
+    const { id } = req.params;
+    const isAdmin = req.session?.authenticated === true;
+    const mine = isAdmin ? null : String(req.query.fingerprint || '');
 
-    const check = validateDataUri(row.file_data, ['image', 'document'], {
-    maxImageBytes: MAX_SHEET_IMAGE_BYTES,
-  });
-    if (!check.ok) {
-      res.status(415).json({ error: 'Fichier illisible' });
-      return;
-    }
-
-    // `inline` : sans cela, ouvrir une fiche depuis un téléphone téléchargait le
-    // fichier et laissait un onglet blanc à la place de l'image.
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cache-Control', 'private, max-age=600');
-    res.setHeader('Content-Type', check.file.mime);
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename="${row.file_name || safeFileName(row.title, check.file.ext)}"`
+    const row = await queryOne<SheetRow>(
+      `SELECT ${SHEET_LIST_COLUMNS}, file_data, mime_type, file_name, file_size
+       FROM sheets WHERE id = $1`,
+      [req.params.id]
     );
-    // Le lecteur PDF intégré refuse de s'afficher si la réponse est sandboxée :
-    // on réserve la restriction forte aux formats autres que image/PDF.
-    if (check.file.mime !== 'application/pdf') {
-      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+
+    if (!row) {
+      res.status(404).json({ error: 'Fiche introuvable' });
+      return;
     }
-    res.send(check.file.buffer);
+    if (row.status !== 'active' && !isAdmin && row.author_fingerprint !== mine) {
+      res.status(403).json({ error: 'Accès refusé' });
+      return;
+    }
+    if (!row.file_data) {
+      res.status(404).json({ error: 'Fichier introuvable' });
+      return;
+    }
+
+    const buffer = Buffer.from(row.file_data, 'base64');
+    res.set({
+      'Content-Type': row.mime_type || 'application/octet-stream',
+      'Content-Length': String(row.file_size || buffer.length),
+      'Content-Disposition': `inline; filename="${row.file_name || 'fiche'}"`,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none';",
+    });
+    if (req.query.inline) {
+      res.set('Content-Disposition', `inline; filename="${row.file_name || 'fiche'}"`);
+    }
+    res.send(buffer);
   } catch (err) {
-    console.error('Get sheet file error:', err);
+    console.error('Sheet file error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-/** Dépôt d'une fiche par un élève. */
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const title = cleanText(req.body?.title, MAX_TITLE);
-    if (title.length < 2) {
-      res.status(400).json({ error: 'Titre requis (2 caractères minimum)' });
-      return;
-    }
-
+    const title = cleanText(req.body?.title, 80);
     const subject = cleanText(req.body?.subject, 40) || 'autre';
-    const classLevel = cleanText(req.body?.class_level, 30) || null;
-    const description = cleanText(req.body?.description, MAX_DESCRIPTION);
-    const fingerprint = cleanText(req.body?.fingerprint, 64) || null;
+    const class_level = cleanText(req.body?.class_level, 20);
+    const description = cleanText(req.body?.description, 500);
+    const file = req.body?.file;
+    const author_name = cleanText(req.body?.author_name, 40);
+    const author_fingerprint = cleanText(req.body?.fingerprint, 64) || null;
 
-    let authorName = cleanText(req.body?.author_name, 30);
-    if (fingerprint) {
-      const known = db.prepare('SELECT display_name FROM chat_users WHERE fingerprint = ?').get(fingerprint) as
-        | { display_name: string }
-        | undefined;
-      if (known?.display_name) authorName = known.display_name;
+    if (!title || !author_name) {
+      res.status(400).json({ error: 'Titre et auteur requis' });
+      return;
     }
-    if (authorName.length < 2) {
-      res.status(400).json({ error: 'Indique ton pseudo (2 caractères minimum)' });
+    if (author_name.length < 2) {
+      res.status(400).json({ error: 'Auteur : au moins 2 caractères' });
       return;
     }
 
-    // Les fiches acceptent des images jusqu'à 15 Mo (le chat reste à 3 Mo).
-  const check = validateDataUri(req.body?.file, ['image', 'document'], {
-    maxImageBytes: MAX_SHEET_IMAGE_BYTES,
-  });
-    if (!check.ok) {
-      res.status(400).json({ error: check.error });
-      return;
+    let file_data: string | null = null;
+    let file_name = '';
+    let mime_type = '';
+    let file_size = 0;
+    let kind = 'image';
+
+    if (file) {
+      const check = validateDataUri(file, ['image', 'document']);
+      if (!check.ok) {
+        res.status(400).json({ error: check.error });
+        return;
+      }
+      if (check.file.size > MAX_SHEET_IMAGE_BYTES) {
+        res.status(400).json({ error: 'Fichier trop volumineux (max 12 Mo)' });
+        return;
+      }
+      file_data = toDataUri(check.file);
+      file_name = safeFileName('fichier', check.file.ext);
+      mime_type = check.file.mime;
+      file_size = check.file.size;
+      kind = check.file.kind === 'image' ? 'image' : 'document';
     }
 
-    const fileName = safeFileName(title, check.file.ext);
-    const inserted = db
-      .prepare(
-        `INSERT INTO sheets (title, subject, class_level, description, author_name, author_fingerprint,
-                             file_data, file_name, mime_type, file_size, kind, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`
-      )
-      .run(
-        title,
-        subject,
-        classLevel,
-        description,
-        authorName,
-        fingerprint,
-        toDataUri(check.file),
-        fileName,
-        check.file.mime,
-        check.file.size,
-        check.file.kind
-      );
+    const result = await execute(
+      `INSERT INTO sheets (title, subject, class_level, description, author_name, author_fingerprint,
+        file_data, file_name, mime_type, file_size, kind, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active', CURRENT_TIMESTAMP)
+       RETURNING id`,
+      [title.trim(), subject.trim(), class_level?.trim() || '', description?.trim() || '',
+       author_name.trim(), author_fingerprint, file_data, file_name, mime_type, file_size, kind]
+    );
 
-    const created = db
-      .prepare(`SELECT ${SHEET_LIST_COLUMNS} FROM sheets WHERE id = ?`)
-      .get(Number(inserted.lastInsertRowid)) as any;
-    res.status(201).json(shapeSheet({ ...created, __mine: 1 }));
+    const sheet = await queryOne<SheetRow>('SELECT * FROM sheets WHERE id = $1', [result.lastInsertId]);
+    res.status(201).json(sheet);
   } catch (err) {
     console.error('Create sheet error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-/** Modération : masquer / remettre en ligne une fiche. */
-router.patch('/:id', requireAuth, (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
-    const row = db
-      .prepare(`SELECT ${SHEET_LIST_COLUMNS} FROM sheets WHERE id = ?`)
-      .get(req.params.id) as any;
+    const { id } = req.params;
+    const row = await queryOne<SheetRow>('SELECT * FROM sheets WHERE id = $1', [id]);
     if (!row) {
       res.status(404).json({ error: 'Fiche introuvable' });
       return;
     }
-    const status = String(req.body?.status || '');
-    if (!['active', 'hidden'].includes(status)) {
-      res.status(400).json({ error: 'Statut invalide' });
+
+    const isAdminUser = req.session?.authenticated === true;
+    const mine = String(req.body?.fingerprint || req.query.fingerprint || '');
+    if (!isAdminUser && row.author_fingerprint !== mine) {
+      res.status(403).json({ error: 'Seul l\'auteur ou le délégué peut modifier cette fiche' });
       return;
     }
-    db.prepare('UPDATE sheets SET status = ? WHERE id = ?').run(status, row.id);
-    logAdminAction(db, status === 'hidden' ? 'sheet_hide' : 'sheet_show', 'sheet', row.id, row.title);
-    res.json({ success: true, status });
+
+    const title = cleanText(req.body?.title, MAX_TITLE);
+    const subject = cleanText(req.body?.subject, 40);
+    const class_level = cleanText(req.body?.class_level, 20);
+    const description = cleanText(req.body?.description, MAX_DESCRIPTION);
+    const status = req.body?.status;
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (title !== undefined) { updates.push('title = $' + (params.length + 1)); params.push(title.trim()); }
+    if (subject !== undefined) { updates.push('subject = $' + (params.length + 1)); params.push(subject.trim()); }
+    if (class_level !== undefined) { updates.push('class_level = $' + (params.length + 1)); params.push(class_level.trim()); }
+    if (description !== undefined) { updates.push('description = $' + (params.length + 1)); params.push(description?.trim() || ''); }
+    if (status !== undefined) { updates.push('status = $' + (params.length + 1)); params.push(status); }
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+
+    if (updates.length > 1) {
+      params.push(id);
+      await execute(
+        `UPDATE sheets SET ${updates.join(', ')} WHERE id = $${params.length}`,
+        params
+      );
+    }
+
+    const updated = await queryOne<SheetRow>('SELECT * FROM sheets WHERE id = $1', [id]);
+    res.json(updated);
   } catch (err) {
     console.error('Update sheet error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-/** Suppression : par l'auteur de la fiche ou par le délégué. Le fichier part avec la ligne. */
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const row = db
-      .prepare(`SELECT ${SHEET_LIST_COLUMNS} FROM sheets WHERE id = ?`)
-      .get(req.params.id) as any;
+    const { id } = req.params;
+    const row = await queryOne<SheetRow>('SELECT * FROM sheets WHERE id = $1', [id]);
     if (!row) {
       res.status(404).json({ error: 'Fiche introuvable' });
       return;
     }
 
-    if (isAdmin(req)) {
-      db.prepare('DELETE FROM sheets WHERE id = ?').run(row.id);
-      logAdminAction(db, 'sheet_delete', 'sheet', row.id, `« ${row.title} » (${row.author_name}) supprimée`);
-      res.json({ success: true });
+    const isAdminUser = req.session?.authenticated === true;
+    const mine = String(req.body?.fingerprint || req.query.fingerprint || '');
+    if (!isAdminUser && row.author_fingerprint !== mine) {
+      res.status(403).json({ error: 'Seul l\'auteur ou le délégué peut supprimer cette fiche' });
       return;
     }
 
-    const fingerprint = cleanText(req.body?.fingerprint ?? req.query.fingerprint, 64);
-    if (!fingerprint || !row.author_fingerprint || fingerprint !== row.author_fingerprint) {
-      res.status(403).json({ error: 'Tu ne peux supprimer que tes propres fiches' });
-      return;
-    }
-    db.prepare('DELETE FROM sheets WHERE id = ?').run(row.id);
+    await execute('DELETE FROM sheets WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (err) {
     console.error('Delete sheet error:', err);

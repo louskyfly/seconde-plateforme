@@ -1,5 +1,4 @@
 import type { Request, Response, NextFunction } from 'express';
-import db from '../db/index.js';
 import { getMaintenanceState } from '../lib/maintenance.js';
 
 /**
@@ -14,7 +13,7 @@ function isAllowed(pathname: string): boolean {
   return ALLOWED_PATHS.some((allowed) => pathname === allowed || pathname.startsWith(`${allowed}/`));
 }
 
-export function maintenanceGate(req: Request, res: Response, next: NextFunction): void {
+export async function maintenanceGate(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (!req.path.startsWith('/api/')) {
     next();
     return;
@@ -28,7 +27,7 @@ export function maintenanceGate(req: Request, res: Response, next: NextFunction)
     return;
   }
 
-  const state = getMaintenanceState(db);
+  const state = await getMaintenanceState();
   if (!state.active) {
     next();
     return;

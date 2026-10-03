@@ -1,14 +1,12 @@
 import { Router } from 'express';
-import db from '../db/index.js';
+import { query, execute, queryOne } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const projects = db
-      .prepare('SELECT * FROM projects ORDER BY created_at DESC')
-      .all();
+    const projects = await query('SELECT * FROM projects ORDER BY created_at DESC');
     res.json(projects);
   } catch (err) {
     console.error('Get projects error:', err);
@@ -16,7 +14,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
     const { name, description, status, date, image_url } = req.body;
     if (!name || typeof name !== 'string') {
@@ -24,22 +22,19 @@ router.post('/', requireAuth, (req, res) => {
       return;
     }
 
-    const result = db
-      .prepare(
-        `INSERT INTO projects (name, description, status, date, image_url)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-      .run(
+    const result = await execute(
+      `INSERT INTO projects (name, description, status, date, image_url)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [
         name.trim(),
         (description || '').trim(),
         (status || 'en_preparation').trim(),
         (date || '').trim() || null,
         image_url || null
-      );
+      ]
+    );
 
-    const project = db
-      .prepare('SELECT * FROM projects WHERE id = ?')
-      .get(Number(result.lastInsertRowid));
+    const project = await queryOne('SELECT * FROM projects WHERE id = $1', [result.lastInsertId]);
     res.status(201).json(project);
   } catch (err) {
     console.error('Create project error:', err);
@@ -47,35 +42,36 @@ router.post('/', requireAuth, (req, res) => {
   }
 });
 
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+    const existing = await queryOne('SELECT * FROM projects WHERE id = $1', [id]);
     if (!existing) {
       res.status(404).json({ error: 'Projet introuvable' });
       return;
     }
 
     const { name, description, status, date, image_url } = req.body;
-    db.prepare(
+    await execute(
       `UPDATE projects SET
-        name = COALESCE(?, name),
-        description = COALESCE(?, description),
-        status = COALESCE(?, status),
-        date = COALESCE(?, date),
-        image_url = ?,
+        name = COALESCE($1, name),
+        description = COALESCE($2, description),
+        status = COALESCE($3, status),
+        date = COALESCE($4, date),
+        image_url = $5,
         updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`
-    ).run(
-      name?.trim() ?? null,
-      description?.trim() ?? null,
-      status?.trim() ?? null,
-      date?.trim() ?? null,
-      image_url !== undefined ? image_url : (existing as any).image_url,
-      id
+       WHERE id = $6`,
+      [
+        name?.trim() ?? null,
+        description?.trim() ?? null,
+        status?.trim() ?? null,
+        date?.trim() ?? null,
+        image_url !== undefined ? image_url : (existing as any).image_url,
+        id
+      ]
     );
 
-    const updated = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+    const updated = await queryOne('SELECT * FROM projects WHERE id = $1', [id]);
     res.json(updated);
   } catch (err) {
     console.error('Update project error:', err);
@@ -83,16 +79,16 @@ router.put('/:id', requireAuth, (req, res) => {
   }
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+    const existing = await queryOne('SELECT * FROM projects WHERE id = $1', [id]);
     if (!existing) {
       res.status(404).json({ error: 'Projet introuvable' });
       return;
     }
 
-    db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+    await execute('DELETE FROM projects WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (err) {
     console.error('Delete project error:', err);

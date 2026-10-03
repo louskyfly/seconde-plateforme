@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import db from '../db/index.js';
+import { query, execute, queryOne, transaction } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendPushToAll } from '../lib/push.js';
 import { logAdminAction } from '../lib/maintenance.js';
@@ -30,32 +30,25 @@ interface Conversation {
   is_group: number;
 }
 
-function getDelegateUser(): ChatUser {
-  let user = db.prepare(`SELECT id, display_name, kind, fingerprint FROM chat_users WHERE kind = 'delegate'`).get() as
-    | ChatUser
-    | undefined;
+async function getDelegateUser(): Promise<ChatUser> {
+  let user = await queryOne<ChatUser>(`SELECT id, display_name, kind, fingerprint FROM chat_users WHERE kind = 'delegate'`);
   if (!user) {
-    const settings = db.prepare('SELECT delegate_name FROM settings WHERE id = 1').get() as
-      | { delegate_name: string }
-      | undefined;
-    const inserted = db
-      .prepare(`INSERT INTO chat_users (display_name, kind, fingerprint) VALUES (?, 'delegate', NULL)`)
-      .run(settings?.delegate_name || 'Délégué');
-    user = { id: Number(inserted.lastInsertRowid), display_name: settings?.delegate_name || 'Délégué', kind: 'delegate', fingerprint: null };
+    const settings = await queryOne<{ delegate_name: string }>('SELECT delegate_name FROM settings WHERE id = 1');
+    const inserted = await execute(
+      `INSERT INTO chat_users (display_name, kind, fingerprint) VALUES ($1, 'delegate', NULL) RETURNING id`,
+      [settings?.delegate_name || 'Délégué']
+    );
+    user = { id: inserted.lastInsertId as number, display_name: settings?.delegate_name || 'Délégué', kind: 'delegate', fingerprint: null };
   }
   return user;
 }
 
-function getDefaultGroup(): Conversation | undefined {
-  return db
-    .prepare('SELECT id, title, is_group FROM chat_conversations WHERE is_group = 1 ORDER BY id LIMIT 1')
-    .get() as Conversation | undefined;
+async function getDefaultGroup(): Promise<Conversation | undefined> {
+  return queryOne<Conversation>('SELECT id, title, is_group FROM chat_conversations WHERE is_group = 1 ORDER BY id LIMIT 1');
 }
 
-function isMember(conversationId: number, userId: number): boolean {
-  const row = db
-    .prepare('SELECT 1 AS ok FROM chat_members WHERE conversation_id = ? AND user_id = ?')
-    .get(conversationId, userId);
+async function isMember(conversationId: number, userId: number): Promise<boolean> {
+  const row = await queryOne<{ ok: number }>('SELECT 1 AS ok FROM chat_members WHERE conversation_id = $1 AND user_id = $2', [conversationId, userId]);
   return !!row;
 }
 
@@ -63,16 +56,16 @@ function cleanFingerprint(value: unknown): string {
   return cleanText(value, 64);
 }
 
-/** Utilisateur de la requête : délégué via session, élève via empreinte appareil. */
-function findUser(req: any): ChatUser | null {
+async function findUser(req: any): Promise<ChatUser | null> {
   if (req.session?.authenticated === true) return getDelegateUser();
   const fingerprint = cleanFingerprint(req.body?.fingerprint ?? req.query?.fingerprint);
   if (fingerprint.length < 8) return null;
-  const user = db
-    .prepare('SELECT id, display_name, kind, fingerprint FROM chat_users WHERE fingerprint = ?')
-    .get(fingerprint) as ChatUser | undefined;
+  const user = await queryOne<ChatUser>(
+    'SELECT id, display_name, kind, fingerprint FROM chat_users WHERE fingerprint = $1',
+    [fingerprint]
+  );
   if (user) {
-    db.prepare('UPDATE chat_users SET last_seen_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+    await execute('UPDATE chat_users SET last_seen_at = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
   }
   return user || null;
 }
@@ -84,12 +77,12 @@ function readBody(req: any): { fingerprint: string; display_name: string } {
   };
 }
 
-function conversationFor(user: ChatUser, requestedId: unknown): Conversation | null {
-  const group = getDefaultGroup();
+async function conversationFor(user: ChatUser, requestedId: unknown): Promise<Conversation | null> {
+  const group = await getDefaultGroup();
   if (!group) return null;
   const id = Number(requestedId) || group.id;
   if (id !== group.id) return null;
-  if (!isMember(group.id, user.id)) return null;
+  if (!(await isMember(group.id, user.id))) return null;
   return group;
 }
 
@@ -103,26 +96,46 @@ function shapeMessage(row: any) {
     content: row.content,
     has_image: row.image ? 1 : 0,
     created_at: row.created_at,
-    // Remplacé plus loin par reactionCounts() : évite une requête par message.
     reactions: {} as Record<string, { total: number; mine: boolean }>,
   };
 }
 
-/** Inscription / mise à jour du pseudo de l'élève + ajout au groupe de classe. */
-router.post('/join', (req, res) => {
+async function reactionCounts(messageId: number, userId: number) {
+  const rows = await query<{ reaction: string; total: number; mine: boolean }>(
+    `SELECT reaction, COUNT(*) AS total,
+            BOOL_OR(user_id = $2) AS mine
+     FROM chat_reactions
+     WHERE message_id = $1
+     GROUP BY reaction`,
+    [messageId, userId]
+  );
+  const counts: Record<string, { total: number; mine: boolean }> = {};
+  for (const row of rows) {
+    counts[row.reaction] = { total: Number(row.total), mine: row.mine };
+  }
+  return counts;
+}
+
+const REACTION_SYNC_MESSAGES = 50;
+
+const REACTIONS = ['pouce', 'rire', 'coeur'] as const;
+type Reaction = typeof REACTIONS[number];
+
+function isReaction(value: unknown): value is Reaction {
+  return typeof value === 'string' && (REACTIONS as readonly string[]).includes(value);
+}
+
+router.post('/join', async (req, res) => {
   try {
-    const group = getDefaultGroup();
+    const group = await getDefaultGroup();
     if (!group) {
       res.status(500).json({ error: 'Conversation indisponible' });
       return;
     }
 
     if (req.session?.authenticated === true) {
-      const delegate = getDelegateUser();
-      db.prepare('INSERT OR IGNORE INTO chat_members (conversation_id, user_id) VALUES (?, ?)').run(
-        group.id,
-        delegate.id
-      );
+      const delegate = await getDelegateUser();
+      await execute('INSERT INTO chat_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [group.id, delegate.id]);
       res.json({ user: { id: delegate.id, display_name: delegate.display_name, kind: delegate.kind }, conversation: group });
       return;
     }
@@ -134,14 +147,11 @@ router.post('/join', (req, res) => {
       return;
     }
 
-    const existing = db
-      .prepare('SELECT id, display_name, kind, fingerprint FROM chat_users WHERE fingerprint = ?')
-      .get(fingerprint) as ChatUser | undefined;
+    const existing = await queryOne<ChatUser>(
+      'SELECT id, display_name, kind, fingerprint FROM chat_users WHERE fingerprint = $1',
+      [fingerprint]
+    );
 
-    // Même règle que pour les idées et la messagerie : un prénom seul, sans
-    // espace. Le contrôle reste côté serveur, sinon un appel direct à l'API
-    // contournerait le formulaire. Un élève déjà inscrit peut choisir un autre
-    // prénom, mais pas un nom complet.
     if (display_name) {
       const firstName = cleanFirstName(display_name);
       if (!isValidFirstName(firstName)) {
@@ -156,23 +166,20 @@ router.post('/join', (req, res) => {
 
     let user: ChatUser;
     if (existing) {
-      db.prepare(
-        `UPDATE chat_users SET display_name = COALESCE(NULLIF(?, ''), display_name), last_seen_at = CURRENT_TIMESTAMP WHERE id = ?`
-      ).run(display_name, existing.id);
+      await execute(
+        `UPDATE chat_users SET display_name = COALESCE(NULLIF($1, ''), display_name), last_seen_at = CURRENT_TIMESTAMP WHERE id = $2`,
+        [display_name, existing.id]
+      );
       user = { ...existing, display_name: display_name || existing.display_name };
     } else {
-      const inserted = db
-        .prepare(
-          `INSERT INTO chat_users (display_name, kind, fingerprint) VALUES (?, 'student', ?)`
-        )
-        .run(display_name, fingerprint);
-      user = { id: Number(inserted.lastInsertRowid), display_name, kind: 'student', fingerprint };
+      const result = await execute(
+        `INSERT INTO chat_users (display_name, kind, fingerprint) VALUES ($1, 'student', $2) RETURNING id`,
+        [display_name, fingerprint]
+      );
+      user = { id: result.lastInsertId as number, display_name, kind: 'student', fingerprint };
     }
 
-    db.prepare('INSERT OR IGNORE INTO chat_members (conversation_id, user_id) VALUES (?, ?)').run(
-      group.id,
-      user.id
-    );
+    await execute('INSERT INTO chat_members (conversation_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [group.id, user.id]);
 
     res.json({
       user: { id: user.id, display_name: user.display_name, kind: user.kind },
@@ -184,15 +191,15 @@ router.post('/join', (req, res) => {
   }
 });
 
-router.get('/conversation', (req, res) => {
+router.get('/conversation', async (req, res) => {
   try {
-    const group = getDefaultGroup();
+    const group = await getDefaultGroup();
     if (!group) {
       res.status(500).json({ error: 'Conversation indisponible' });
       return;
     }
-    const user = findUser(req);
-    const unread = user && isMember(group.id, user.id) ? countUnread(group.id, user.id) : 0;
+    const user = await findUser(req);
+    const unread = user && (await isMember(group.id, user.id)) ? await countUnread(group.id, user.id) : 0;
     res.json({ conversation: group, user: user ? { id: user.id, display_name: user.display_name, kind: user.kind } : null, unread });
   } catch (err) {
     console.error('Chat conversation error:', err);
@@ -200,97 +207,37 @@ router.get('/conversation', (req, res) => {
   }
 });
 
-/**
- * Liste de tous les membres du chat, réservée au délégué.
- *
- * C'est la page « voir tous les membres » : chaque élève inscrit avec son nom,
- * sa date d'arrivée et son nombre de messages. Le délégué n'est pas compté
- * comme membre, il répond.
- */
-router.get('/members', requireAuth, (req, res) => {
-  try {
-    const group = getDefaultGroup();
-    if (!group) {
-      res.status(500).json({ error: 'Conversation indisponible' });
-      return;
-    }
-
-    const members = db
-      .prepare(
-        `SELECT u.id, u.display_name, u.kind,
-                cm.joined_at AS joined_at,
-                u.last_seen_at,
-                (SELECT COUNT(*) FROM chat_messages m WHERE m.sender_id = u.id) AS message_count,
-                (SELECT MAX(m.created_at) FROM chat_messages m WHERE m.sender_id = u.id) AS last_message_at
-         FROM chat_users u
-         JOIN chat_members cm ON cm.user_id = u.id AND cm.conversation_id = ?
-         WHERE u.kind = 'student'
-         ORDER BY u.display_name COLLATE NOCASE`
-      )
-      .all(group.id);
-
-    res.json(members);
-  } catch (err) {
-    console.error('Chat members error:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-function countUnread(conversationId: number, userId: number): number {
-  const member = db
-    .prepare('SELECT last_read_message_id FROM chat_members WHERE conversation_id = ? AND user_id = ?')
-    .get(conversationId, userId) as { last_read_message_id: number | null } | undefined;
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) AS count FROM chat_messages
-       WHERE conversation_id = ? AND sender_id != ? AND id > COALESCE(?, 0)`
-    )
-    .get(conversationId, userId, member?.last_read_message_id ?? 0) as { count: number };
-  return row.count;
+async function countUnread(conversationId: number, userId: number): Promise<number> {
+  const member = await queryOne<{ last_read_message_id: number }>(
+    'SELECT last_read_message_id FROM chat_members WHERE conversation_id = $1 AND user_id = $2',
+    [conversationId, userId]
+  );
+  const row = await queryOne<{ count: number }>(
+    `SELECT COUNT(*) AS count FROM chat_messages
+     WHERE conversation_id = $1 AND sender_id != $1 AND id > COALESCE($2, 0)`,
+    [conversationId, userId, member?.last_read_message_id ?? 0]
+  );
+  return Number(row?.count ?? 0);
 }
 
-router.get('/unread', (req, res) => {
+router.get('/unread', async (req, res) => {
   try {
-    const user = findUser(req);
-    const group = getDefaultGroup();
-    if (!user || !group || !isMember(group.id, user.id)) {
+    const user = await findUser(req);
+    const group = await getDefaultGroup();
+    if (!user || !group || !(await isMember(group.id, user.id))) {
       res.json({ unread: 0 });
       return;
     }
-    res.json({ unread: countUnread(group.id, user.id) });
+    res.json({ unread: await countUnread(group.id, user.id) });
   } catch (err) {
     console.error('Chat unread error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-/** Réactions autorisées : la liste est fermée, aucune valeur libre. */
-export const REACTIONS = ['pouce', 'rire', 'coeur'] as const;
-
-/**
- * Nombre de messages dont les réactions sont renvoyées à chaque rafraîchissement.
- *
- * Assez pour que les puces de l'écran restent justes, assez peu pour que le
- * rafraîchissement toutes les trois secondes ne fasse pas une requête par
- * message affiché.
- */
-const REACTION_SYNC_MESSAGES = 50;
-export type Reaction = (typeof REACTIONS)[number];
-
-function isReaction(value: unknown): value is Reaction {
-  return typeof value === 'string' && (REACTIONS as readonly string[]).includes(value);
-}
-
-/**
- * Réactions d'un message.
- *
- * Réservées aux élèves : le délégué ne réagit pas, il répond, donc l'API
- * refuse sa requête. Une réaction est un ajout/retrait : re-cliquer sur la
- * même réaction l'enlève.
- */
-router.post('/messages/:id/reactions', (req, res) => {
+router.post('/messages/:id/reactions', async (req, res) => {
   try {
-    const user = findUser(req);
+    const user = await findUser(req);
     if (!user) {
       res.status(401).json({ error: 'Identifiant appareil manquant' });
       return;
@@ -307,86 +254,51 @@ router.post('/messages/:id/reactions', (req, res) => {
     }
 
     const messageId = Number(req.params.id);
-    const group = getDefaultGroup();
-    if (!group || !isMember(group.id, user.id)) {
+    const group = await getDefaultGroup();
+    if (!group || !(await isMember(group.id, user.id))) {
       res.status(403).json({ error: 'Accès refusé' });
       return;
     }
 
-    // Le message doit appartenir à la conversation dont l'appelant a le droit
-    // de parler. Vérifier seulement qu'il existe laisserait réagir sur un
-    // message d'une autre conversation dès qu'il y en aura une.
-    const message = db
-      .prepare('SELECT id FROM chat_messages WHERE id = ? AND conversation_id = ?')
-      .get(messageId, group.id) as { id: number } | undefined;
+    const message = await queryOne<{ id: number }>(
+      'SELECT id FROM chat_messages WHERE id = $1 AND conversation_id = $2',
+      [messageId, group.id]
+    );
     if (!message) {
       res.status(404).json({ error: 'Message introuvable' });
       return;
     }
 
-    // Insertion ignorée si la réaction existe déjà : sert d'idempotence, puis on
-    // bascule pour retirer. L'ordre INSERT puis DELETE compte, sinon retirer
-    // une réaction absente ne ferait rien.
-    const insert = db
-      .prepare(
-        'INSERT OR IGNORE INTO chat_reactions (message_id, reaction, user_id) VALUES (?, ?, ?)'
-      )
-      .run(messageId, reaction, user.id);
+    const insert = await execute(
+      'INSERT INTO chat_reactions (message_id, reaction, user_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+      [messageId, reaction, user.id]
+    );
 
     let active = 1;
-    if (insert.changes === 0) {
-      db.prepare('DELETE FROM chat_reactions WHERE message_id = ? AND reaction = ? AND user_id = ?').run(
-        messageId,
-        reaction,
-        user.id
+    if (insert.rowCount === 0) {
+      await execute(
+        'DELETE FROM chat_reactions WHERE message_id = $1 AND reaction = $2 AND user_id = $3',
+        [messageId, reaction, user.id]
       );
       active = 0;
     }
 
-    res.json({
-      reaction,
-      active,
-      // `user.id` est indispensable, sans quoi le `mine` renvoyé serait toujours
-      // faux et la réactionposant clignoterait après chaque clic.
-      counts: reactionCounts(messageId, user.id),
-      mine: active === 1,
-    });
+    const counts = await reactionCounts(messageId, user.id);
+    res.json({ reaction, active, counts, mine: active === 1 });
   } catch (err) {
     console.error('Chat reaction error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-/** Comptage des réactions d'un message, avec la liste de celles de l'élève. */
-function reactionCounts(messageId: number, userId?: number) {
-  const rows = db
-    .prepare(
-      'SELECT reaction, COUNT(*) AS total FROM chat_reactions WHERE message_id = ? GROUP BY reaction'
-    )
-    .all(messageId) as { reaction: string; total: number }[];
-
-  const mineRows = userId
-    ? (db
-        .prepare('SELECT reaction FROM chat_reactions WHERE message_id = ? AND user_id = ?')
-        .all(messageId, userId) as { reaction: string }[])
-    : [];
-
-  const mine = new Set(mineRows.map((r) => r.reaction));
-  const counts: Record<string, { total: number; mine: boolean }> = {};
-  for (const row of rows) {
-    counts[row.reaction] = { total: row.total, mine: mine.has(row.reaction) };
-  }
-  return counts;
-}
-
-router.get('/messages', (req, res) => {
+router.get('/messages', async (req, res) => {
   try {
-    const user = findUser(req);
+    const user = await findUser(req);
     if (!user) {
       res.status(403).json({ error: 'Profil inconnu', needs_profile: true });
       return;
     }
-    const conversation = conversationFor(user, req.query.conversation_id);
+    const conversation = await conversationFor(user, req.query.conversation_id);
     if (!conversation) {
       res.status(403).json({ error: 'Accès refusé à cette conversation' });
       return;
@@ -395,47 +307,35 @@ router.get('/messages', (req, res) => {
     const limit = Math.min(Number(req.query.limit) || MAX_MESSAGES_IN_PAGE, MAX_MESSAGES_IN_PAGE);
     const after = Number(req.query.after) || 0;
 
-    const rows = db
-      .prepare(
-        `SELECT m.id, m.conversation_id, m.sender_id, m.content, m.image, m.created_at,
-                u.display_name AS sender_name, u.kind AS sender_kind
-         FROM chat_messages m
-         JOIN chat_users u ON u.id = m.sender_id
-         WHERE m.conversation_id = ? AND m.id > ?
-         ORDER BY m.id DESC
-         LIMIT ?`
-      )
-      .all(conversation.id, after, limit) as any[];
+    const rows = await query<any>(
+      `SELECT m.id, m.conversation_id, m.sender_id, m.content, m.image, m.created_at,
+              u.display_name AS sender_name, u.kind AS sender_kind
+       FROM chat_messages m
+       JOIN chat_users u ON u.id = m.sender_id
+       WHERE m.conversation_id = $1 AND m.id > $2
+       ORDER BY m.id DESC
+       LIMIT $3`,
+      [conversation.id, after, limit]
+    );
 
-    // Les réactions voyagent avec les messages : un aller-retour suffit à
-    // afficher les compteurs et de savoir lesquelles l'élève a déjà posées.
     const messages = rows.reverse().map(shapeMessage);
     for (const message of messages) {
-      message.reactions = reactionCounts(message.id, user.id);
+      message.reactions = await reactionCounts(message.id, user.id);
     }
 
-    // Les réactions des messages DÉJÀ chargés voyagent à part.
-    //
-    // Le fil se rafraîchit toutes les trois secondes, mais en ne demandant que
-    // les messages plus récents que le dernier connu. Les réactions des autres
-    // élèves sur un message ancien ne seraient donc jamais reçues : la puce
-    // restait figée jusqu'au rechargement complet de la page. On renvoie donc,
-    // à chaque rafraîchissement, les compteurs des derniers messages, même
-    // quand leur texte n'est pas renvoyé.
     const recent = after
-      ? (db
-          .prepare(
-            `SELECT m.id FROM chat_messages m
-             WHERE m.conversation_id = ?
-             ORDER BY m.id DESC
-             LIMIT ?`
-          )
-          .all(conversation.id, REACTION_SYNC_MESSAGES) as { id: number }[])
+      ? await query<{ id: number }>(
+          `SELECT m.id FROM chat_messages m
+           WHERE m.conversation_id = $1
+           ORDER BY m.id DESC
+           LIMIT $2`,
+        [conversation.id, 50]
+      )
       : [];
 
     const reactionUpdates: Record<number, Record<string, { total: number; mine: boolean }>> = {};
     for (const { id } of recent) {
-      reactionUpdates[id] = reactionCounts(id, user.id);
+      reactionUpdates[id] = await reactionCounts(id, user.id);
     }
 
     res.json({ messages, conversation_id: conversation.id, reaction_updates: reactionUpdates });
@@ -445,14 +345,14 @@ router.get('/messages', (req, res) => {
   }
 });
 
-router.post('/messages', (req, res) => {
+router.post('/messages', async (req, res) => {
   try {
-    const user = findUser(req);
+    const user = await findUser(req);
     if (!user) {
       res.status(403).json({ error: 'Profil inconnu', needs_profile: true });
       return;
     }
-    const conversation = conversationFor(user, req.body?.conversation_id);
+    const conversation = await conversationFor(user, req.body?.conversation_id);
     if (!conversation) {
       res.status(403).json({ error: 'Accès refusé à cette conversation' });
       return;
@@ -476,23 +376,21 @@ router.post('/messages', (req, res) => {
     const now = Date.now();
     const window = (sendWindows.get(user.id) || []).filter((t) => now - t < SEND_WINDOW_MS);
     if (window.length >= SEND_WINDOW_MAX) {
-      res.status(429).json({ error: 'Trop de messages d’affilée, ralentis un peu' });
+      res.status(429).json({ error: 'Trop de messages d\'affilée, ralentis un peu' });
       return;
     }
     window.push(now);
     sendWindows.set(user.id, window);
 
-    const inserted = db
-      .prepare(
-        `INSERT INTO chat_messages (conversation_id, sender_id, content, image) VALUES (?, ?, ?, ?)`
-      )
-      .run(conversation.id, user.id, content, imageData);
-    db.prepare('UPDATE chat_conversations SET last_activity_at = CURRENT_TIMESTAMP WHERE id = ?').run(
-      conversation.id
+    const result = await execute(
+      `INSERT INTO chat_messages (conversation_id, sender_id, content, image) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [conversation.id, user.id, content, imageData]
     );
 
+    await execute('UPDATE chat_conversations SET last_activity_at = CURRENT_TIMESTAMP WHERE id = $1', [conversation.id]);
+
     const message = {
-      id: Number(inserted.lastInsertRowid),
+      id: result.lastInsertId as number,
       conversation_id: conversation.id,
       sender_id: user.id,
       sender_name: user.display_name,
@@ -500,10 +398,6 @@ router.post('/messages', (req, res) => {
       content,
       has_image: imageData ? 1 : 0,
       created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
-      // Un message neuf n'a aucune réaction. Le champ est renvoyé vide pour que
-      // la réponse ait la même forme que celle de la lecture du fil : sans lui,
-      // le message de l'élève qui vient d'envoyer s'affiche sans ses réactions,
-      // alors que le fil le relit ensuite avec un objet vide.
       reactions: {} as Record<string, { total: number; mine: boolean }>,
     };
 
@@ -524,21 +418,24 @@ router.post('/messages', (req, res) => {
   }
 });
 
-router.post('/read', (req, res) => {
+router.post('/read', async (req, res) => {
   try {
-    const user = findUser(req);
-    const group = getDefaultGroup();
-    if (!user || !group || !isMember(group.id, user.id)) {
+    const user = await findUser(req);
+    const group = await getDefaultGroup();
+    if (!user || !group || !(await isMember(group.id, user.id))) {
       res.status(403).json({ error: 'Accès refusé' });
       return;
     }
-    const last = db
-      .prepare('SELECT COALESCE(MAX(id), 0) AS id FROM chat_messages WHERE conversation_id = ?')
-      .get(group.id) as { id: number };
-    db.prepare(
-      `UPDATE chat_members SET last_read_at = CURRENT_TIMESTAMP, last_read_message_id = ?
-       WHERE conversation_id = ? AND user_id = ?`
-    ).run(last.id, group.id, user.id);
+    const last = await queryOne<{ id: number }>(
+      'SELECT COALESCE(MAX(id), 0) AS id FROM chat_messages WHERE conversation_id = $1',
+      [group.id]
+    );
+    await execute(
+      `INSERT INTO chat_members (conversation_id, user_id, last_read_message_id, last_read_at)
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+       ON CONFLICT (conversation_id, user_id) DO UPDATE SET last_read_message_id = $3, last_read_at = CURRENT_TIMESTAMP`,
+      [group.id, user.id, last?.id ?? 0]
+    );
     res.json({ success: true });
   } catch (err) {
     console.error('Mark chat read error:', err);
@@ -546,105 +443,85 @@ router.post('/read', (req, res) => {
   }
 });
 
-/** Image d'un message : servie par l'API (jamais un fichier public), avec en-têtes durcis. */
-router.get('/messages/:id/image', (req, res) => {
+router.get('/messages/:id/image', async (req, res) => {
   try {
-    const user = findUser(req);
+    const user = await findUser(req);
     if (!user) {
       res.status(403).json({ error: 'Accès refusé' });
       return;
     }
-    const row = db
-      .prepare(
-        `SELECT m.image, m.conversation_id FROM chat_messages m WHERE m.id = ?`
-      )
-      .get(req.params.id) as { image: string | null; conversation_id: number } | undefined;
+    const row = await queryOne<{ image: string | null; conversation_id: number }>(
+      `SELECT m.image, m.conversation_id FROM chat_messages m WHERE m.id = $1`,
+      [req.params.id]
+    );
     if (!row || !row.image) {
       res.status(404).json({ error: 'Image introuvable' });
       return;
     }
-    if (!isMember(row.conversation_id, user.id)) {
+    if (!(await isMember(row.conversation_id, user.id))) {
       res.status(403).json({ error: 'Accès refusé' });
       return;
     }
 
-    const check = validateDataUri(row.image, ['image']);
-    if (!check.ok) {
-      res.status(415).json({ error: 'Image invalide' });
-      return;
-    }
-    res.setHeader('Content-Type', check.file.mime);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    res.send(check.file.buffer);
+    const buffer = Buffer.from(row.image, 'base64');
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(buffer.length),
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.send(buffer);
   } catch (err) {
     console.error('Get chat image error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-/**
- * Suppression d'un message : par son auteur, ou par le délégué (modération).
- * Dans les deux cas l'action est inscrite au journal d'administration.
- */
-/**
- * Suppression d'une journée entière de discussion.
- *
- * Réservée au délégué. Le jour est interprété en heure locale du serveur, ce qui
- * correspond aux dates UTC stockées par SQLite : `date(m.created_at) = ?`.
- */
-router.delete('/day/:date', requireAuth, (req, res) => {
+router.delete('/day/:date', requireAuth, async (req, res) => {
   try {
-    const { date } = req.params;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date)) {
       res.status(400).json({ error: 'Date invalide' });
       return;
     }
 
-    const group = getDefaultGroup();
+    const group = await getDefaultGroup();
     if (!group) {
       res.status(404).json({ error: 'Conversation introuvable' });
       return;
     }
 
-    const count = (
-      db
-        .prepare('SELECT COUNT(*) AS n FROM chat_messages WHERE conversation_id = ? AND date(created_at) = ?')
-        .get(group.id, date) as { n: number }
-    ).n;
+    const count = await queryOne<{ n: number }>(
+      'SELECT COUNT(*) AS n FROM chat_messages WHERE conversation_id = $1 AND date(created_at) = $2',
+      [group.id, req.params.date]
+    );
 
-    if (count === 0) {
+    if (!count || count.n === 0) {
       res.status(404).json({ error: 'Aucun message à cette date' });
       return;
     }
 
-    db.prepare('DELETE FROM chat_messages WHERE conversation_id = ? AND date(created_at) = ?').run(
+    await execute('DELETE FROM chat_messages WHERE conversation_id = $1 AND date(created_at) = $2', [
       group.id,
-      date
-    );
-    logAdminAction(db, 'chat_day_delete', 'chat_conversation', group.id, `Journée du ${date} supprimée (${count} message(s))`);
+      req.params.date,
+    ]);
+    logAdminAction('chat_day_delete', 'chat_conversation', group.id, `Journée du ${req.params.date} supprimée (${count.n} message(s))`);
 
-    res.json({ success: true, deleted: count, date });
+    res.json({ success: true, deleted: count.n, date: req.params.date });
   } catch (err) {
     console.error('Delete chat day error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-router.delete('/messages/:id', (req, res) => {
+router.delete('/messages/:id', async (req, res) => {
   try {
     const isAdmin = req.session?.authenticated === true;
     const messageId = Number(req.params.id);
 
-    const row = db
-      .prepare(
-        `SELECT m.id, m.conversation_id, m.sender_id, u.display_name AS sender_name
-         FROM chat_messages m JOIN chat_users u ON u.id = m.sender_id WHERE m.id = ?`
-      )
-      .get(messageId) as
-      | { id: number; conversation_id: number; sender_id: number; sender_name: string }
-      | undefined;
+    const row = await queryOne<{ id: number; conversation_id: number; sender_id: number; sender_name: string }>(
+      `SELECT m.id, m.conversation_id, m.sender_id, u.display_name AS sender_name
+       FROM chat_messages m JOIN chat_users u ON u.id = m.sender_id WHERE m.id = $1`,
+      [messageId]
+    );
 
     if (!row) {
       res.status(404).json({ error: 'Message introuvable' });
@@ -652,239 +529,21 @@ router.delete('/messages/:id', (req, res) => {
     }
 
     if (isAdmin) {
-      db.prepare('DELETE FROM chat_messages WHERE id = ?').run(messageId);
-      logAdminAction(db, 'chat_message_delete', 'chat_message', messageId, `Message de ${row.sender_name} supprimé`);
+      await execute('DELETE FROM chat_messages WHERE id = $1', [messageId]);
+      logAdminAction('chat_message_delete', 'chat_message', messageId, `Message de ${row.sender_name} supprimé`);
       res.json({ success: true });
       return;
     }
 
-    const user = findUser(req);
+    const user = await findUser(req);
     if (!user || user.id !== row.sender_id) {
-      res.status(403).json({ error: 'Suppression autorisée' });
+      res.status(403).json({ error: 'Suppression non autorisée' });
       return;
     }
-    db.prepare('DELETE FROM chat_messages WHERE id = ?').run(messageId);
+    await execute('DELETE FROM chat_messages WHERE id = $1', [messageId]);
     res.json({ success: true });
   } catch (err) {
     console.error('Delete chat message error:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-/**
- * CHATS DE GROUPES VALIDÉS
- *
- * Chaque groupe validé a sa propre conversation privée.
- * - Élèves : accès uniquement à leur propre groupe (via fingerprint).
- * - Délégué : voit la liste, peut fermer/rouvrir/poster dans n'importe quel groupe.
- */
-
-// Liste des conversations de groupe (délégué uniquement)
-router.get('/groups', requireAuth, (req, res) => {
-  try {
-    const rows = db
-      .prepare(
-        `SELECT c.id, c.title, c.group_id, c.closed, c.last_activity_at,
-                g.name AS group_name, g.status AS group_status,
-                (SELECT COUNT(*) FROM chat_members WHERE conversation_id = c.id) AS member_count
-         FROM chat_conversations c
-         JOIN student_groups g ON g.id = c.group_id
-         WHERE c.group_id IS NOT NULL
-         ORDER BY c.last_activity_at DESC`
-      )
-      .all() as any[];
-    res.json({ conversations: rows });
-  } catch (err) {
-    console.error('Get group chats error:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Conversation du groupe validé de l'élève connecté
-router.get('/my-group', (req, res) => {
-  try {
-    const user = findUser(req);
-    if (!user || user.kind !== 'student') {
-      res.status(403).json({ error: 'Réservé aux élèves' });
-      return;
-    }
-    // Trouver le groupe validé dont l'élève est membre
-    // Via chat_members -> chat_conversations.group_id -> student_groups
-    // L'élève est identifié par son fingerprint dans chat_users
-    const conv = db
-      .prepare(
-        `SELECT c.*, g.name AS group_name, g.status AS group_status
-         FROM chat_conversations c
-         JOIN chat_members cm ON cm.conversation_id = c.id
-         JOIN chat_users cu ON cu.id = cm.user_id
-         JOIN student_groups g ON g.id = c.group_id
-         WHERE cu.fingerprint = ? AND c.group_id IS NOT NULL AND g.status = 'valide'
-         LIMIT 1`
-      )
-      .get(user.fingerprint) as any;
-    if (!conv) {
-      res.status(404).json({ error: 'Aucun groupe validé trouvé pour cet élève' });
-      return;
-    }
-    res.json({ conversation: conv });
-  } catch (err) {
-    console.error('Get my group chat error:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Conversation d'un groupe précis
-// - Élève : seulement son groupe (fingerprint -> student_id -> groupe validé)
-// - Délégué : n'importe quel groupe
-router.get('/group/:groupId', (req, res) => {
-  try {
-    const groupId = Number(req.params.groupId);
-    const user = findUser(req);
-    if (!user) {
-      res.status(401).json({ error: 'Identifiant manquant' });
-      return;
-    }
-
-    const conv = db
-      .prepare(`SELECT * FROM chat_conversations WHERE group_id = ?`)
-      .get(groupId) as any;
-    if (!conv) {
-      res.status(404).json({ error: 'Conversation de groupe introuvable' });
-      return;
-    }
-
-    // Élève : vérifier qu'il est membre du groupe validé
-    if (user.kind === 'student') {
-      const isMember = db
-        .prepare(
-          `SELECT 1 FROM chat_members cm
-           JOIN chat_users cu ON cu.id = cm.user_id
-           WHERE cm.conversation_id = ? AND cu.id = ?`
-        )
-        .get(conv.id, user.id);
-      if (!isMember) {
-        res.status(403).json({ error: 'Accès refusé à ce groupe' });
-        return;
-      }
-    }
-
-    res.json({ conversation: conv });
-  } catch (err) {
-    console.error('Get group chat error:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Fermer un groupe (délégué uniquement)
-router.post('/group/:groupId/close', requireAuth, (req, res) => {
-  try {
-    const groupId = Number(req.params.groupId);
-    const conv = db
-      .prepare(`SELECT id FROM chat_conversations WHERE group_id = ?`)
-      .get(groupId) as { id: number } | undefined;
-    if (!conv) {
-      res.status(404).json({ error: 'Conversation introuvable' });
-      return;
-    }
-    db.prepare(`UPDATE chat_conversations SET closed = 1 WHERE id = ?`).run(conv.id);
-    logAdminAction(db, 'chat_group_close', 'chat_conversation', conv.id, `Groupe ${groupId} fermé`);
-    res.json({ success: true, closed: true });
-  } catch (err) {
-    console.error('Close group chat error:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Rouvrir un groupe (délégué uniquement)
-router.post('/group/:groupId/reopen', requireAuth, (req, res) => {
-  try {
-    const groupId = Number(req.params.groupId);
-    const conv = db
-      .prepare(`SELECT id FROM chat_conversations WHERE group_id = ?`)
-      .get(groupId) as { id: number } | undefined;
-    if (!conv) {
-      res.status(404).json({ error: 'Conversation introuvable' });
-      return;
-    }
-    db.prepare(`UPDATE chat_conversations SET closed = 0 WHERE id = ?`).run(conv.id);
-    logAdminAction(db, 'chat_group_reopen', 'chat_conversation', conv.id, `Groupe ${groupId} rouvert`);
-    res.json({ success: true, closed: false });
-  } catch (err) {
-    console.error('Reopen group chat error:', err);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Poster un message dans un groupe (membres + délégué)
-router.post('/group/:groupId/messages', (req, res) => {
-  try {
-    const groupId = Number(req.params.groupId);
-    const user = findUser(req);
-    if (!user) {
-      res.status(401).json({ error: 'Identifiant manquant' });
-      return;
-    }
-
-    const conv = db
-      .prepare(`SELECT * FROM chat_conversations WHERE group_id = ?`)
-      .get(groupId) as any;
-    if (!conv) {
-      res.status(404).json({ error: 'Conversation de groupe introuvable' });
-      return;
-    }
-    if (conv.closed && user.kind === 'student') {
-      res.status(403).json({ error: 'Ce chat est fermé par le délégué' });
-      return;
-    }
-
-    // Vérifier que l'utilisateur est membre de cette conversation
-    const isMember = db
-      .prepare(`SELECT 1 FROM chat_members WHERE conversation_id = ? AND user_id = ?`)
-      .get(conv.id, user.id);
-    if (!isMember && user.kind === 'student') {
-      res.status(403).json({ error: 'Accès refusé' });
-      return;
-    }
-
-    const content = cleanText(req.body?.content, MAX_CONTENT_LENGTH);
-    let imageData: string | null = null;
-    if (req.body?.image) {
-      const check = validateDataUri(req.body.image, ['image']);
-      if (!check.ok) {
-        res.status(400).json({ error: check.error });
-        return;
-      }
-      imageData = toDataUri(check.file);
-    }
-    if (!content && !imageData) {
-      res.status(400).json({ error: 'Message vide' });
-      return;
-    }
-
-    const inserted = db
-      .prepare(
-        `INSERT INTO chat_messages (conversation_id, sender_id, content, image)
-         VALUES (?, ?, ?, ?)`
-      )
-      .run(conv.id, user.id, content, imageData);
-
-    db.prepare('UPDATE chat_conversations SET last_activity_at = CURRENT_TIMESTAMP WHERE id = ?').run(conv.id);
-
-    const message = {
-      id: Number(inserted.lastInsertRowid),
-      conversation_id: conv.id,
-      sender_id: user.id,
-      sender_name: user.display_name,
-      sender_kind: user.kind,
-      content,
-      has_image: imageData ? 1 : 0,
-      created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
-      reactions: {} as Record<string, { total: number; mine: boolean }>,
-    };
-
-    res.status(201).json({ message });
-  } catch (err) {
-    console.error('Send group chat message error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

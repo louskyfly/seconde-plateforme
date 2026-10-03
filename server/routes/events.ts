@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import db from '../db/index.js';
+import { query, execute, queryOne } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const events = db.prepare('SELECT * FROM events ORDER BY date ASC').all();
+    const events = await query('SELECT * FROM events ORDER BY date ASC');
     res.json(events);
   } catch (err) {
     console.error('Get events error:', err);
@@ -14,7 +14,7 @@ router.get('/', (req, res) => {
   }
 });
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
     const { title, date, time, description, category } = req.body;
     if (!title || typeof title !== 'string' || !date || typeof date !== 'string') {
@@ -22,20 +22,19 @@ router.post('/', requireAuth, (req, res) => {
       return;
     }
 
-    const result = db
-      .prepare(
-        `INSERT INTO events (title, date, time, description, category)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-      .run(
+    const result = await execute(
+      `INSERT INTO events (title, date, time, description, category)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [
         title.trim(),
         date.trim(),
         (time || '').trim(),
         (description || '').trim(),
         (category || 'evenement').trim()
-      );
+      ]
+    );
 
-    const event = db.prepare('SELECT * FROM events WHERE id = ?').get(Number(result.lastInsertRowid));
+    const event = await queryOne('SELECT * FROM events WHERE id = $1', [result.lastInsertId]);
     res.status(201).json(event);
   } catch (err) {
     console.error('Create event error:', err);
@@ -43,35 +42,36 @@ router.post('/', requireAuth, (req, res) => {
   }
 });
 
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
+    const existing = await queryOne('SELECT * FROM events WHERE id = $1', [id]);
     if (!existing) {
       res.status(404).json({ error: 'Événement introuvable' });
       return;
     }
 
     const { title, date, time, description, category } = req.body;
-    db.prepare(
+    await execute(
       `UPDATE events SET
-        title = COALESCE(?, title),
-        date = COALESCE(?, date),
-        time = COALESCE(?, time),
-        description = COALESCE(?, description),
-        category = COALESCE(?, category),
+        title = COALESCE($1, title),
+        date = COALESCE($2, date),
+        time = COALESCE($3, time),
+        description = COALESCE($4, description),
+        category = COALESCE($5, category),
         updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`
-    ).run(
-      title?.trim() ?? null,
-      date?.trim() ?? null,
-      time?.trim() ?? null,
-      description?.trim() ?? null,
-      category?.trim() ?? null,
-      id
+       WHERE id = $6`,
+      [
+        title?.trim() ?? null,
+        date?.trim() ?? null,
+        time?.trim() ?? null,
+        description?.trim() ?? null,
+        category?.trim() ?? null,
+        id
+      ]
     );
 
-    const updated = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
+    const updated = await queryOne('SELECT * FROM events WHERE id = $1', [id]);
     res.json(updated);
   } catch (err) {
     console.error('Update event error:', err);
@@ -79,16 +79,16 @@ router.put('/:id', requireAuth, (req, res) => {
   }
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
+    const existing = await queryOne('SELECT * FROM events WHERE id = $1', [id]);
     if (!existing) {
       res.status(404).json({ error: 'Événement introuvable' });
       return;
     }
 
-    db.prepare('DELETE FROM events WHERE id = ?').run(id);
+    await execute('DELETE FROM events WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (err) {
     console.error('Delete event error:', err);

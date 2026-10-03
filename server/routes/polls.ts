@@ -1,16 +1,51 @@
 import { Router } from 'express';
-import db from '../db/index.js';
+import { query, execute, queryOne, transaction } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendPushToAll } from '../lib/push.js';
 import { cleanText } from '../lib/files.js';
 
+interface PollRow {
+  id: number;
+  question: string;
+  allow_multiple: number;
+  show_results: number;
+  anonymous: number;
+  active: number;
+  closed_at: string | null;
+  created_at: string;
+}
+
+interface PollOptionRow {
+  id: number;
+  poll_id: number;
+  text: string;
+  position: number | null;
+}
+
+interface PollVoteRow {
+  id: number;
+  poll_id: number;
+  option_id: number;
+  voter_fingerprint: string;
+  created_at: string;
+}
+
+interface PollTotalsRow {
+  poll_id: number;
+  votes: number;
+  voters: number;
+}
+
+interface PollVoteCheckRow {
+  poll_id: number;
+}
+
+interface PollOptionVoteRow {
+  count: number;
+}
+
 const router = Router();
 
-/**
- * Le client envoie 0/1, mais un appel direct peut envoyer false, '0' ou null.
- * `value !== false` traitait 0 comme vrai : les résultats restaient toujours
- * visibles. On normalise donc explicitement.
- */
 function toFlag(value: unknown, defaultValue: 0 | 1): 0 | 1 {
   if (value === undefined || value === null || value === '') return defaultValue;
   if (typeof value === 'boolean') return value ? 1 : 0;
@@ -20,63 +55,57 @@ function toFlag(value: unknown, defaultValue: 0 | 1): 0 | 1 {
   return 1;
 }
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    // Le fingerprint permet de savoir si l'élève a déjà voté : sans cela,
-    // l'interface affichait un sondage comme votable alors que le serveur
-    // refuse ensuite le vote (« Vous avez déjà voté ») et rien ne se passait.
     const fingerprint = (req.query.fingerprint as string) || '';
 
-    const polls = db
-      .prepare('SELECT * FROM polls WHERE active = 1 ORDER BY created_at DESC')
-      .all() as any[];
+    const polls = await query<PollRow>('SELECT * FROM polls WHERE active = 1 ORDER BY created_at DESC');
 
     if (polls.length === 0) {
       res.json([]);
       return;
     }
 
-    // Tous les comptages en 3 requêtes au lieu d'une par option (N+1) : la page
-    // de l'élève affiche le nombre de vraies réponses et de vrais votants.
     const ids = polls.map((p) => p.id);
-    const placeholders = ids.map(() => '?').join(',');
 
-    const optionsByPoll = new Map<number, any[]>();
-    const allOptions = db
-      .prepare(
-        `SELECT o.*,
-                (SELECT COUNT(*) FROM poll_votes v WHERE v.option_id = o.id) AS vote_count
-           FROM poll_options o
-          WHERE o.poll_id IN (${placeholders})
-          ORDER BY COALESCE(o.position, o.id), o.id`
-      )
-      .all(...ids) as any[];
+    interface PollOptionWithCount extends PollOptionRow {
+      vote_count: number;
+    }
+    const allOptions = await query<PollOptionWithCount>(
+      `SELECT o.*,
+              (SELECT COUNT(*) FROM poll_votes v WHERE v.option_id = o.id) AS vote_count
+         FROM poll_options o
+        WHERE o.poll_id = ANY($1)
+        ORDER BY COALESCE(o.position, o.id), o.id`,
+      [ids]
+    );
+
+    const optionsByPoll = new Map<number, PollOptionWithCount[]>();
     for (const opt of allOptions) {
       const list = optionsByPoll.get(opt.poll_id) || [];
       list.push(opt);
       optionsByPoll.set(opt.poll_id, list);
     }
 
-    const totalsByPoll = new Map<number, { votes: number; voters: number }>();
-    const totals = db
-      .prepare(
-        `SELECT poll_id, COUNT(*) AS votes, COUNT(DISTINCT voter_fingerprint) AS voters
-           FROM poll_votes
-          WHERE poll_id IN (${placeholders})
-          GROUP BY poll_id`
-      )
-      .all(...ids) as any[];
-    for (const row of totals) totalsByPoll.set(row.poll_id, { votes: row.votes, voters: row.voters });
+    const totals = await query<PollTotalsRow>(
+      `SELECT poll_id, COUNT(*) AS votes, COUNT(DISTINCT voter_fingerprint) AS voters
+         FROM poll_votes
+        WHERE poll_id = ANY($1)
+        GROUP BY poll_id`,
+      [ids]
+    );
 
-    const votedIds = new Set<number>();
+    const totalsByPoll = new Map<number, { votes: number; voters: number }>();
+    for (const row of totals) totalsByPoll.set(row.poll_id, { votes: Number(row.votes), voters: Number(row.voters) });
+
+    let votedIds = new Set<number>();
     if (fingerprint) {
-      const voted = db
-        .prepare(
-          `SELECT DISTINCT poll_id FROM poll_votes
-            WHERE voter_fingerprint = ? AND poll_id IN (${placeholders})`
-        )
-        .all(fingerprint, ...ids) as any[];
-      for (const row of voted) votedIds.add(row.poll_id);
+      const voted = await query<PollVoteCheckRow>(
+        `SELECT DISTINCT poll_id FROM poll_votes
+           WHERE voter_fingerprint = $1 AND poll_id = ANY($2)`,
+        [fingerprint, ids]
+      );
+      votedIds = new Set(voted.map((row) => row.poll_id));
     }
 
     const result = polls.map((poll) => {
@@ -97,43 +126,33 @@ router.get('/', (req, res) => {
   }
 });
 
-router.get('/single/:id', (req, res) => {
+router.get('/single/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(id) as any;
+    const fingerprint = (req.query.fingerprint as string) || '';
+    const poll = await queryOne<PollRow>('SELECT * FROM polls WHERE id = $1', [req.params.id]);
     if (!poll) {
       res.status(404).json({ error: 'Sondage introuvable' });
       return;
     }
 
-    const options = db
-      .prepare('SELECT * FROM poll_options WHERE poll_id = ?')
-      .all(id) as any[];
+    const options = await query<PollOptionRow>('SELECT * FROM poll_options WHERE poll_id = $1 ORDER BY COALESCE(position, id)', [poll.id]);
+    const totals = await queryOne<{ votes: number; voters: number }>(
+      `SELECT COUNT(*) AS votes, COUNT(DISTINCT voter_fingerprint) AS voters
+         FROM poll_votes WHERE poll_id = $1`,
+      [poll.id]
+    );
+    const voted = fingerprint
+      ? await queryOne<{ exists: number }>('SELECT 1 AS exists FROM poll_votes WHERE poll_id = $1 AND voter_fingerprint = $2', [poll.id, fingerprint])
+      : null;
 
-    const optionsWithCounts = options.map((opt) => {
-      const voteRow = db
-        .prepare('SELECT COUNT(*) AS count FROM poll_votes WHERE option_id = ?')
-        .get(opt.id) as { count: number };
-      return { ...opt, vote_count: voteRow.count };
-    });
-
-    const fingerprint = req.query.fingerprint as string | undefined;
-    let hasVoted = false;
-    if (fingerprint) {
-      const voteCheck = db
-        .prepare('SELECT COUNT(*) AS count FROM poll_votes WHERE poll_id = ? AND voter_fingerprint = ?')
-        .get(id, fingerprint) as { count: number };
-      hasVoted = voteCheck.count > 0;
-    }
-
-    res.json({ ...poll, options: optionsWithCounts, has_voted: hasVoted });
+    res.json({ ...poll, options, total_votes: totals?.votes ?? 0, total_voters: totals?.voters ?? 0, has_voted: !!voted });
   } catch (err) {
     console.error('Get single poll error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
     const { question, options, allow_multiple, show_results, anonymous } = req.body;
     if (!question || typeof question !== 'string' || !Array.isArray(options) || options.length < 2) {
@@ -141,40 +160,32 @@ router.post('/', requireAuth, (req, res) => {
       return;
     }
 
-    const createPoll = db.transaction(() => {
-      const pollResult = db
-        .prepare(
-          `INSERT INTO polls (question, allow_multiple, show_results, anonymous)
-           VALUES (?, ?, ?, ?)`
-        )
-        .run(
-          question.trim(),
-          toFlag(allow_multiple, 0),
-          toFlag(show_results, 1),
-          toFlag(anonymous, 1)
-        );
-
-      const pollId = Number(pollResult.lastInsertRowid);
-      const insertOption = db.prepare(
-        'INSERT INTO poll_options (poll_id, text, position) VALUES (?, ?, ?)'
+    const result = await transaction(async (client) => {
+      const pollResult = await client.query(
+        `INSERT INTO polls (question, allow_multiple, show_results, anonymous)
+         VALUES ($1, $2, $3, $4) RETURNING id`,
+        [question.trim(), toFlag(allow_multiple, 0), toFlag(show_results, 1), toFlag(anonymous, 1)]
       );
-      let position = 0;
-      for (const opt of options) {
-        if (typeof opt === 'string' && opt.trim()) {
-          insertOption.run(pollId, opt.trim(), position++);
+
+      const pollId = Number(pollResult.rows[0].id);
+      for (let i = 0; i < options.length; i++) {
+        if (typeof options[i] === 'string' && options[i].trim()) {
+          await client.query(
+            'INSERT INTO poll_options (poll_id, text, position) VALUES ($1, $2, $3)',
+            [pollId, options[i].trim(), i]
+          );
         }
       }
-
       return pollId;
     });
 
-    const pollId = createPoll();
-    const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(pollId) as any;
-    const pollOptions = db.prepare('SELECT * FROM poll_options WHERE poll_id = ?').all(pollId);
+    const pollId = Number(result);
+    const poll = await queryOne<PollRow>('SELECT * FROM polls WHERE id = $1', [pollId]);
+    const pollOptions = await query<PollOptionRow>('SELECT * FROM poll_options WHERE poll_id = $1 ORDER BY COALESCE(position, id)', [pollId]);
 
     sendPushToAll({
       title: '🗳️ Nouveau sondage',
-      body: poll.question,
+      body: poll?.question || '',
       url: '/sondages',
     });
 
@@ -185,45 +196,46 @@ router.post('/', requireAuth, (req, res) => {
   }
 });
 
-router.post('/:id/vote', (req, res) => {
+router.post('/:id/vote', async (req, res) => {
   try {
-    const { id } = req.params;
+    const pollId = Number(req.params.id);
     const { option_ids, fingerprint } = req.body;
 
     if (!Array.isArray(option_ids) || option_ids.length === 0) {
       res.status(400).json({ error: 'Au moins une option requise' });
       return;
     }
+    if (!fingerprint || typeof fingerprint !== 'string' || fingerprint.length < 8) {
+      res.status(401).json({ error: 'Identifiant appareil manquant' });
+      return;
+    }
 
-    const poll = db.prepare('SELECT * FROM polls WHERE id = ?').get(id) as any;
+    const poll = await queryOne<PollRow>('SELECT * FROM polls WHERE id = $1', [pollId]);
     if (!poll) {
       res.status(404).json({ error: 'Sondage introuvable' });
       return;
     }
-
     if (!poll.active) {
       res.status(400).json({ error: 'Ce sondage est fermé' });
       return;
     }
-
     if (!poll.allow_multiple && option_ids.length > 1) {
       res.status(400).json({ error: 'Ce sondage n\'autorise qu\'un seul choix' });
       return;
     }
 
     if (fingerprint) {
-      const existing = db
-        .prepare('SELECT COUNT(*) AS count FROM poll_votes WHERE poll_id = ? AND voter_fingerprint = ?')
-        .get(id, fingerprint) as { count: number };
-      if (existing.count > 0) {
+      const existing = await queryOne<{ exists: number }>(
+        'SELECT 1 AS exists FROM poll_votes WHERE poll_id = $1 AND voter_fingerprint = $2',
+        [pollId, fingerprint]
+      );
+      if (existing) {
         res.status(400).json({ error: 'Vous avez déjà voté' });
         return;
       }
     }
 
-    const validOptions = db
-      .prepare('SELECT id FROM poll_options WHERE poll_id = ?')
-      .all(id) as { id: number }[];
+    const validOptions = await query<{ id: number }>('SELECT id FROM poll_options WHERE poll_id = $1', [pollId]);
     const validIds = new Set(validOptions.map((o) => o.id));
     for (const oid of option_ids) {
       if (!validIds.has(oid)) {
@@ -232,37 +244,37 @@ router.post('/:id/vote', (req, res) => {
       }
     }
 
-    const castVotes = db.transaction(() => {
-      const insertVote = db.prepare(
-        'INSERT INTO poll_votes (poll_id, option_id, voter_fingerprint) VALUES (?, ?, ?)'
-      );
+    await transaction(async (client) => {
       for (const oid of option_ids) {
-        insertVote.run(id, oid, fingerprint || null);
+        const opt = await client.query('SELECT id FROM poll_options WHERE id = $1 AND poll_id = $2', [oid, pollId]);
+        if (opt.rows.length === 0) {
+          throw new Error('Option invalide');
+        }
+        await client.query(
+          'INSERT INTO poll_votes (poll_id, option_id, voter_fingerprint) VALUES ($1, $2, $3)',
+          [pollId, oid, fingerprint]
+        );
       }
     });
 
-    castVotes();
-    res.json({ success: true });
+    const updated = await queryOne<PollRow>('SELECT * FROM polls WHERE id = $1', [pollId]);
+    res.json(updated);
   } catch (err) {
-    console.error('Vote error:', err);
+    console.error('Vote poll error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-router.put('/:id', requireAuth, (req, res) => {
+router.put('/:id', requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM polls WHERE id = ?').get(id) as any;
+    const pollId = Number(req.params.id);
+    const existing = await queryOne<PollRow>('SELECT * FROM polls WHERE id = $1', [pollId]);
     if (!existing) {
       res.status(404).json({ error: 'Sondage introuvable' });
       return;
     }
 
-    const { active, allow_multiple, show_results, anonymous, question, options } = req.body;
-
-    // Édition du texte : l'API le proposait déjà mais l'interface n'y donnait
-    // pas accès, donc une faute de frappe imposait de supprimer le sondage —
-    // et donc de perdre tous les votes déjà enregistrés.
+    const { question, options, allow_multiple, show_results, active } = req.body;
     const nextQuestion = question !== undefined ? cleanText(question, 200) : '';
     if (question !== undefined && nextQuestion.length < 3) {
       res.status(400).json({ error: 'Question trop courte (3 caractères minimum)' });
@@ -270,100 +282,94 @@ router.put('/:id', requireAuth, (req, res) => {
     }
 
     let optionError = '';
-    const editOptions = db.transaction(() => {
-      if (Array.isArray(options)) {
-        const current = db.prepare('SELECT id, text FROM poll_options WHERE poll_id = ? ORDER BY COALESCE(position, id), id').all(id) as any[];
-        const incoming = options
-          .map((o: unknown, index: number) => ({ id: Number((o as any)?.id) || 0, text: cleanText(String((o as any)?.text ?? ''), 80), position: index }))
+    await transaction(async (client) => {
+      if (Array.isArray(req.body.options)) {
+        interface CurrentOption {
+          id: number;
+          text: string;
+        }
+        const current = await client.query<CurrentOption>(
+          'SELECT id, text FROM poll_options WHERE poll_id = $1 ORDER BY COALESCE(position, id), id',
+          [pollId]
+        );
+        const incoming = (req.body.options as any[])
+          .map((o: any, index: number) => ({ id: Number((o as any)?.id) || 0, text: cleanText(String((o as any)?.text ?? ''), 80), position: index }))
           .filter((o) => o.text.length > 0);
         if (incoming.length < 2) {
-          optionError = 'Au moins 2 options sont nécessaires';
-          return;
+          throw new Error('Au moins 2 options sont nécessaires');
         }
 
         for (const opt of incoming) {
-          if (opt.id && current.some((c) => c.id === opt.id)) {
-            db.prepare('UPDATE poll_options SET text = ?, position = ? WHERE id = ? AND poll_id = ?').run(
-              opt.text,
-              opt.position,
-              opt.id,
-              id
+          if (opt.id && current.rows.some((c) => c.id === opt.id)) {
+            await client.query(
+              'UPDATE poll_options SET text = $1, position = $2 WHERE id = $3 AND poll_id = $4',
+              [opt.text, opt.position, opt.id, pollId]
             );
           } else if (!opt.id) {
-            db.prepare('INSERT INTO poll_options (poll_id, text, position) VALUES (?, ?, ?)').run(
-              id,
-              opt.text,
-              opt.position
+            await client.query(
+              'INSERT INTO poll_options (poll_id, text, position) VALUES ($1, $2, $3)',
+              [pollId, opt.text, opt.position]
             );
           }
         }
 
-        // Suppression : uniquement des options sans vote, pour ne jamais
-        // effacer les réponses d'un élève sans qu'il le sache.
         const keptIds = incoming.filter((o) => o.id).map((o) => o.id);
-        for (const opt of current) {
+        for (const opt of current.rows) {
           if (keptIds.includes(opt.id)) continue;
-          const votes = (db.prepare('SELECT COUNT(*) AS count FROM poll_votes WHERE option_id = ?').get(opt.id) as any).count;
+          const votes = (await client.query('SELECT COUNT(*) AS count FROM poll_votes WHERE option_id = $1', [opt.id])).rows[0].count;
           if (votes > 0) {
-            optionError = `L'option « ${opt.text} » a déjà reçu des votes : elle ne peut pas être supprimée. Renomme-la si besoin.`;
+            throw new Error(`L'option « ${opt.text} » a déjà reçu des votes : elle ne peut pas être supprimée. Renomme-la si besoin.`);
           } else {
-            db.prepare('DELETE FROM poll_options WHERE id = ? AND poll_id = ?').run(opt.id, id);
+            await client.query('DELETE FROM poll_options WHERE id = $1 AND poll_id = $2', [opt.id, pollId]);
           }
         }
       }
 
-      db.prepare(
+      const activeVal = req.body.active !== undefined ? (req.body.active ? 1 : 0) : null;
+      const allowMultipleVal = req.body.allow_multiple !== undefined ? toFlag(req.body.allow_multiple, 0) : null;
+      const showResultsVal = req.body.show_results !== undefined ? toFlag(req.body.show_results, 0) : null;
+      const anonymousVal = req.body.anonymous !== undefined ? toFlag(req.body.anonymous, 0) : null;
+      const closedAtVal = req.body.active !== undefined && !req.body.active ? 1 : req.body.active !== undefined && req.body.active ? 0 : null;
+
+      await client.query(
         `UPDATE polls SET
-          question = COALESCE(?, question),
-          active = COALESCE(?, active),
-          allow_multiple = COALESCE(?, allow_multiple),
-          show_results = COALESCE(?, show_results),
-          anonymous = COALESCE(?, anonymous),
-          closed_at = CASE WHEN ? = 1 AND active = 1 THEN CURRENT_TIMESTAMP
-                           WHEN ? = 0 THEN NULL ELSE closed_at END
-         WHERE id = ?`
-      ).run(
-        nextQuestion || null,
-        active !== undefined ? (active ? 1 : 0) : null,
-        allow_multiple !== undefined ? toFlag(allow_multiple, 0) : null,
-        show_results !== undefined ? toFlag(show_results, 0) : null,
-        anonymous !== undefined ? toFlag(anonymous, 0) : null,
-        active !== undefined && !active ? 1 : 0,
-        active !== undefined && active ? 1 : 0,
-        id
+           question = COALESCE($1, question),
+           active = COALESCE($2, active),
+           allow_multiple = COALESCE($3, allow_multiple),
+           show_results = COALESCE($4, show_results),
+           anonymous = COALESCE($5, anonymous),
+           closed_at = CASE WHEN $6 = 1 AND active = 1 THEN CURRENT_TIMESTAMP
+                            WHEN $6 = 0 THEN NULL ELSE closed_at END
+         WHERE id = $6`,
+        [nextQuestion || null, activeVal, allowMultipleVal, showResultsVal, anonymousVal, closedAtVal, pollId]
       );
     });
-
-    editOptions();
-    if (optionError) {
-      res.status(400).json({ error: optionError });
+    res.json(await queryOne<PollRow>('SELECT * FROM polls WHERE id = $1', [pollId]));
+  } catch (err: any) {
+    if (err.message && err.message.includes('option')) {
+      res.status(400).json({ error: err.message });
       return;
     }
-
-    const updated = db.prepare('SELECT * FROM polls WHERE id = ?').get(id);
-    res.json(updated);
-  } catch (err) {
     console.error('Update poll error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireAuth, async (req, res) => {
   try {
-    const { id } = req.params;
-    const existing = db.prepare('SELECT * FROM polls WHERE id = ?').get(id);
+    const pollId = Number(req.params.id);
+    const existing = await queryOne<PollRow>('SELECT * FROM polls WHERE id = $1', [pollId]);
     if (!existing) {
       res.status(404).json({ error: 'Sondage introuvable' });
       return;
     }
 
-    const deletePoll = db.transaction(() => {
-      db.prepare('DELETE FROM poll_votes WHERE poll_id = ?').run(id);
-      db.prepare('DELETE FROM poll_options WHERE poll_id = ?').run(id);
-      db.prepare('DELETE FROM polls WHERE id = ?').run(id);
+    await transaction(async (client) => {
+      await client.query('DELETE FROM poll_votes WHERE poll_id = $1', [pollId]);
+      await client.query('DELETE FROM poll_options WHERE poll_id = $1', [pollId]);
+      await client.query('DELETE FROM polls WHERE id = $1', [pollId]);
     });
 
-    deletePoll();
     res.json({ success: true });
   } catch (err) {
     console.error('Delete poll error:', err);

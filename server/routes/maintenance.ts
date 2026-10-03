@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import db from '../db/index.js';
+import { query, execute, queryOne } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
   activateMaintenance,
@@ -12,10 +12,9 @@ import { cleanText } from '../lib/files.js';
 
 const router = Router();
 
-/** État public : le client en a besoin pour afficher (ou non) la page de maintenance. */
-router.get('/state', (req, res) => {
+router.get('/state', async (req, res) => {
   try {
-    const state = getMaintenanceState(db);
+    const state = await getMaintenanceState();
     res.json({
       active: state.active,
       message: state.active ? state.message : DEFAULT_MAINTENANCE_MESSAGE,
@@ -27,16 +26,11 @@ router.get('/state', (req, res) => {
   }
 });
 
-/**
- * Activation : mot de passe du délégué redemandé pour éviter un clic accidentel.
- */
 router.post('/activate', requireAuth, async (req, res) => {
   try {
     const { password, message } = req.body || {};
 
-    const settings = db.prepare('SELECT password_hash FROM settings WHERE id = 1').get() as
-      | { password_hash: string }
-      | undefined;
+    const settings = await queryOne<{ password_hash: string }>('SELECT password_hash FROM settings WHERE id = 1');
     if (!settings) {
       res.status(500).json({ error: 'Erreur de configuration' });
       return;
@@ -53,7 +47,7 @@ router.post('/activate', requireAuth, async (req, res) => {
       return;
     }
 
-    const state = activateMaintenance(db, 'Délégué', cleanText(message, 300) || undefined);
+    const state = await activateMaintenance('Délégué', cleanText(message, 300));
     res.json(state);
   } catch (err) {
     console.error('Activate maintenance error:', err);
@@ -61,9 +55,9 @@ router.post('/activate', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/deactivate', requireAuth, (req, res) => {
+router.post('/deactivate', requireAuth, async (req, res) => {
   try {
-    const state = deactivateMaintenance(db, 'Délégué');
+    const state = await deactivateMaintenance('Délégué');
     res.json(state);
   } catch (err) {
     console.error('Deactivate maintenance error:', err);
@@ -71,15 +65,12 @@ router.post('/deactivate', requireAuth, (req, res) => {
   }
 });
 
-/** Historique : qui a activé / désactivé, et quand. Réservé au délégué. */
-router.get('/history', requireAuth, (req, res) => {
+router.get('/history', requireAuth, async (req, res) => {
   try {
-    const rows = db
-      .prepare(
-        `SELECT id, active, message, activated_by, activated_at, deactivated_by, deactivated_at
-         FROM maintenance_log ORDER BY id DESC LIMIT 50`
-      )
-      .all();
+    const rows = await query(
+      `SELECT id, active, message, activated_by, activated_at, deactivated_by, deactivated_at
+       FROM maintenance_log ORDER BY id DESC LIMIT 50`
+    );
     res.json(rows);
   } catch (err) {
     console.error('Maintenance history error:', err);

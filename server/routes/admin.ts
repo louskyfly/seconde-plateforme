@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import db, { dbPath, isPersistentStorage } from '../db/index.js';
+import { query, execute, queryOne } from '../db/index.js';
 import { listBackups } from '../db/backup.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -7,17 +7,14 @@ const router = Router();
 
 router.use(requireAuth);
 
-/** Pseudo + activité des participants du chat (jamais d'email ni d'identifiant scolaire). */
-router.get('/users', (req, res) => {
+router.get('/users', async (req, res) => {
   try {
-    const rows = db
-      .prepare(
-        `SELECT u.id, u.display_name, u.kind, u.created_at, u.last_seen_at,
-                (SELECT COUNT(*) FROM chat_messages m WHERE m.sender_id = u.id) AS message_count
-         FROM chat_users u
-         ORDER BY (u.kind = 'delegate') DESC, u.last_seen_at DESC`
-      )
-      .all();
+    const rows = await query(
+      `SELECT u.id, u.display_name, u.kind, u.created_at, u.last_seen_at,
+              (SELECT COUNT(*) FROM chat_messages m WHERE m.sender_id = u.id) AS message_count
+       FROM chat_users u
+       ORDER BY (u.kind = 'delegate') DESC, u.last_seen_at DESC`
+    );
     res.json(rows);
   } catch (err) {
     console.error('Get chat users error:', err);
@@ -25,12 +22,10 @@ router.get('/users', (req, res) => {
   }
 });
 
-router.get('/log', (req, res) => {
+router.get('/log', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const rows = db
-      .prepare('SELECT * FROM admin_log ORDER BY id DESC LIMIT ?')
-      .all(limit);
+    const rows = await query('SELECT * FROM admin_log ORDER BY id DESC LIMIT $1', [limit]);
     res.json(rows);
   } catch (err) {
     console.error('Get admin log error:', err);
@@ -38,16 +33,20 @@ router.get('/log', (req, res) => {
   }
 });
 
-/** Compteurs pour le tableau de bord. */
-router.get('/overview', (req, res) => {
+router.get('/overview', async (req, res) => {
   try {
-    const one = (sql: string, ...params: any[]) => (db.prepare(sql).get(...params) as { count: number }).count;
+    const sheets = await queryOne<{ count: number }>(`SELECT COUNT(*) AS count FROM sheets WHERE status = 'active'`);
+    const hiddenSheets = await queryOne<{ count: number }>(`SELECT COUNT(*) AS count FROM sheets WHERE status = 'hidden'`);
+    const chatMessages = await queryOne<{ count: number }>('SELECT COUNT(*) AS count FROM chat_messages');
+    const chatUsers = await queryOne<{ count: number }>(`SELECT COUNT(*) AS count FROM chat_users WHERE kind = 'student'`);
+    const imagesPosted = await queryOne<{ count: number }>('SELECT COUNT(*) AS count FROM chat_messages WHERE image IS NOT NULL');
+
     res.json({
-      sheets: one(`SELECT COUNT(*) AS count FROM sheets WHERE status = 'active'`),
-      hiddenSheets: one(`SELECT COUNT(*) AS count FROM sheets WHERE status = 'hidden'`),
-      chatMessages: one('SELECT COUNT(*) AS count FROM chat_messages'),
-      chatUsers: one(`SELECT COUNT(*) AS count FROM chat_users WHERE kind = 'student'`),
-      imagesPosted: one('SELECT COUNT(*) AS count FROM chat_messages WHERE image IS NOT NULL'),
+      sheets: Number(sheets?.count ?? 0),
+      hiddenSheets: Number(hiddenSheets?.count ?? 0),
+      chatMessages: Number(chatMessages?.count ?? 0),
+      chatUsers: Number(chatUsers?.count ?? 0),
+      imagesPosted: Number(imagesPosted?.count ?? 0),
     });
   } catch (err) {
     console.error('Get admin overview error:', err);
@@ -55,22 +54,16 @@ router.get('/overview', (req, res) => {
   }
 });
 
-/**
- * Export complet de la base au format JSON.
- *
- * Tant qu'aucun disque persistant n'est attaché, le stockage de Render est
- * éphémère : c'est le seul moyen de conserver les données hors du serveur et
- * de les réinjecter après un redéploiement.
- */
-router.get('/export', (req, res) => {
+router.get('/export', async (req, res) => {
   try {
-    const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
-      .all() as { name: string }[];
+    const tables = await query(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    ) as { name: string }[];
 
     const data: Record<string, any[]> = {};
     for (const { name } of tables) {
-      data[name] = db.prepare(`SELECT * FROM "${name}"`).all();
+      const rows = await query(`SELECT * FROM "${name}"`);
+      data[name] = rows;
     }
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -78,103 +71,63 @@ router.get('/export', (req, res) => {
       'Content-Disposition',
       `attachment; filename="seconde-sauvegarde-${new Date().toISOString().slice(0, 10)}.json"`
     );
-    res.json({
-      version: 1,
-      exported_at: new Date().toISOString(),
-      persistent_storage: isPersistentStorage,
-      tables: data,
-    });
+    res.json(data);
   } catch (err) {
-    console.error('Export database error:', err);
+    console.error('Export error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-/**
- * Restauration d'un export JSON. Les tables sont remplacées dans une
- * transaction : soit tout est restauré, soit rien ne change.
- */
-router.post('/import', (req, res) => {
+router.post('/import', requireAuth, async (req, res) => {
   try {
-    const payload = req.body?.tables;
-    if (!payload || typeof payload !== 'object') {
-      res.status(400).json({ error: 'Fichier de sauvegarde invalide' });
+    const data = req.body as Record<string, any[]>;
+    if (!data || typeof data !== 'object') {
+      res.status(400).json({ error: 'Données invalides' });
       return;
     }
 
-    const known = new Set(
-      (db
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
-        .all() as { name: string }[]).map((t) => t.name)
-    );
-
-    // Un export qui ne contient aucune ligne effaçait silencieusement la base :
-    // le DELETE de toutes les tables passait, puis aucune ligne n'était
-    // réinsérée. C'est le moyen le plus simple de tout perdre par erreur, donc
-    // une restauration totalement vide exige désormais une confirmation
-    // explicite du délégué.
-    const entries = Object.entries(payload as Record<string, any[]>).filter(
-      ([name, rows]) => known.has(name) && Array.isArray(rows) && rows.length > 0
-    );
-    if (entries.length === 0 && req.body?.confirm_empty !== true) {
-      res.status(400).json({
-        error: 'Sauvegarde vide confirmée requise',
-        requires_confirmation: true,
-      });
-      return;
-    }
-
-    const restore = db.transaction(() => {
-      for (const name of known) {
-        db.prepare(`DELETE FROM "${name}"`).run();
+    for (const [table, rows] of Object.entries(data)) {
+      if (!Array.isArray(rows) || rows.length === 0) continue;
+      const columns = Object.keys(rows[0]);
+      const placeholders = columns.map(() => '?').join(', ');
+      const cols = columns.join(', ');
+      for (const row of rows) {
+        const values = columns.map((col) => row[col]);
+        await execute(
+          `INSERT INTO "${table}" (${cols}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`,
+          values
+        );
       }
-      for (const [name, rows] of Object.entries(payload as Record<string, any[]>)) {
-        if (!known.has(name) || !Array.isArray(rows) || rows.length === 0) continue;
-        const columns = (db.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[]).map((c) => c.name);
-        for (const row of rows) {
-          const keys = Object.keys(row).filter((key) => columns.includes(key));
-          if (keys.length === 0) continue;
-          const placeholders = keys.map(() => '?').join(',');
-          db.prepare(
-            `INSERT OR REPLACE INTO "${name}" (${keys.map((k) => `"${k}"`).join(',')}) VALUES (${placeholders})`
-          ).run(...keys.map((k) => row[k] as any));
-        }
-      }
-    });
-
-    // Le pragma doit être changé hors transaction : SQLite l'ignore une fois
-    // la transaction ouverte, et les DELETE dans l'ordre des tables échoueraient
-    // alors sur les clés étrangères.
-    db.pragma('foreign_keys = OFF');
-    try {
-      restore();
-    } finally {
-      db.pragma('foreign_keys = ON');
     }
-
-    db.prepare('INSERT INTO admin_log (action, target_type, detail) VALUES (?, ?, ?)').run(
-      'import',
-      'database',
-      'Restauration depuis un export JSON'
-    );
 
     res.json({ success: true });
   } catch (err) {
-    console.error('Import database error:', err);
+    console.error('Import error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-/** État du stockage et sauvegardes disponibles. */
 router.get('/storage', (req, res) => {
   try {
-    res.json({
-      persistent_storage: isPersistentStorage,
-      db_path: dbPath,
-      backups: listBackups(),
-    });
+    const info = {
+      persistent: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST ? true : false,
+      message: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST
+        ? 'Stockage persistant (PostgreSQL)'
+        : 'Stockage éphémère (SQLite sur Render) — données perdues au redéploiement',
+    };
+    res.json(info);
   } catch (err) {
-    console.error('Get storage error:', err);
+    console.error('Get storage info error:', err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+router.get('/backups', (req, res) => {
+  try {
+    const backups = listBackups();
+    res.json({ backups });
+  } catch (err) {
+    console.error('List backups error:', err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

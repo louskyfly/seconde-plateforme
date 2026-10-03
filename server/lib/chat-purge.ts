@@ -26,7 +26,6 @@ export function purgeExpiredChatMessages(now = Date.now()): number {
   const deleted = result.changes;
   if (deleted > 0) {
     logAdminAction(
-      db,
       'chat_purge',
       'chat_message',
       null,

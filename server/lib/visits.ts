@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type Database from 'better-sqlite3';
+import { execute } from '../db/index.js';
 
 /** Combien de temps on garde les visites. Aligné sur la borne du graphique. */
 export const VISIT_RETENTION_DAYS = 90;
@@ -42,4 +43,9 @@ export function hacherEmpreinte(fingerprint: string): string {
 export function purgerVisitesAnciennes(db: Database.Database): number {
   return db.prepare(`DELETE FROM visits WHERE day < date('now', ?)`).run(`-${VISIT_RETENTION_DAYS} days`)
     .changes;
+}
+
+export async function purgerVisitesAnciennesAsync(): Promise<number> {
+  const result = await execute(`DELETE FROM visits WHERE day < CURRENT_DATE - INTERVAL '${VISIT_RETENTION_DAYS} days'`);
+  return result.rowCount ?? 0;
 }

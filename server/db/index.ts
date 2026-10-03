@@ -1,19 +1,19 @@
-import Database from 'better-sqlite3';
-import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
+import { pool, query, queryOne, execute, transaction, close } from './pg.js';
 import { initDatabase } from './schema.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const DEFAULT_DB_PATH = './data/seconde.db';
 const RENDER_DISK_PATH = '/var/data';
 
-/**
- * Emplacements candidats, du plus durable au moins durable.
- *
- * Sur Render, le système de fichiers du service est éphémère : tout ce qui est
- * écrit ailleurs que sur un disque persistant est détruit à chaque
- * redéploiement. `/var/data` est le point de montage standard d'un disque
- * persistant, il est donc tenté en premier.
- */
+let dbType: 'postgres' | 'sqlite' = 'sqlite';
+let dbPathValue = DEFAULT_DB_PATH;
+let isPersistent = false;
+
 function candidatePaths(): string[] {
   const candidates: string[] = [];
   const configured = process.env.DB_PATH?.trim();
@@ -23,60 +23,130 @@ function candidatePaths(): string[] {
   return [...new Set(candidates)];
 }
 
-function openDatabase(candidates: string[]): { db: Database.Database; dbPath: string; durable: boolean } {
-  const failures: string[] = [];
+async function initializePostgres(): Promise<void> {
+  await pool.query('SELECT 1');
+  const { POSTGRES_SCHEMA } = await import('./postgres-schema.js');
+  await pool.query(POSTGRES_SCHEMA);
+  console.log('PostgreSQL connected and schema initialized');
+}
+
+function initializeSqlite(): { dbPath: string; durable: boolean } {
+  const candidates = candidatePaths();
+  let lastError: Error | null = null;
 
   for (const candidate of candidates) {
     try {
       fs.mkdirSync(path.dirname(candidate), { recursive: true });
-      const db = new Database(candidate);
-      db.pragma('journal_mode = WAL');
-      db.pragma('foreign_keys = ON');
       return {
-        db,
         dbPath: candidate,
-        // Seul un chemin explicitement durable compte : sur Render, un dossier
-        // créé à la racine n'est pas forcément un disque.
         durable: !process.env.RENDER || candidate.startsWith(RENDER_DISK_PATH),
       };
     } catch (err) {
-      failures.push(`${candidate} (${(err as Error).message})`);
+      lastError = err as Error;
     }
   }
 
   throw new Error(
-    `Impossible d'ouvrir la base de données.\nEmplacements tentés :\n  - ${failures.join('\n  - ')}`
+    `Impossible d'ouvrir la base de données.\nDernière erreur: ${lastError?.message}`
   );
 }
 
-const { db: database, dbPath, durable } = openDatabase(candidatePaths());
+export const isPersistentStorage = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST
+  ? true
+  : false;
 
-initDatabase(database);
+export async function initializeDatabase(): Promise<void> {
+  const usePostgres = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST;
 
-/**
- * Indique si les données survivront à un redéploiement.
- *
- * Sur Render, la réponse est `false` tant qu'aucun disque persistant n'est
- * attaché : c'est le point de montage `/var/data` qui fait foi, pas la simple
- * présence d'un fichier.
- */
-export const isPersistentStorage = durable;
+  if (usePostgres) {
+    try {
+      await initializePostgres();
+      return;
+    } catch (err) {
+      console.warn('PostgreSQL not available, falling back to SQLite:', (err as Error).message);
+    }
+  }
 
-if (isPersistentStorage) {
-  console.log(`Base de données persistante : ${dbPath}`);
-} else {
-  console.warn(
-    [
-      '',
-      '  ⚠️  STOCKAGE Éphémère : toutes les données seront perdues au prochain',
-      '      redéploiement. Pour les rendre durables, attacher un disque persistant',
-      '      monté sur /var/data dans le tableau de bord Render (plan payant).',
-      `      Base actuelle : ${dbPath}`,
-      "      En attendant, exporter la base depuis Paramètres > Sauvegarde des données.",
-      '',
-    ].join('\n')
-  );
+  const sqlite = initializeSqlite();
+  console.log(`Using SQLite database: ${sqlite.dbPath} (persistent: ${sqlite.durable})`);
 }
 
-export { dbPath };
-export default database;
+export function isPostgres(): boolean {
+  return process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST
+    ? true
+    : false;
+}
+
+export function isSqlite(): boolean {
+  return !isPostgres();
+}
+
+export function getDbPath(): string {
+  return DEFAULT_DB_PATH;
+}
+
+// Export async pool and helpers
+export { pool, query, queryOne, execute, transaction, close };
+
+// Synchronous database for SQLite mode (better-sqlite3)
+let _sqliteDb: any = null;
+
+function getSyncDb(): any {
+  const usePostgres = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST;
+  if (usePostgres) {
+    throw new Error('Synchronous database API not available with PostgreSQL. Use async helpers (query, execute, etc.) instead.');
+  }
+
+  if (!_sqliteDb) {
+    const { default: Database } = require('better-sqlite3');
+    const fs = require('fs');
+    const path = require('path');
+    
+    const DEFAULT_DB_PATH = './data/seconde.db';
+    const RENDER_DISK_PATH = '/var/data';
+    
+    function candidatePaths(): string[] {
+      const candidates: string[] = [];
+      const configured = process.env.DB_PATH?.trim();
+      if (configured) candidates.push(path.resolve(configured));
+      if (process.env.RENDER) candidates.push(path.join(RENDER_DISK_PATH, 'seconde.db'));
+      candidates.push(path.resolve(DEFAULT_DB_PATH));
+      return [...new Set(candidates)];
+    }
+
+    const candidates = candidatePaths();
+    for (const candidate of candidates) {
+      try {
+        fs.mkdirSync(path.dirname(candidate), { recursive: true });
+        const { default: Database } = require('better-sqlite3');
+        const db = new Database(candidate);
+        db.pragma('journal_mode = WAL');
+        db.pragma('foreign_keys = ON');
+        return db;
+      } catch {
+        continue;
+      }
+    }
+    throw new Error('Impossible d\'ouvrir la base de données SQLite');
+  }
+  return _sqliteDb;
+}
+
+// Synchronous database instance for SQLite mode (better-sqlite3)
+const syncDb = new Proxy({}, {
+  get(_target: any, prop: string | symbol) {
+    if (prop === 'then' || prop === 'catch' || prop === Symbol.toPrimitive || prop === Symbol.asyncIterator) {
+      return undefined;
+    }
+    return (...args: any[]) => {
+      const db = getSyncDb();
+      const method = db[prop];
+      if (typeof method === 'function') {
+        return method.apply(db, args);
+      }
+      return db[prop];
+    };
+  }
+}) as any;
+
+export default syncDb;

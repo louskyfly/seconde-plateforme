@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type Database from 'better-sqlite3';
-import { dbPath, isPersistentStorage } from './index.js';
+import { getDbPath, isPersistentStorage } from './index.js';
 
-const BACKUP_DIR = path.join(path.dirname(dbPath), 'backups');
+const BACKUP_DIR = path.join(path.dirname(getDbPath()), 'backups');
 const BACKUP_PREFIX = 'seconde-';
 const BACKUP_SUFFIX = '.db';
 const KEEP_BACKUPS = 14;

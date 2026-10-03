@@ -65,7 +65,7 @@ router.get('/validate-token/:token', async (req, res) => {
   } catch (err) {
     console.error('Validate token error:', err);
     res.status(500).json({ valid: false });
-  });
+  }
 });
 
 router.post('/logout', (req, res) => {

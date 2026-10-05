@@ -610,7 +610,7 @@ function seedBirthdays(db: Database.Database): void {
     insert.run(fp, e.date_mmdd, e.prenom);
   }
 console.log(`[seed] ${eleves.length} anniversaires injectés`);
-  } 
+  }
 }
 
 /**

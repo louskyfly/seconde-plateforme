@@ -737,7 +737,8 @@ async function seedBirthdaysAsync(): Promise<void> {
       [fp, e.date_mmdd, e.prenom]
     );
   }
-  console.log(`[seed] ${eleves.length} anniversaires injectés`);
+console.log(`[seed] ${eleves.length} anniversaires injectés`);
+}
 }
 
 async function ensureColumnAsync(table: string, column: string, definition: string): Promise<void> {

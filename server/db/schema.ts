@@ -394,7 +394,6 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
   );
   if (!columns.includes(column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-  }
 }
 
 /**

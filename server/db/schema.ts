@@ -726,7 +726,8 @@ async function seedBirthdaysAsync(): Promise<void> {
     for (let i = 0; i < str.length; i++) {
       hash = ((hash << 5) - hash) + str.charCodeAt(i);
       hash |= 0;
-    }
+}
+}
     return 'birthday-' + Math.abs(hash).toString(36).padStart(12, '0');
   }
 

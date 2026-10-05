@@ -717,8 +717,8 @@ async function seedBirthdaysAsync(): Promise<void> {
     { nom: 'SANCHEZ', prenom: 'Lucas', date_mmdd: '09-23' },
     { nom: 'TORCHEUX', prenom: 'Laurelle', date_mmdd: '10-12' },
     { nom: 'VERDELHAN', prenom: 'Manon', date_mmdd: '02-18' },
-  ];
-
+];
+ 
   // Empreinte déterministe = hash simple du nom complet (pour reproductibilité)
   function fingerprintFor(nom: string, prenom: string): string {
     const str = `${prenom.toLowerCase()}-${nom.toLowerCase()}`;
@@ -726,11 +726,10 @@ async function seedBirthdaysAsync(): Promise<void> {
     for (let i = 0; i < str.length; i++) {
       hash = ((hash << 5) - hash) + str.charCodeAt(i);
       hash |= 0;
-}
-}
+    }
     return 'birthday-' + Math.abs(hash).toString(36).padStart(12, '0');
   }
-
+ 
   for (const e of eleves) {
     const fp = fingerprintFor(e.nom, e.prenom);
     await execute(

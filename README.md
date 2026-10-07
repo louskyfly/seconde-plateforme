@@ -179,7 +179,10 @@ seconde-platform/
 
 ## 📊 Base de données
 
-SQLite (`data/seconde.db`) avec les tables :
+En développement, l'application utilise SQLite (`data/seconde.db`). En
+production, elle utilise PostgreSQL via `DATABASE_URL` ou `SUPABASE_DB_URL`.
+Le schéma PostgreSQL est créé automatiquement au démarrage. Les tables
+principales sont :
 `settings`, `announcements`, `ideas`, `messages`, `polls`, `poll_options`,
 `poll_votes`, `events`, `resources`, `projects`, `admin_login_attempts`,
 `push_subscriptions`, `announcement_reactions`, `maintenance_log`, `admin_log`,
@@ -188,7 +191,7 @@ SQLite (`data/seconde.db`) avec les tables :
 Les nouvelles tables sont créées automatiquement au démarrage (`CREATE TABLE IF NOT EXISTS`) :
 aucune migration manuelle n'est nécessaire.
 
-## ☁️ Déployer le site (Render — gratuit)
+## ☁️ Déployer le site (Render)
 
 Le projet est pré-configuré avec un **render.yaml** (Blueprint).
 
@@ -200,6 +203,7 @@ Le projet est pré-configuré avec un **render.yaml** (Blueprint).
    - `SESSION_SECRET` = le Render le génère automatiquement ✅
    - `ADMIN_LINK_TOKEN` = `cb29d732629c` (ou changez-le via les Paramètres après le 1er lancement)
    - `ADMIN_PASSWORD` = `delegue2026` (ou changez-le via les Paramètres)
+   - `DATABASE_URL` = URL de connexion à votre base PostgreSQL persistante (fournisseur externe)
 5. Cliquez sur **Deploy** — le build prend ~2 min
 6. Une fois déployé, le site est accessible sur `https://seconde-plateforme.onrender.com/`
 
@@ -213,28 +217,44 @@ Le projet est pré-configuré avec un **render.yaml** (Blueprint).
 
 ## 💾 Persistance des données (important)
 
-Sur le **plan gratuit**, le système de fichiers de Render est éphémère : **la base
-SQLite est effacée à chaque redéploiement** (commit, changement de build, ou
-redémarrage du service). Les annonces, fiches, sondages et messages disparaissent.
+Le disque local d'un service Render gratuit est éphémère. Pour conserver les
+données lors des redéploiements, créez une base PostgreSQL chez un fournisseur
+de base de données persistante, puis renseignez son URL dans `DATABASE_URL`
+dans le Dashboard Render → **Environment**. L'application bascule alors sur
+PostgreSQL et refuse de démarrer si la base configurée est inaccessible.
 
-### Rendre les données durables
-1. Passez le service sur un **plan payant** (Starter, ~7 $/mois).
-2. Dans le Dashboard Render → **Disks** → **Add Disk** :
-   - **Name** : `donnees`
-   - **Mount Path** : `/var/data`
-   - **Size** : 1 Go (suffisant, les fiches sont limitées à 15 Mo)
-3. Rien à changer dans le code : l'application détecte `/var/data` et y place
-   la base automatiquement (`DB_PATH=/var/data/seconde.db`).
+Si vous repartez de zéro et n'avez aucune donnée à conserver, ne lancez pas le
+script de migration ci-dessous. Au premier démarrage avec `DATABASE_URL`, le
+serveur crée le schéma et initialise le compte délégué à partir de
+`ADMIN_PASSWORD` et `ADMIN_LINK_TOKEN`.
 
-Tant que ce disque n'est pas attaché, le serveur le signale clairement :
-- avertissement dans les logs Render au démarrage ;
-- `GET /api/health` renvoie `"persistent_storage": false` ;
-- bandeau orange dans **Paramètres > Sauvegarde des données**.
+Avant de basculer le site, connectez-vous à l'espace délégué et téléchargez un
+backup depuis **Paramètres → Sauvegarde des données → Exporter une sauvegarde**.
+Placez le JSON téléchargé dans le dépôt, par exemple
+`data/sauvegarde-site.json`. La base `data/seconde.db` du workspace peut être
+vide ou différente de la base du site : ne la migrez pas sans avoir vérifié
+qu'il s'agit bien de la bonne source.
+
+Après `npm run build`, depuis le dépôt et avec l'URL de la base PostgreSQL cible :
+
+```bash
+DATABASE_URL='postgresql://USER:PASSWORD@HOST:5432/DATABASE' SOURCE_DB_PATH=./data/sauvegarde-site.json node server/scripts/migrate-to-postgres.cjs
+```
+
+Remplacez l'URL d'exemple par l'URL fournie par votre hébergeur, sans espace
+après `//`, et gardez-la privée. Le script accepte le backup JSON ou un fichier
+SQLite `.db`, crée le schéma, copie les données et recale les séquences
+d'identifiants. Il renvoie une erreur si une table échoue; ne basculez pas le
+site avant une migration réussie.
+
+Vérifiez après déploiement que `GET /api/health` renvoie
+`"persistent_storage": true`. En production, sans `DATABASE_URL`, le serveur
+refuse de démarrer au lieu d'utiliser le disque local éphémère. En
+développement, SQLite local reste disponible.
 
 ### Sauvegardes
-- Une **sauvegarde automatique quotidienne** est créée dans le dossier
-  `backups/` à côté de la base (14 sauvegardes conservées, via l'API de backup
-  SQLite : la copie reste cohérente même pendant des écritures).
+- En mode SQLite, une **sauvegarde automatique quotidienne** est créée dans le
+   dossier `backups/` à côté de la base (14 sauvegardes conservées).
 - **Paramètres > Sauvegarde des données** permet au délégué de **télécharger**
   un export JSON complet et de le **restaurer**. C'est la solution de secours
   sur le plan gratuit : exporter avant un redéploiement, restaure après.

@@ -1,6 +1,7 @@
 import session from 'express-session';
 import type { SessionData } from 'express-session';
 import type Database from 'better-sqlite3';
+import { pool } from './pg.js';
 
 /**
  * Store de session adossé à SQLite.
@@ -106,6 +107,57 @@ export class SqliteSessionStore extends session.Store {
   get size(): number {
     const row = this.db.prepare(`SELECT COUNT(*) AS count FROM ${TABLE}`).get() as { count: number };
     return row.count;
+  }
+}
+
+export class PostgresSessionStore extends session.Store {
+  override get(sid: string, callback: (err: unknown, session?: SessionData | null) => void): void {
+    void pool
+      .query<{ data: SessionData; expires_at: string | number }>(
+        'SELECT data, expires_at FROM sessions WHERE sid = $1',
+        [sid]
+      )
+      .then(async (result) => {
+        const row = result.rows[0];
+        if (!row || Number(row.expires_at) <= Date.now()) {
+          if (row) await pool.query('DELETE FROM sessions WHERE sid = $1', [sid]);
+          callback(null, null);
+          return;
+        }
+        callback(null, row.data);
+      })
+      .catch((err) => callback(err));
+  }
+
+  override set(sid: string, sessionData: SessionData, callback?: (err?: unknown) => void): void {
+    const maxAge = sessionData.cookie?.maxAge ?? 24 * 60 * 60 * 1000;
+    void pool
+      .query(
+        `INSERT INTO sessions (sid, data, expires_at) VALUES ($1, $2::jsonb, $3)
+         ON CONFLICT(sid) DO UPDATE SET data = EXCLUDED.data, expires_at = EXCLUDED.expires_at`,
+        [sid, JSON.stringify(sessionData), Date.now() + maxAge]
+      )
+      .then(() => callback?.())
+      .catch((err) => callback?.(err));
+  }
+
+  override destroy(sid: string, callback?: (err?: unknown) => void): void {
+    void pool
+      .query('DELETE FROM sessions WHERE sid = $1', [sid])
+      .then(() => callback?.())
+      .catch((err) => callback?.(err));
+  }
+
+  override touch(sid: string, sessionData: SessionData, callback?: (err?: unknown) => void): void {
+    const maxAge = sessionData.cookie?.maxAge ?? 24 * 60 * 60 * 1000;
+    void pool
+      .query('UPDATE sessions SET data = $1::jsonb, expires_at = $2 WHERE sid = $3', [
+        JSON.stringify(sessionData),
+        Date.now() + maxAge,
+        sid,
+      ])
+      .then(() => callback?.())
+      .catch((err) => callback?.(err));
   }
 }
 

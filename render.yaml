@@ -18,12 +18,8 @@ services:
         value: Lucas
       - key: ADMIN_PASSWORD
         value: delegue2026
-      # La base doit vivre sur le disque persistant Render monté sur /var/data.
-      # Sans ce disque, Render part sur un plan payant et ce chemin n'existe
-      # pas : le serveur démarre quand même, mais signale clairement que les
-      # données sont éphémères (voir /api/health et les logs).
-      - key: DB_PATH
-        value: /var/data/seconde.db
+      - key: DATABASE_URL
+        sync: false
       - key: SESSION_SECRET
         generateValue: true
       - key: ADMIN_LINK_TOKEN

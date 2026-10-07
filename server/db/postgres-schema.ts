@@ -350,10 +350,10 @@ CREATE INDEX IF NOT EXISTS idx_sheets_created ON sheets(created_at DESC);
 
 -- Session table for express-session
 CREATE TABLE IF NOT EXISTS sessions (
-  sid VARCHAR NOT NULL PRIMARY KEY,
-  sess JSON NOT NULL,
-  expired_at TIMESTAMP WITH TIME ZONE NOT NULL
+  sid TEXT PRIMARY KEY,
+  data JSONB NOT NULL,
+  expires_at BIGINT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_expired ON sessions(expired_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 `;

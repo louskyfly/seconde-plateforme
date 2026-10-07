@@ -2,6 +2,8 @@
  * Async version of initDatabase for PostgreSQL.
  * Uses the async helpers (query, execute, queryOne) from ./index.js
  */
+import { execute, query, queryOne } from './index.js';
+
 export async function initDatabaseAsync(): Promise<void> {
   // Schema is already applied in initializePostgres() via POSTGRES_SCHEMA
   // Just run the column checks and seed birthdays
@@ -27,12 +29,12 @@ export async function initDatabaseAsync(): Promise<void> {
  * Async version of ensureDefaultChatGroup for PostgreSQL.
  */
 export async function ensureDefaultChatGroupAsync(): Promise<void> {
-  const settings = await queryOne<{ class_name: string; delegate_name: string }>(
+  const settings = await queryOne<{ className: string; delegateName: string }>(
     'SELECT class_name, delegate_name FROM settings WHERE id = 1'
   );
 
-  const delegateName = settings?.delegate_name || 'Délégué';
-  const className = settings?.class_name || 'La classe';
+  const delegateName = settings?.delegateName || 'Délégué';
+  const className = settings?.className || 'La classe';
 
   let delegate = await queryOne<{ id: number }>(`SELECT id FROM chat_users WHERE kind = 'delegate'`);
   if (!delegate) {
@@ -45,10 +47,10 @@ export async function ensureDefaultChatGroupAsync(): Promise<void> {
     await execute('UPDATE chat_users SET display_name = $1 WHERE id = $2', [delegateName, delegate.id]);
   }
 
-  let conversation = await queryOne<{ id: number }>(`SELECT id FROM chat_conversations WHERE is_group = 1 LIMIT 1`);
+  let conversation = await queryOne<{ id: number }>(`SELECT id FROM chat_conversations WHERE is_group = TRUE LIMIT 1`);
   if (!conversation) {
     const inserted = await execute(
-      `INSERT INTO chat_conversations (title, is_group, created_by) VALUES ($1, 1, $2) RETURNING id`,
+      `INSERT INTO chat_conversations (title, is_group, created_by) VALUES ($1, TRUE, $2) RETURNING id`,
       [`${className} — Groupe`, delegate!.id]
     );
     conversation = { id: inserted.lastInsertId as number };

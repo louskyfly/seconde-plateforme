@@ -394,6 +394,7 @@ function ensureColumn(db: Database.Database, table: string, column: string, defi
   );
   if (!columns.includes(column)) {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
 }
 
 /**
@@ -738,7 +739,6 @@ async function seedBirthdaysAsync(): Promise<void> {
     );
   }
 console.log(`[seed] ${eleves.length} anniversaires injectés`);
-}
 }
 
 async function ensureColumnAsync(table: string, column: string, definition: string): Promise<void> {

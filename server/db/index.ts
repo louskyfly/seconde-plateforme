@@ -1,8 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import { pool, query, queryOne, execute, transaction, close } from './pg.js';
 import { initDatabase } from './schema.js';
+
+const require = createRequire(import.meta.url);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +15,11 @@ const RENDER_DISK_PATH = '/var/data';
 
 let dbType: 'postgres' | 'sqlite' = 'sqlite';
 let dbPathValue = DEFAULT_DB_PATH;
-let isPersistent = false;
+export let isPersistentStorage = false;
+
+function hasPostgresConfig(): boolean {
+  return Boolean(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST);
+}
 
 function candidatePaths(): string[] {
   const candidates: string[] = [];
@@ -27,6 +34,14 @@ async function initializePostgres(): Promise<void> {
   await pool.query('SELECT 1');
   const { POSTGRES_SCHEMA } = await import('./postgres-schema.js');
   await pool.query(POSTGRES_SCHEMA);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      expires_at BIGINT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+  `);
   console.log('PostgreSQL connected and schema initialized');
 }
 
@@ -51,30 +66,28 @@ function initializeSqlite(): { dbPath: string; durable: boolean } {
   );
 }
 
-export const isPersistentStorage = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST
-  ? true
-  : false;
-
 export async function initializeDatabase(): Promise<void> {
-  const usePostgres = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST;
-
-  if (usePostgres) {
+  if (hasPostgresConfig()) {
     try {
       await initializePostgres();
+      isPersistentStorage = true;
       return;
     } catch (err) {
-      console.warn('PostgreSQL not available, falling back to SQLite:', (err as Error).message);
+      throw new Error(`Connexion PostgreSQL impossible : ${(err as Error).message}`);
     }
   }
 
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('DATABASE_URL ou SUPABASE_DB_URL est obligatoire en production pour garantir la persistance des données.');
+  }
+
   const sqlite = initializeSqlite();
+  isPersistentStorage = sqlite.durable;
   console.log(`Using SQLite database: ${sqlite.dbPath} (persistent: ${sqlite.durable})`);
 }
 
 export function isPostgres(): boolean {
-  return process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || process.env.PGHOST
-    ? true
-    : false;
+  return hasPostgresConfig();
 }
 
 export function isSqlite(): boolean {
@@ -98,7 +111,7 @@ function getSyncDb(): any {
   }
 
   if (!_sqliteDb) {
-    const { default: Database } = require('better-sqlite3');
+    const Database = require('better-sqlite3');
     const fs = require('fs');
     const path = require('path');
     
@@ -118,7 +131,6 @@ function getSyncDb(): any {
     for (const candidate of candidates) {
       try {
         fs.mkdirSync(path.dirname(candidate), { recursive: true });
-        const { default: Database } = require('better-sqlite3');
         const db = new Database(candidate);
         db.pragma('journal_mode = WAL');
         db.pragma('foreign_keys = ON');

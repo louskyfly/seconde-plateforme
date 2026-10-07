@@ -17,6 +17,7 @@ data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 data/backups/
+data/*sauvegarde*.json
 
 # Logs
 logs/

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query, execute, queryOne } from '../db/index.js';
+import { pool, query, execute, queryOne } from '../db/index.js';
 import { listBackups } from '../db/backup.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -56,14 +56,18 @@ router.get('/overview', async (req, res) => {
 
 router.get('/export', async (req, res) => {
   try {
-    const tables = await query(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    ) as { name: string }[];
+    const tablesResult = await pool.query<{ name: string }>(
+      `SELECT tablename AS name
+       FROM pg_catalog.pg_tables
+       WHERE schemaname = current_schema()
+       ORDER BY tablename`
+    );
 
     const data: Record<string, any[]> = {};
-    for (const { name } of tables) {
-      const rows = await query(`SELECT * FROM "${name}"`);
-      data[name] = rows;
+    for (const { name } of tablesResult.rows) {
+      const quotedName = `"${name.replace(/"/g, '""')}"`;
+      const result = await pool.query(`SELECT * FROM ${quotedName}`);
+      data[name] = result.rows;
     }
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');

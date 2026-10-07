@@ -14,7 +14,7 @@ interface StudentRow {
 interface GroupRow {
   id: number;
   name: string;
-  is_private: number;
+  is_private: boolean;
   status: string;
   created_by_fingerprint: string | null;
   validated_at: string | null;
@@ -248,7 +248,7 @@ router.post('/groups', async (req, res) => {
 
     const result = await execute(
       'INSERT INTO student_groups (name, is_private, status, created_by_fingerprint) VALUES ($1, $2, $3, $4) RETURNING id',
-      [name, req.body?.is_private ? 1 : 0, 'en_attente', signataire]
+      [name, Boolean(req.body?.is_private), 'en_attente', signataire]
     );
 
     const id = Number(result.lastInsertId);

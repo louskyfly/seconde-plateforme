@@ -44,7 +44,7 @@ async function getDelegateUser(): Promise<ChatUser> {
 }
 
 async function getDefaultGroup(): Promise<Conversation | undefined> {
-  return queryOne<Conversation>('SELECT id, title, is_group FROM chat_conversations WHERE is_group = 1 ORDER BY id LIMIT 1');
+  return queryOne<Conversation>('SELECT id, title, is_group FROM chat_conversations WHERE is_group = TRUE ORDER BY id LIMIT 1');
 }
 
 async function isMember(conversationId: number, userId: number): Promise<boolean> {

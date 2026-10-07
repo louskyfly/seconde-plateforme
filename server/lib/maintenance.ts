@@ -14,7 +14,7 @@ export interface MaintenanceState {
 
 interface MaintenanceRow {
   id: number;
-  active: number;
+  active: boolean;
   message: string | null;
   activated_by: string | null;
   activated_at: string | null;
@@ -39,7 +39,7 @@ export async function getMaintenanceState(): Promise<MaintenanceState> {
   }
 
   return {
-    active: row.active === 1,
+    active: row.active,
     message: row.message?.trim() || DEFAULT_MAINTENANCE_MESSAGE,
     activated_by: row.activated_by,
     activated_at: row.activated_at,
@@ -50,7 +50,7 @@ export async function getMaintenanceState(): Promise<MaintenanceState> {
 
 export async function activateMaintenance(by: string, message?: string): Promise<MaintenanceState> {
   await execute(
-    `INSERT INTO maintenance_log (active, message, activated_by) VALUES (1, $1, $2)`,
+    `INSERT INTO maintenance_log (active, message, activated_by) VALUES (TRUE, $1, $2)`,
     [message?.trim() || DEFAULT_MAINTENANCE_MESSAGE, by]
   );
 
@@ -61,7 +61,7 @@ export async function activateMaintenance(by: string, message?: string): Promise
 export async function deactivateMaintenance(by: string): Promise<MaintenanceState> {
   await execute(
     `INSERT INTO maintenance_log (active, message, activated_by, deactivated_by, deactivated_at)
-     VALUES (0, NULL, $1, $2, CURRENT_TIMESTAMP)`,
+    VALUES (FALSE, NULL, $1, $2, CURRENT_TIMESTAMP)`,
     [by, by]
   );
 

@@ -19,7 +19,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 export async function checkRateLimit(ip: string): Promise<boolean> {
   const row = await queryOne<{ count: number }>(
     `SELECT COUNT(*) AS count FROM admin_login_attempts
-     WHERE ip_address = $1 AND success = 0 AND attempted_at > CURRENT_TIMESTAMP - INTERVAL '15 minutes'`,
+    WHERE ip_address = $1 AND success = FALSE AND attempted_at > CURRENT_TIMESTAMP - INTERVAL '15 minutes'`,
     [ip]
   );
 
@@ -29,8 +29,8 @@ export async function checkRateLimit(ip: string): Promise<boolean> {
 export async function recordAttempt(ip: string, success: boolean): Promise<void> {
   if (!success) {
     await execute(
-      'INSERT INTO admin_login_attempts (ip_address, success) VALUES ($1, $2)',
-      [ip, 0]
+      'INSERT INTO admin_login_attempts (ip_address, success) VALUES ($1, FALSE)',
+      [ip]
     );
   }
 }

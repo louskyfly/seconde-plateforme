@@ -30,7 +30,7 @@ router.get('/mine', async (req, res) => {
     res.json(
       messages.map((msg) => ({
         ...msg,
-        author_name: msg.anonymous === 1 ? null : msg.author_name,
+        author_name: msg.anonymous === true ? null : msg.author_name,
         delegate_name: delegateName || null,
       }))
     );
@@ -45,7 +45,7 @@ router.get('/', requireAuth, async (req, res) => {
     const messages = await query('SELECT * FROM messages ORDER BY created_at DESC') as any[];
     const sanitized = messages.map((msg) => ({
       ...msg,
-      author_name: msg.anonymous === 1 ? null : msg.author_name,
+      author_name: msg.anonymous === true ? null : msg.author_name,
     }));
     for (const msg of sanitized) delete msg.fingerprint;
     res.json(sanitized);
@@ -63,7 +63,7 @@ router.post('/', async (req, res) => {
       return;
     }
 
-    const isAnonymous = anonymous ? 1 : 0;
+    const isAnonymous = Boolean(anonymous);
     const senderId = typeof fingerprint === 'string' ? fingerprint.trim().slice(0, 64) : '';
 
     const author = cleanFirstName(author_name);
@@ -84,13 +84,13 @@ router.post('/', async (req, res) => {
       ]
     );
 
-    const message = await queryOne<{ id: number; content: string; category: string; anonymous: number; author_name: string | null; fingerprint: string | null; status: string | null; delegate_reply: string | null; replied_at: string | null; response_read_at: string | null; created_at: string }>('SELECT * FROM messages WHERE id = $1', [result.lastInsertId]);
+    const message = await queryOne<{ id: number; content: string; category: string; anonymous: boolean; author_name: string | null; fingerprint: string | null; status: string | null; delegate_reply: string | null; replied_at: string | null; response_read_at: string | null; created_at: string }>('SELECT * FROM messages WHERE id = $1', [result.lastInsertId]);
     const settings2 = await queryOne<{ delegate_name: string }>('SELECT delegate_name FROM settings WHERE id = 1');
     if (message) {
       const { fingerprint: _fingerprint, ...rest } = message;
       const sanitized = {
         ...rest,
-        author_name: message.anonymous === 1 ? null : message.author_name,
+        author_name: message.anonymous === true ? null : message.author_name,
         delegate_name: settings2?.delegate_name || null,
       };
       res.status(201).json(sanitized);

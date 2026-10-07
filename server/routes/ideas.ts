@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
     const ideas = await query('SELECT * FROM ideas ORDER BY created_at DESC') as any[];
     const sanitized = ideas.map((idea) => ({
       ...idea,
-      author_name: idea.anonymous === 1 ? null : idea.author_name,
+      author_name: idea.anonymous === true ? null : idea.author_name,
     }));
     res.json(sanitized);
   } catch (err) {
@@ -170,7 +170,7 @@ router.post('/', async (req, res) => {
     }
 
     const sender = !anonymous && fingerprint ? fingerprint.trim().slice(0, 64) : null;
-    const isAnon = anonymous ? 1 : 0;
+    const isAnon = Boolean(anonymous);
 
     const result = await execute(
       `INSERT INTO ideas (content, author_name, anonymous, fingerprint, status, created_at)
@@ -179,7 +179,7 @@ router.post('/', async (req, res) => {
     );
 
     const ideaId = Number(result.lastInsertId);
-    const idea = await queryOne<{ id: number; content: string; author_name: string | null; anonymous: number; fingerprint: string | null; status: string; created_at: string }>('SELECT * FROM ideas WHERE id = $1', [result.lastInsertId]);
+    const idea = await queryOne<{ id: number; content: string; author_name: string | null; anonymous: boolean; fingerprint: string | null; status: string; created_at: string }>('SELECT * FROM ideas WHERE id = $1', [result.lastInsertId]);
 
     await execute(
       'INSERT INTO admin_log (action, target_type, target_id, detail) VALUES ($1, $2, $3, $4)',

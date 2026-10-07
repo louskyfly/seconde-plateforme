@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
     const announcements = await query(
       isDelegate
         ? 'SELECT * FROM announcements ORDER BY created_at DESC'
-        : 'SELECT * FROM announcements WHERE published = 1 ORDER BY created_at DESC'
+        : 'SELECT * FROM announcements WHERE published = TRUE ORDER BY created_at DESC'
     ) as any[];
 
     const counts = await query(
@@ -62,7 +62,7 @@ router.post('/', requireAuth, async (req, res) => {
       res.status(400).json({ error: 'Titre et description requis' });
       return;
     }
-    const isPublished = published === undefined ? 1 : published ? 1 : 0;
+    const isPublished = published === undefined ? true : Boolean(published);
 
     const result = await execute(
       `INSERT INTO announcements (title, description, category, importance, author, attachment_url, image, published)
@@ -81,7 +81,7 @@ router.post('/', requireAuth, async (req, res) => {
 
     const announcement = await queryOne('SELECT * FROM announcements WHERE id = $1', [result.lastInsertId]);
 
-    if (announcement && (announcement as any).published === 1) {
+    if (announcement && (announcement as any).published === true) {
       sendPushToAll({
         title: '📢 Nouvelle annonce',
         body: (announcement as any).title,
@@ -185,7 +185,7 @@ router.put('/:id', requireAuth, async (req, res) => {
         author?.trim() ?? null,
         attachment_url !== undefined ? attachment_url : (existing as any).attachment_url,
         image !== undefined ? image : (existing as any).image,
-        published !== undefined ? published : null,
+        published !== undefined ? Boolean(published) : null,
         id
       ]
     );

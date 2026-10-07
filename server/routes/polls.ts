@@ -7,10 +7,10 @@ import { cleanText } from '../lib/files.js';
 interface PollRow {
   id: number;
   question: string;
-  allow_multiple: number;
-  show_results: number;
-  anonymous: number;
-  active: number;
+  allow_multiple: boolean;
+  show_results: boolean;
+  anonymous: boolean;
+  active: boolean;
   closed_at: string | null;
   created_at: string;
 }
@@ -46,20 +46,20 @@ interface PollOptionVoteRow {
 
 const router = Router();
 
-function toFlag(value: unknown, defaultValue: 0 | 1): 0 | 1 {
+function toFlag(value: unknown, defaultValue: boolean): boolean {
   if (value === undefined || value === null || value === '') return defaultValue;
-  if (typeof value === 'boolean') return value ? 1 : 0;
-  if (typeof value === 'number') return value ? 1 : 0;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
   const text = String(value).toLowerCase();
-  if (text === 'false' || text === '0' || text === 'non' || text === 'off') return 0;
-  return 1;
+  if (text === 'false' || text === '0' || text === 'non' || text === 'off') return false;
+  return true;
 }
 
 router.get('/', async (req, res) => {
   try {
     const fingerprint = (req.query.fingerprint as string) || '';
 
-    const polls = await query<PollRow>('SELECT * FROM polls WHERE active = 1 ORDER BY created_at DESC');
+    const polls = await query<PollRow>('SELECT * FROM polls WHERE active = TRUE ORDER BY created_at DESC');
 
     if (polls.length === 0) {
       res.json([]);
@@ -164,7 +164,7 @@ router.post('/', requireAuth, async (req, res) => {
       const pollResult = await client.query(
         `INSERT INTO polls (question, allow_multiple, show_results, anonymous)
          VALUES ($1, $2, $3, $4) RETURNING id`,
-        [question.trim(), toFlag(allow_multiple, 0), toFlag(show_results, 1), toFlag(anonymous, 1)]
+        [question.trim(), toFlag(allow_multiple, false), toFlag(show_results, true), toFlag(anonymous, true)]
       );
 
       const pollId = Number(pollResult.rows[0].id);
@@ -325,11 +325,11 @@ router.put('/:id', requireAuth, async (req, res) => {
         }
       }
 
-      const activeVal = req.body.active !== undefined ? (req.body.active ? 1 : 0) : null;
-      const allowMultipleVal = req.body.allow_multiple !== undefined ? toFlag(req.body.allow_multiple, 0) : null;
-      const showResultsVal = req.body.show_results !== undefined ? toFlag(req.body.show_results, 0) : null;
-      const anonymousVal = req.body.anonymous !== undefined ? toFlag(req.body.anonymous, 0) : null;
-      const closedAtVal = req.body.active !== undefined && !req.body.active ? 1 : req.body.active !== undefined && req.body.active ? 0 : null;
+      const activeVal = req.body.active !== undefined ? Boolean(req.body.active) : null;
+      const allowMultipleVal = req.body.allow_multiple !== undefined ? toFlag(req.body.allow_multiple, false) : null;
+      const showResultsVal = req.body.show_results !== undefined ? toFlag(req.body.show_results, false) : null;
+      const anonymousVal = req.body.anonymous !== undefined ? toFlag(req.body.anonymous, false) : null;
+      const closedAtVal = req.body.active !== undefined ? !Boolean(req.body.active) : null;
 
       await client.query(
         `UPDATE polls SET
@@ -338,9 +338,9 @@ router.put('/:id', requireAuth, async (req, res) => {
            allow_multiple = COALESCE($3, allow_multiple),
            show_results = COALESCE($4, show_results),
            anonymous = COALESCE($5, anonymous),
-           closed_at = CASE WHEN $6 = 1 AND active = 1 THEN CURRENT_TIMESTAMP
-                            WHEN $6 = 0 THEN NULL ELSE closed_at END
-         WHERE id = $6`,
+           closed_at = CASE WHEN $6 IS TRUE AND active IS TRUE THEN CURRENT_TIMESTAMP
+                            WHEN $6 IS FALSE THEN NULL ELSE closed_at END
+         WHERE id = $7`,
         [nextQuestion || null, activeVal, allowMultipleVal, showResultsVal, anonymousVal, closedAtVal, pollId]
       );
     });

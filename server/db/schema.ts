@@ -659,10 +659,10 @@ export async function ensureDefaultChatGroupAsync(): Promise<void> {
     await execute('UPDATE chat_users SET display_name = $1 WHERE id = $2', [delegateName, delegate.id]);
   }
 
-  let conversation = await queryOne<{ id: number }>(`SELECT id FROM chat_conversations WHERE is_group = 1 LIMIT 1`);
+  let conversation = await queryOne<{ id: number }>(`SELECT id FROM chat_conversations WHERE is_group = TRUE LIMIT 1`);
   if (!conversation) {
     const inserted = await execute(
-      `INSERT INTO chat_conversations (title, is_group, created_by) VALUES ($1, 1, $2) RETURNING id`,
+      `INSERT INTO chat_conversations (title, is_group, created_by) VALUES ($1, TRUE, $2) RETURNING id`,
       [`${className} — Groupe`, delegate!.id]
     );
     conversation = { id: inserted.lastInsertId as number };

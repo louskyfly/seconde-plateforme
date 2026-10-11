@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redirection...</title>
+    <script>
+      (function () {
+        // Récupère le chemin demandé (ex: /seconde-plateforme/login)
+        var path = window.location.pathname;
+        var search = window.location.search;
+        
+        // Si on est sur GitHub Pages (sous-dossier), on retire le préfixe
+        var basePath = '/seconde-plateforme';
+        if (path.startsWith(basePath)) {
+          path = path.slice(basePath.length);
+        }
+        
+        // Redirige vers la racine avec le chemin en hash
+        // L'app React Router gérera le hash
+        window.location.href = basePath + '/?redirect=' + encodeURIComponent(path + search);
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirection en cours...</p>
+  </body>
+</html>

@@ -122,3 +122,213 @@ input:focus, textarea:focus, select:focus {
     display: none !important;
   }
 }
+
+/* Thème Nuit (bleu nuit élégant) */
+html[data-season="nuit"] {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-card: #1e293b;
+  --bg-input: #0f172a;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-color: #334155;
+  --accent-color: #3b82f6;
+  --accent-hover: #2563eb;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+}
+
+html[data-season="nuit"] body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+html[data-season="nuit"] .bg-white,
+html[data-season="nuit"] .bg-gray-50,
+html[data-season="nuit"] .bg-gray-100 {
+  background-color: var(--bg-card) !important;
+}
+
+html[data-season="nuit"] .bg-gray-200,
+html[data-season="nuit"] .bg-gray-300,
+html[data-season="nuit"] .bg-gray-400 {
+  background-color: var(--bg-secondary) !important;
+}
+
+html[data-season="nuit"] .text-gray-900,
+html[data-season="nuit"] .text-gray-800,
+html[data-season="nuit"] .text-gray-700 {
+  color: var(--text-primary) !important;
+}
+
+html[data-season="nuit"] .text-gray-600,
+html[data-season="nuit"] .text-gray-500 {
+  color: var(--text-secondary) !important;
+}
+
+html[data-season="nuit"] .text-gray-400 {
+  color: var(--text-muted) !important;
+}
+
+html[data-season="nuit"] .border-gray-100,
+html[data-season="nuit"] .border-gray-200,
+html[data-season="nuit"] .border-gray-300 {
+  border-color: var(--border-color) !important;
+}
+
+html[data-season="nuit"] .border-blue-500 {
+  border-color: var(--accent-color) !important;
+}
+
+html[data-season="nuit"] .shadow-sm,
+html[data-season="nuit"] .shadow-md,
+html[data-season="nuit"] .shadow-lg,
+html[data-season="nuit"] .shadow-xl {
+  box-shadow: 0 1px 3px var(--shadow-color), 0 1px 2px var(--shadow-color) !important;
+}
+
+html[data-season="nuit"] input,
+html[data-season="nuit"] textarea,
+html[data-season="nuit"] select {
+  background-color: var(--bg-input) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+html[data-season="nuit"] input:focus,
+html[data-season="nuit"] textarea:focus,
+html[data-season="nuit"] select:focus {
+  border-color: var(--accent-color) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-season="nuit"] input::placeholder,
+html[data-season="nuit"] textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
+html[data-season="nuit"] .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-season="nuit"] .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+}
+
+html[data-season="nuit"] .text-blue-700,
+html[data-season="nuit"] .text-blue-800 {
+  color: #93c5fd !important;
+}
+
+html[data-season="nuit"] .bg-green-100 {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
+html[data-season="nuit"] .text-green-700 {
+  color: #86efac !important;
+}
+
+html[data-season="nuit"] .bg-yellow-100 {
+  background-color: rgba(234, 179, 8, 0.15) !important;
+}
+
+html[data-season="nuit"] .text-yellow-700 {
+  color: #fde047 !important;
+}
+
+html[data-season="nuit"] .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+
+html[data-season="nuit"] .text-red-700 {
+  color: #fca5a5 !important;
+}
+
+html[data-season="nuit"] .bg-purple-100 {
+  background-color: rgba(168, 85, 247, 0.15) !important;
+}
+
+html[data-season="nuit"] .text-purple-700 {
+  color: #d8b4fe !important;
+}
+
+html[data-season="nuit"] .hover\:bg-gray-50:hover,
+html[data-season="nuit"] .hover\:bg-gray-100:hover {
+  background-color: var(--bg-secondary) !important;
+}
+
+html[data-season="nuit"] .hover\:bg-blue-50:hover {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+html[data-season="nuit"] .bg-blue-600 {
+  background-color: var(--accent-color) !important;
+}
+
+html[data-season="nuit"] .hover\:bg-blue-700:hover {
+  background-color: var(--accent-hover) !important;
+}
+
+html[data-season="nuit"] .bg-gray-600 {
+  background-color: #475569 !important;
+}
+
+html[data-season="nuit"] .hover\:bg-gray-700:hover {
+  background-color: #334155 !important;
+}
+
+html[data-season="nuit"] .bg-red-600 {
+  background-color: #dc2626 !important;
+}
+
+html[data-season="nuit"] .hover\:bg-red-700:hover {
+  background-color: #b91c1c !important;
+}
+
+html[data-season="nuit"] .text-blue-600 {
+  color: #93c5fd !important;
+}
+
+html[data-season="nuit"] .hover\:text-blue-800:hover {
+  color: #bfdbfe !important;
+}
+
+html[data-season="nuit"] .text-gray-600 {
+  color: var(--text-secondary) !important;
+}
+
+html[data-season="nuit"] .placeholder-gray-400::placeholder {
+  color: var(--text-muted) !important;
+}
+
+html[data-season="nuit"] .divide-gray-100 > * + * {
+  border-color: var(--border-color) !important;
+}
+
+html[data-season="nuit"] .divide-gray-200 > * + * {
+  border-color: var(--border-color) !important;
+}
+
+html[data-season="nuit"] .bg-gray-500\/50 {
+  background-color: rgba(100, 116, 139, 0.5) !important;
+}
+
+html[data-season="nuit"] .bg-black\/50 {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+
+html[data-season="nuit"] .text-gray-300 {
+  color: var(--text-secondary) !important;
+}
+
+html[data-season="nuit"] .text-gray-400 {
+  color: var(--text-muted) !important;
+}
+
+html[data-season="nuit"] .ring-blue-500\/1a {
+  --tw-ring-color: rgba(59, 130, 246, 0.1) !important;
+}
+
+html[data-season="nuit"] .focus\:ring-blue-500:focus {
+  --tw-ring-color: var(--accent-color) !important;
+}

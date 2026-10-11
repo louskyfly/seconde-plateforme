@@ -4,7 +4,7 @@ export interface Settings {
   accent_color: string;
   home_info: string;
   home_image: string | null;
-  /** Thème de saison : 'aucun' | 'halloween' | 'noel' */
+  /** Thème de saison : 'aucun' | 'halloween' | 'noel' | 'nuit' */
   season_theme?: string;
 }
 

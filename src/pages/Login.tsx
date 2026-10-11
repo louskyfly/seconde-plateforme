@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '../lib/db';
 import { verifyPassword } from '../utils/password';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [password, setPassword] = useState('');
-  const [token, setToken] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const from = (location.state as { from?: Location })?.from?.pathname || '/admin';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,14 +30,8 @@ export default function Login() {
         return;
       }
 
-      // Check token if provided
-      if (token && token !== settings.delegateLinkToken) {
-        setError('Lien d\'accès invalide');
-        return;
-      }
-
-      sessionStorage.setItem('authenticated', 'true');
-      navigate('/admin');
+      sessionStorage.setItem('admin_authenticated', 'true');
+      navigate(from, { replace: true });
     } catch (e) {
       console.error('Login error:', e);
       setError('Erreur de connexion');
@@ -72,17 +68,6 @@ export default function Login() {
               required
               autoComplete="current-password"
               disabled={loading}
-            />
-          </div>
-
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Lien d'accès (optionnel)</label>
-            <input
-              type="text"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-lg"
-              placeholder="Jeton d'accès (optionnel)"
             />
           </div>
 

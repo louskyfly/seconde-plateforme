@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { db } from './lib/db';
 import Home from './pages/Home';
@@ -14,6 +14,7 @@ import Admin from './pages/Admin';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Layout from './components/Layout';
+import AdminLayout, { AdminProtectedRoute } from './components/AdminLayout';
 import './index.css';
 
 function App() {
@@ -53,10 +54,22 @@ function App() {
                 <Route path="/calendrier" element={<Calendar />} />
                 <Route path="/sondages" element={<Polls />} />
                 <Route path="/messages" element={<Messages />} />
-                <Route path="/admin" element={<Admin />} />
                 <Route path="/parametres" element={<Settings />} />
               </Routes>
             </Layout>
+          }
+        />
+        <Route
+          path="/admin/*"
+          element={
+            <AdminLayout>
+              <AdminProtectedRoute>
+                <Routes>
+                  <Route path="/" element={<Admin />} />
+                  <Route path="*" element={<Navigate to="/admin" replace />} />
+                </Routes>
+              </AdminProtectedRoute>
+            </AdminLayout>
           }
         />
       </Routes>

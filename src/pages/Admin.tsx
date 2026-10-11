@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db } from '../lib/db';
 import { useSettings } from '../hooks/useSettings';
 import { verifyPassword } from '../utils/password';
+import QRCode from 'qrcode';
 
 export default function Admin() {
   const { settings, updateSettings } = useSettings();
@@ -10,6 +11,50 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState('overview');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
+  const qrCodeRef = useRef<HTMLDivElement>(null);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  const [qrGenerating, setQrGenerating] = useState(false);
+  const [siteUrl] = useState(() => window.location.origin + '/seconde-plateforme/');
+
+  const generateQRCode = async () => {
+    if (!qrCodeRef.current) return;
+    setQrGenerating(true);
+    try {
+      const dataUrl = await QRCode.toDataURL(siteUrl, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff'
+        }
+      });
+      setQrCodeDataUrl(dataUrl);
+      qrCodeRef.current!.innerHTML = '';
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.alt = 'QR Code pour accéder au site';
+      img.className = 'w-full h-full';
+      qrCodeRef.current!.appendChild(img);
+    } catch (e) {
+      console.error('QR generation error:', e);
+      alert('Erreur lors de la génération du QR code');
+    } finally {
+      setQrGenerating(false);
+    }
+  };
+
+  const downloadQRCode = () => {
+    if (!qrCodeDataUrl) return;
+    const a = document.createElement('a');
+    a.href = qrCodeDataUrl;
+    a.download = `seconde-plateforme-qrcode-${new Date().toISOString().slice(0, 10)}.png`;
+    a.click();
+  };
+
+  const copySiteUrl = () => {
+    navigator.clipboard.writeText(siteUrl);
+    alert('Lien copié dans le presse-papiers !');
+  };
 
   useEffect(() => {
     loadAll();
@@ -231,11 +276,53 @@ export default function Admin() {
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Thème de saison</label>
                 <select value={settings?.seasonTheme} onChange={(e) => updateSettings({ seasonTheme: e.target.value })} className="w-full p-3 border border-gray-300 rounded-lg">
-                  <option value="aucun">Aucun</option>
+                  <option value="aucun">Normal</option>
                   <option value="halloween">Halloween</option>
                   <option value="noel">Noël</option>
-                  <option value="printemps">Printemps</option>
+                  <option value="nuit">Nuit (bleu nuit)</option>
                 </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h3 className="font-semibold text-gray-900 mb-4">Partager le lien du site (QR Code)</h3>
+            <div className="space-y-4">
+              <p className="text-gray-600">Générez un QR code pour partager facilement l'accès au site aux élèves.</p>
+              <div className="flex items-center gap-4">
+                <div className="bg-white p-4 border border-gray-200 rounded-lg">
+                  <div ref={qrCodeRef} className="w-48 h-48" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <input
+                    type="text"
+                    value={siteUrl}
+                    readOnly
+                    className="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={generateQRCode}
+                      disabled={qrGenerating}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {qrGenerating ? 'Génération...' : 'Générer le QR Code'}
+                    </button>
+                    <button
+                      onClick={downloadQRCode}
+                      disabled={!qrCodeDataUrl}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Télécharger
+                    </button>
+                    <button
+                      onClick={copySiteUrl}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                    >
+                      Copier le lien
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

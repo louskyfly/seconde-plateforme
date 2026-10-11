@@ -4,15 +4,16 @@
  * l'application via l'attribut `data-season` sur <html>.
  */
 
-export type SeasonTheme = 'aucun' | 'halloween' | 'noel';
+export type SeasonTheme = 'aucun' | 'halloween' | 'noel' | 'nuit';
 
-const SEASONS: SeasonTheme[] = ['aucun', 'halloween', 'noel'];
+const SEASONS: SeasonTheme[] = ['aucun', 'halloween', 'noel', 'nuit'];
 
 /** Icône d'onglet accordée au thème. */
 const FAVICONS: Record<SeasonTheme, string> = {
   aucun: '/favicon.svg',
   halloween: '/favicon-halloween.svg',
   noel: '/favicon-noel.svg',
+  nuit: '/favicon.svg',
 };
 
 export function normalizeSeasonTheme(value: unknown): SeasonTheme {
@@ -32,12 +33,10 @@ export function applySeason(theme: unknown): SeasonTheme {
   // Couleur de la barre système (PWA installée) accordée au thème
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
-    const color = value === 'halloween' ? '#2b1b3d' : value === 'noel' ? '#3a1220' : '#0a1220';
+    const color = value === 'halloween' ? '#2b1b3d' : value === 'noel' ? '#3a1220' : value === 'nuit' ? '#0f172a' : '#0a1220';
     meta.setAttribute('content', color);
   }
-  // L'icône de l'onglet suit le thème : citrouille en octobre, sapin en
-  // décembre. Sans cela, l'onglet garde l'icône bleue d'origine et on ne voit
-  // plus du tout de quel côté on est.
+  // L'icône de l'onglet suit le thème
   const icon = document.querySelector('link[rel="icon"]');
   if (icon) {
     icon.setAttribute('href', FAVICONS[value]);
@@ -49,4 +48,5 @@ export const SEASON_THEMES: { value: SeasonTheme; label: string; emoji: string; 
   { value: 'aucun', label: 'Normal', emoji: '🎨', hint: 'Le thème actuel' },
   { value: 'halloween', label: 'Halloween', emoji: '🎃', hint: 'Citrouilles, bougies, chauve-souris' },
   { value: 'noel', label: 'Noël', emoji: '🎄', hint: 'Sapins, étoiles, flocons, cadeaux' },
+  { value: 'nuit', label: 'Nuit', emoji: '🌙', hint: 'Thème bleu nuit élégant' },
 ];

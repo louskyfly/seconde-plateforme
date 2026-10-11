@@ -226,10 +226,10 @@ interface Anchor {
  * Les particules restent dans le haut de l'écran (y de 3 à 41 %) : aucune ne
  * descend volontairement sous la mi-écran, pour ne jamais empiéter sur la
  * lecture du texte. Le motif diffère par thème : flocon pour Noël, feuille
- * d'automne pour Halloween.
+ * d'automne pour Halloween, étoiles pour Nuit.
  */
-const FALL_MOTIF: Record<'halloween' | 'noel', Motif> = { halloween: 'leaf', noel: 'snow' };
-const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
+const FALL_MOTIF: Record<'halloween' | 'noel' | 'nuit', Motif> = { halloween: 'leaf', noel: 'snow', nuit: 'snow' };
+const PARTICLES: Record<'halloween' | 'noel' | 'nuit', Particle[]> = {
   halloween: [
     { x: 8, y: 6, size: 1.8, opacity: 0.7, duration: 9, delay: 0, drift: 6, color: '#c2621c' },
     { x: 24, y: 18, size: 1.4, opacity: 0.6, duration: 11, delay: 2.4, drift: -5, color: '#a3471a' },
@@ -251,6 +251,17 @@ const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
     { x: 30, y: 34, size: 1.2, opacity: 0.55, duration: 15, delay: 6.6, drift: 4, small: true },
     { x: 62, y: 38, size: 1.3, opacity: 0.55, duration: 16, delay: 7.4, drift: -3, small: true },
   ],
+  nuit: [
+    { x: 5, y: 3, size: 1.5, opacity: 0.6, duration: 14, delay: 0, drift: 2, color: '#94a3b8' },
+    { x: 18, y: 8, size: 1.2, opacity: 0.5, duration: 16, delay: 1.5, drift: -2, color: '#94a3b8' },
+    { x: 30, y: 4, size: 1.8, opacity: 0.55, duration: 14, delay: 2.5, drift: 3, color: '#94a3b8' },
+    { x: 48, y: 7, size: 1.3, opacity: 0.45, duration: 16, delay: 1.8, drift: -1, color: '#94a3b8' },
+    { x: 62, y: 3, size: 1.5, opacity: 0.5, duration: 13, delay: 1.2, drift: 2, color: '#94a3b8' },
+    { x: 78, y: 9, size: 1.1, opacity: 0.4, duration: 15, delay: 0.8, drift: -2, color: '#94a3b8' },
+    { x: 90, y: 5, size: 1.3, opacity: 0.45, duration: 14, delay: 0.5, drift: 1, color: '#94a3b8' },
+    { x: 22, y: 28, size: 0.9, opacity: 0.35, duration: 18, delay: 4.2, drift: 1.5, color: '#94a3b8', small: true },
+    { x: 65, y: 35, size: 0.8, opacity: 0.3, duration: 17, delay: 3.1, drift: -1.5, color: '#94a3b8', small: true },
+  ],
 };
 
 /**
@@ -258,7 +269,7 @@ const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
  * ils ne bougent jamais, donc ils ne peuvent pas gêner la lecture ni saccader.
  * Le décor ne touche pas aux boutons, seulement aux bords de l'écran.
  */
-const ANCHORS: Record<'halloween' | 'noel', Anchor[]> = {
+const ANCHORS: Record<'halloween' | 'noel' | 'nuit', Anchor[]> = {
   halloween: [
     { motif: 'web', size: 20, opacity: 0.3, fromRight: -4, fromTop: -7 },
     { motif: 'web', size: 15, opacity: 0.24, fromLeft: -5, fromTop: -8, small: true },
@@ -273,6 +284,11 @@ const ANCHORS: Record<'halloween' | 'noel', Anchor[]> = {
     { motif: 'fir', size: 14, opacity: 0.85, fromRight: 3, fromBottom: -2 },
     { motif: 'gift', size: 7, opacity: 0.75, fromLeft: 18, fromBottom: 0, small: true },
     { motif: 'gift', size: 7, opacity: 0.7, fromRight: 4, fromBottom: 0, small: true },
+  ],
+  nuit: [
+    // Thème nuit : très discret, juste une petite étoile dans le coin
+    { motif: 'snow', size: 8, opacity: 0.3, fromRight: 3, fromTop: 3, small: true },
+    { motif: 'snow', size: 6, opacity: 0.2, fromLeft: 3, fromBottom: 3, small: true },
   ],
 };
 

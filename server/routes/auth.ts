@@ -7,7 +7,11 @@ const router = Router();
 
 router.post('/login', async (req, res) => {
   try {
-    const { password, token } = req.body;
+    // Support both body and query for token (delegated link)
+    const { password, token: tokenBody } = req.body;
+    const tokenQuery = req.query.token;
+    const token = tokenBody || tokenQuery;
+    
     if (!password || typeof password !== 'string') {
       res.status(400).json({ error: 'Mot de passe requis' });
       return;

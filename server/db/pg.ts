@@ -41,20 +41,13 @@ pool.on('error', (err) => {
   console.error('Unexpected PostgreSQL pool error:', err);
 });
 
-function toCamelCase(str: string): string {
-  return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-}
-
+// Disable column name transformation - keep snake_case to match existing route code
 function transformRow<T>(row: Record<string, unknown>): T {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(row)) {
-    result[toCamelCase(key)] = value;
-  }
-  return result as T;
+  return row as T;
 }
 
 function transformRows<T>(rows: Record<string, unknown>[]): T[] {
-  return rows.map((row): T => transformRow<T>(row));
+  return rows as T[];
 }
 
 export async function query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {

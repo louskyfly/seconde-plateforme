@@ -1,55 +1,35 @@
 import { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
-import { applyAccent } from '@/lib/accent';
-import { applySeason } from '@/lib/season';
-import type { Settings } from '@/types';
-
-let settingsCache: Settings | null = null;
-let settingsPromise: Promise<Settings> | null = null;
-
-function fetchSettings(): Promise<Settings> {
-  if (!settingsPromise) {
-    settingsPromise = api
-      .getSettings()
-      .then((s) => {
-        settingsCache = s;
-        settingsPromise = null;
-        return s;
-      })
-      .catch((err) => {
-        settingsPromise = null;
-        throw err;
-      });
-  }
-  return settingsPromise;
-}
-
-export function refreshSettings(): Promise<Settings> {
-  settingsCache = null;
-  settingsPromise = null;
-  return fetchSettings();
-}
+import { getSettings, saveSettings } from '../lib/db';
 
 export function useSettings() {
-  const [settings, setSettings] = useState<Settings | null>(settingsCache);
+  const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let alive = true;
-    const source = settingsCache ? Promise.resolve(settingsCache) : fetchSettings();
-    source
-      .then((s) => {
-        if (!alive) return;
-        setSettings(s);
-        applyAccent(s.accent_color);
-        applySeason(s.season_theme);
-      })
-      .catch(() => {})
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
+    loadSettings();
   }, []);
 
-  return { settings, loading };
+  const loadSettings = async () => {
+    try {
+      const s = await getSettings();
+      setSettings(s);
+    } catch (e) {
+      console.error('Failed to load settings:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateSettings = async (updates: Partial<any>) => {
+    try {
+      const updated = await saveSettings({ ...settings, ...updates });
+      setSettings(updated);
+      return updated;
+    } catch (e) {
+      console.error('Failed to save settings:', e);
+      throw e;
+    }
+  };
+
+  return { settings, loading, updateSettings, refreshSettings: loadSettings };
 }

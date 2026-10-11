@@ -53,8 +53,8 @@ router.get('/', async (req, res) => {
     const seulementAVenir = req.query.upcoming !== 'false';
     const sessions = await query<RevisionSessionRow>(
       `SELECT * FROM revision_sessions
-       ${seulementAVenir ? "WHERE date >= date('now')" : ''}
-       ORDER BY date ASC, time IS NULL, time ASC`
+       ${seulementAVenir ? "WHERE date >= CURRENT_DATE" : ''}
+       ORDER BY date ASC, CASE WHEN time IS NULL THEN 1 ELSE 0 END, time ASC`
     );
 
     const estDelegue = req.session?.authenticated === true;

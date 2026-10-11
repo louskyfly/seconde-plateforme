@@ -1,25 +1,22 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import { fileURLToPath, URL } from "node:url";
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
-  },
   server: {
+    host: true,
     port: 5173,
-    proxy: {
-      "/api": {
-        target: "http://localhost:3001",
-        changeOrigin: true,
+  },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      input: {
+        main: 'index.html',
       },
     },
   },
-  build: {
-    outDir: "dist/public",
-    emptyOutDir: true,
+  define: {
+    'import.meta.env.VITE_APP_NAME': JSON.stringify('Seconde Platform'),
   },
+  publicDir: 'public',
 });

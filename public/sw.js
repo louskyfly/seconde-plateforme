@@ -1,124 +1,124 @@
-const CACHE_NAME = "seconde-shell-v4";
-const APP_SHELL = ["/", "/index.html", "/manifest.json"];
+const CACHE_NAME = 'seconde-platform-v1';
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon.svg',
+];
 
-self.addEventListener("install", (event) => {
+// Install event - cache static assets
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
   );
+  self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
+// Activate event - clean old caches
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    })
   );
+  self.clients.claim();
 });
 
-self.addEventListener("fetch", (event) => {
+// Fetch event - serve from cache, fallback to network
+self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
 
-  if (request.method !== "GET") return;
-  if (url.origin !== location.origin) return;
+  // Skip non-GET requests
+  if (request.method !== 'GET') return;
 
-  // Les réponses d'API ne sont JAMAIS mises en cache.
-  //
-  // Elles l'étaient en networkFirst : quand le réseau échouait, le service
-  // worker renvoyait la dernière réponse connue. Pendant ce temps la base avait
-  // déjà été réinitialisée, et l'élève voyait d'anciennes données — l'inverse
-  // exact du problème signalé. Mieux vaut une erreur franche (l'UI affiche
-  // désormais « Réessayer ») que des données périmées présentées comme vraies.
-  if (url.pathname.startsWith("/api/")) return;
+  // Skip chrome-extension and other non-http(s) schemes
+  if (!request.url.startsWith('http')) return;
 
-  if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
-    return;
-  }
-
-  event.respondWith(cacheFirst(request));
-});
-
-async function networkFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch (error) {
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    throw error;
-  }
-}
-
-async function cacheFirst(request) {
-  const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-  const response = await fetch(request);
-  if (response.ok) {
-    cache.put(request, response.clone());
-  }
-  return response;
-}
-
-self.addEventListener("push", (event) => {
-  let data = { title: "Seconde", body: "", url: "/" };
-  try {
-    data = Object.assign(data, event.data.json());
-  } catch (e) {
-    if (event.data) data.body = event.data.text();
-  }
-  event.waitUntil(
-    (async () => {
-      // Pastille numérique sur l'icône de l'application (Android / PWA installée)
-      if (self.registration.setAppBadge) {
-        try {
-          const current = self.registration.getAppBadge ? (await self.registration.getAppBadge()) || 0 : 0;
-          await self.registration.setAppBadge(current + 1);
-        } catch (e) {
-          /* API non supportée */
-        }
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      // Return cached response if available
+      if (cachedResponse) {
+        return cachedResponse;
       }
-      await self.registration.showNotification(data.title, {
-        body: data.body,
-        icon: "/favicon.svg",
-        badge: "/favicon.svg",
-        // Remplace la notification précédente au lieu d'empiler, et la
-        // redemande à chaque nouveau message (vibration si autorisée)
-        tag: data.tag || "seconde",
-        renotify: true,
-        vibrate: [40, 30, 40],
-        data: { url: data.url || "/" },
+
+      // Otherwise fetch from network
+      return fetch(request).then((networkResponse) => {
+        // Don't cache non-successful responses
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+          return networkResponse;
+        }
+
+        // Clone response for cache
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(request, responseToCache);
+        });
+
+        return networkResponse;
+      }).catch(() => {
+        // Offline fallback for navigation requests
+        if (request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+        return new Response('Hors ligne', { status: 503, statusText: 'Service Unavailable' });
       });
-    })()
+    });
+  });
+});
+
+// Handle push notifications
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  const data = event.data.json();
+  const options = {
+    body: data.body,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    vibrate: [200, 100, 200],
+    data: data.url ? { url: data.url } : undefined,
+    actions: [
+      { action: 'open', title: 'Ouvrir' },
+      { action: 'close', title: 'Fermer' },
+    ],
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
   );
 });
 
-self.addEventListener("notificationclick", (event) => {
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/";
-  event.waitUntil(
-    (async () => {
-      if (self.registration.clearAppBadge) {
-        try {
-          await self.registration.clearAppBadge();
-        } catch (e) {
-          /* API non supportée */
+
+  if (event.action === 'open' && event.notification.data?.url) {
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          if (client.url === event.notification.data.url && 'focus' in client) {
+            return client.focus();
+          }
         }
-      }
-      const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-      for (const client of clientList) {
-        if ("focus" in client) {
-          if ("navigate" in client) client.navigate(url);
-          return client.focus();
-        }
-      }
-      return self.clients.openWindow(url);
-    })()
-  );
+        return clients.openWindow(event.notification.data.url);
+      })
+    );
+  }
 });
+
+// Background sync for offline actions
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-messages') {
+    event.waitUntil(syncMessages());
+  }
+});
+
+async function syncMessages() {
+  // Implement offline message sync when back online
+  console.log('Syncing messages...');
+}

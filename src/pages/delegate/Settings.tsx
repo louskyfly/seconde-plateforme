@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { useSettings, refreshSettings } from '@/hooks/useSettings';
+import { useSettings } from '../../hooks/useSettings';
 import { applyAccent } from '@/lib/accent';
 import { applySeason, normalizeSeasonTheme, SEASON_THEMES, type SeasonTheme } from '@/lib/season';
 import { fileToDataUri } from '@/lib/image';
@@ -11,7 +11,7 @@ import { Modal } from '@/components/ui/Modal';
 
 export function Settings() {
   const { token } = useParams<{ token: string }>();
-  const { settings } = useSettings();
+  const { settings, refreshSettings } = useSettings();
   const { logout } = useAuth();
   const navigate = useNavigate();
 

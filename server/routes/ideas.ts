@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
     const ideas = await query('SELECT * FROM ideas ORDER BY created_at DESC') as any[];
     const sanitized = ideas.map((idea) => ({
       ...idea,
-      author_name: idea.anonymous === 1 ? null : idea.author_name,
+      author_name: idea.anonymous ? null : idea.author_name,
     }));
     res.json(sanitized);
   } catch (err) {
@@ -148,13 +148,15 @@ router.delete('/replies/:replyId', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const { content, author_name, fingerprint, anonymous } = req.body;
-
-    if (!content || typeof content !== 'string' || !content.trim()) {
+    const { content, title, description, author_name, fingerprint, anonymous } = req.body;
+    
+    // Support both 'content' (legacy) and 'title'+'description' fields
+    const ideaContent = content?.trim() || description?.trim() || title?.trim();
+    if (!ideaContent) {
       res.status(400).json({ error: 'Contenu requis' });
       return;
     }
-
+    
     const author = anonymous ? null : cleanFirstName(author_name);
     if (!anonymous && !isValidFirstName(author!)) {
       res.status(400).json({ error: 'Un prénom est requis pour une idée signée' });
@@ -170,16 +172,16 @@ router.post('/', async (req, res) => {
     }
 
     const sender = !anonymous && fingerprint ? fingerprint.trim().slice(0, 64) : null;
-    const isAnon = anonymous ? 1 : 0;
+    const isAnon = anonymous;
 
     const result = await execute(
-      `INSERT INTO ideas (content, author_name, anonymous, fingerprint, status, created_at)
-       VALUES ($1, $2, $3, $4, 'a_etudier', CURRENT_TIMESTAMP) RETURNING id`,
-      [cleanText(content, 2000), author, isAnon, sender]
+      `INSERT INTO ideas (title, description, author_name, anonymous, fingerprint, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'a_etudier', CURRENT_TIMESTAMP) RETURNING id`,
+      [cleanText(ideaContent, 100), cleanText(ideaContent, 2000), author, isAnon, sender]
     );
 
     const ideaId = Number(result.lastInsertId);
-    const idea = await queryOne<{ id: number; content: string; author_name: string | null; anonymous: number; fingerprint: string | null; status: string; created_at: string }>('SELECT * FROM ideas WHERE id = $1', [result.lastInsertId]);
+    const idea = await queryOne<{ id: number; title: string; description: string; author_name: string | null; anonymous: boolean; fingerprint: string | null; status: string; created_at: string }>('SELECT * FROM ideas WHERE id = $1', [result.lastInsertId]);
 
     await execute(
       'INSERT INTO admin_log (action, target_type, target_id, detail) VALUES ($1, $2, $3, $4)',
@@ -209,8 +211,8 @@ router.put('/:id', requireAuth, async (req, res) => {
     }
 
     await execute(
-      `UPDATE ideas SET status = $1, delegate_response = $2, delegate_replied_at = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
-      [status, req.body.delegate_response ?? null, req.body.delegate_response ? 'NOW()' : null, id]
+      `UPDATE ideas SET status = $1, delegate_response = $2, delegate_replied_at = CASE WHEN $3 THEN NOW() ELSE NULL END, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
+      [status, req.body.delegate_response ?? null, !!req.body.delegate_response, id]
     );
 
     if (status === 'transmise' || status === 'realisee') {

@@ -1,30 +1,20 @@
 services:
   - type: web
-    name: seconde-plateforme
-    runtime: node
-    plan: free
-    buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm start
-    healthCheckPath: /api/health
-    autoDeploy: true
+    name: seconde-platform
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /sw.js
+        name: Service-Worker-Allowed
+        value: /
+      - path: /manifest.json
+        name: Content-Type
+        value: application/manifest+json
     envVars:
       - key: NODE_ENV
         value: production
-      - key: TRUST_PROXY
-        value: "1"
-      - key: CLASS_NAME
-        value: Seconde 9
-      - key: DELEGATE_NAME
-        value: Lucas
-      - key: ADMIN_PASSWORD
-        value: delegue2026
-      # La base doit vivre sur le disque persistant Render monté sur /var/data.
-      # Sans ce disque, Render part sur un plan payant et ce chemin n'existe
-      # pas : le serveur démarre quand même, mais signale clairement que les
-      # données sont éphémères (voir /api/health et les logs).
-      - key: DB_PATH
-        value: /var/data/seconde.db
-      - key: SESSION_SECRET
-        generateValue: true
-      - key: ADMIN_LINK_TOKEN
-        value: cb29d732629c

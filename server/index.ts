@@ -6,8 +6,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import db, { isPersistentStorage, isPostgres, initializeDatabase } from './db/index.js';
-import { initDatabase, ensureDefaultChatGroup, initDatabaseAsync, ensureDefaultChatGroupAsync } from './db/schema.js';
+import { initDatabase, ensureDefaultChatGroup } from './db/schema.js';
+import { initDatabaseAsync, ensureDefaultChatGroupAsync } from './db/schema-async.js';
 import { SqliteSessionStore } from './db/session-store.js';
+import { PostgresSessionStore } from './db/postgres-session-store.js';
 import { startAutoBackup } from './db/backup.js';
 import { seedDatabase } from './db/seed.js';
 import { maintenanceGate } from './middleware/maintenance.js';
@@ -82,7 +84,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     // MemoryStore (défaut) perdait la session à chaque redémarrage de Render.
-    store: new SqliteSessionStore(db),
+    store: isPostgres() ? new PostgresSessionStore() : new SqliteSessionStore(db),
     cookie: {
       httpOnly: true,
       secure: process.env.COOKIE_SECURE === 'true' ? true : ('auto' as const),

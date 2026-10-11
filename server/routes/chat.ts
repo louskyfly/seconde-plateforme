@@ -214,7 +214,7 @@ async function countUnread(conversationId: number, userId: number): Promise<numb
   );
   const row = await queryOne<{ count: number }>(
     `SELECT COUNT(*) AS count FROM chat_messages
-     WHERE conversation_id = $1 AND sender_id != $1 AND id > COALESCE($2, 0)`,
+     WHERE conversation_id = $1 AND sender_id != $2 AND id > COALESCE($3, 0)`,
     [conversationId, userId, member?.last_read_message_id ?? 0]
   );
   return Number(row?.count ?? 0);
@@ -295,12 +295,18 @@ router.get('/messages', async (req, res) => {
   try {
     const user = await findUser(req);
     if (!user) {
+      // More helpful error message
+      const fingerprint = req.query.fingerprint || req.body?.fingerprint;
+      if (!fingerprint || String(fingerprint).length < 8) {
+        res.status(403).json({ error: 'Profil inconnu', needs_profile: true, message: 'Rejoignez d\'abord le chat via /api/chat/join avec fingerprint et display_name' });
+        return;
+      }
       res.status(403).json({ error: 'Profil inconnu', needs_profile: true });
       return;
     }
     const conversation = await conversationFor(user, req.query.conversation_id);
     if (!conversation) {
-      res.status(403).json({ error: 'Accès refusé à cette conversation' });
+      res.status(403).json({ error: 'Accès refusé à cette conversation', message: 'Rejoignez d\'abord le chat via /api/chat/join' });
       return;
     }
 

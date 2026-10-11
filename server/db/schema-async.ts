@@ -1,3 +1,5 @@
+import { query, execute, queryOne } from './index.js';
+
 /**
  * Async version of initDatabase for PostgreSQL.
  * Uses the async helpers (query, execute, queryOne) from ./index.js

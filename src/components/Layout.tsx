@@ -26,7 +26,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(console.error);
+      navigator.serviceWorker.register('/seconde-plateforme/sw.js').catch(console.error);
     }
 
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -158,7 +158,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Main content */}
         <main className="lg:ml-64 flex-1 min-h-screen">
-          <div className="p-4 lg:p-6 lg:ml-64 min-h-screen">
+          <div className="p-4 lg:p-6 min-h-screen">
             {children}
           </div>
         </main>
@@ -208,7 +208,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             __html: `
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js').catch(console.error);
+                  navigator.serviceWorker.register('/seconde-plateforme/sw.js').catch(console.error);
                 });
               }
             `

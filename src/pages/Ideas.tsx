@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getFingerprint } from '../lib/db';
 import { useFingerprint } from '../hooks/useFingerprint';
-import { useFirebaseSync, Idea } from '../hooks/useFirebaseSync';
+import { useFirebaseSync } from '../hooks/useFirebaseSync';
 
 const IDEA_STATUSES = ['a_etudier', 'en_discussion', 'transmise', 'realisee', 'non_retenue'] as const;
 
@@ -52,7 +52,7 @@ export default function Ideas() {
     }
   };
 
-  const handleStatusChange = async (id: string, status: Idea['status']) => {
+  const handleStatusChange = async (id: string, status: 'a_etudier' | 'en_discussion' | 'transmise' | 'realisee' | 'non_retenue') => {
     try {
       await update(id, { status, updatedAt: Date.now() });
     } catch (e) {
@@ -141,7 +141,7 @@ export default function Ideas() {
       )}
 
       <div className="space-y-4">
-        {ideas.map((idea) => (
+        {ideas.map((idea: any) => (
           <div key={idea.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
@@ -167,7 +167,7 @@ export default function Ideas() {
               <div className="flex items-center gap-2">
                 <select
                   value={idea.status}
-                  onChange={(e) => handleStatusChange(idea.id, e.target.value as Idea['status'])}
+                  onChange={(e) => handleStatusChange(idea.id, e.target.value as 'a_etudier' | 'en_discussion' | 'transmise' | 'realisee' | 'non_retenue')}
                   className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   {['a_etudier', 'en_discussion', 'transmise', 'realisee', 'non_retenue'].map(s => (

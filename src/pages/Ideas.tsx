@@ -1,43 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
-import { db, getFingerprint } from '../lib/db';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { getFingerprint } from '../lib/db';
 import { useFingerprint } from '../hooks/useFingerprint';
-import { useSync } from '../hooks/useSync';
+import { useFirebaseSync, Idea } from '../hooks/useFirebaseSync';
 
 const IDEA_STATUSES = ['a_etudier', 'en_discussion', 'transmise', 'realisee', 'non_retenue'] as const;
 
 export default function Ideas() {
   const fingerprint = useFingerprint();
-  const [ideas, setIdeas] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [newIdea, setNewIdea] = useState({ title: '', description: '', anonymous: false });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Sync hook
-  const { isConnected, create, update, remove, forceSync, subscribe } = useSync('ideas');
+  const { data: ideasData, connected, create, update, remove } = useFirebaseSync('ideas');
 
-  // Chargement initial depuis IndexedDB (source de vérité locale)
-  useEffect(() => {
-    loadIdeas();
-  }, []);
-
-  const loadIdeas = async () => {
-    try {
-      const ideas = await db.ideas.orderBy('createdAt').reverse().toArray();
-      setIdeas(ideas);
-    } catch (e) {
-      console.error('Failed to load ideas:', e);
-      setError('Impossible de charger les idées');
-    }
-  };
-
-  // Abonnement aux mises à jour temps réel
-  useEffect(() => {
-    return subscribe(() => {
-      // Quand le sync notifie un changement, on recharge depuis IndexedDB
-      loadIdeas();
-    });
-  }, []);
+  // Convert Firebase object to array sorted by createdAt desc
+  const ideas = useMemo(() => {
+    return Object.values(ideasData || {})
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [ideasData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,13 +40,7 @@ export default function Ideas() {
         updatedAt: Date.now(),
       };
 
-      // Ajoute localement (optimiste)
-      const id = await db.ideas.add({ ...doc, createdAt: Date.now(), updatedAt: Date.now() });
-      const newIdeaObj = await db.ideas.get(id);
-      setIdeas([newIdeaObj, ...ideas]);
-
-      // Envoie au serveur de sync
-      await create({ ...doc, id });
+      await create(doc);
 
       setNewIdea({ title: '', description: '', anonymous: false });
       setShowForm(false);
@@ -77,23 +52,18 @@ export default function Ideas() {
     }
   };
 
-  const handleStatusChange = async (id: string, status: 'a_etudier' | 'en_discussion' | 'transmise' | 'realisee' | 'non_retenue') => {
+  const handleStatusChange = async (id: string, status: Idea['status']) => {
     try {
-      await db.ideas.update(id, { status, updatedAt: Date.now() });
-      setIdeas(ideas.map(i => i.id === id ? { ...i, status } : i));
       await update(id, { status, updatedAt: Date.now() });
     } catch (e) {
       console.error('Failed to update idea:', e);
       setError('Erreur lors de la mise à jour');
-      loadIdeas();
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Supprimer cette idée ?')) return;
     try {
-      await db.ideas.delete(id);
-      setIdeas(ideas.filter(i => i.id !== id));
       await remove(id);
     } catch (e) {
       console.error('Failed to delete idea:', e);
@@ -106,8 +76,8 @@ export default function Ideas() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Boîte à idées</h1>
         <div className="flex items-center gap-3">
-          <span className={`px-2 py-1 text-xs rounded-full ${isConnected ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-            {isConnected ? '🟢 Connecté' : '🟡 Hors ligne'}
+          <span className={`px-2 py-1 text-xs rounded-full ${connected ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+            {connected ? '🟢 Connecté' : '🟡 Hors ligne'}
           </span>
           <button
             onClick={() => setShowForm(true)}
@@ -191,13 +161,13 @@ export default function Ideas() {
                 <p className="text-gray-700 mt-1">{idea.description}</p>
                 <div className="flex items-center gap-4 mt-3 text-sm text-gray-500">
                   <span>Par {idea.authorName || 'Anonyme'}</span>
-                  <span>{new Date(idea.createdAt).toLocaleDateString('fr-FR')}</span>
+                  <span>{idea.createdAt ? new Date(idea.createdAt).toLocaleDateString('fr-FR') : ''}</span>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <select
                   value={idea.status}
-                  onChange={(e) => handleStatusChange(idea.id, e.target.value as 'a_etudier' | 'en_discussion' | 'transmise' | 'realisee' | 'non_retenue')}
+                  onChange={(e) => handleStatusChange(idea.id, e.target.value as Idea['status'])}
                   className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   {['a_etudier', 'en_discussion', 'transmise', 'realisee', 'non_retenue'].map(s => (

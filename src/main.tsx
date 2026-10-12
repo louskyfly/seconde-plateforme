@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Navigate, useSearchParams, useEffect } from 'react-router-dom';
+import { BrowserRouter, Navigate, useSearchParams } from 'react-router-dom';
 import App from './App';
 import './index.css';
 

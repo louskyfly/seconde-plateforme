@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db, getFingerprint } from '../lib/db';
 import { useFingerprint } from '../hooks/useFingerprint';
+import { useSync } from '../hooks/useSync';
 
 const IDEA_STATUSES = ['a_etudier', 'en_discussion', 'transmise', 'realisee', 'non_retenue'] as const;
 
@@ -12,6 +13,10 @@ export default function Ideas() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Sync hook
+  const { isConnected, create, update, remove, forceSync, subscribe } = useSync('ideas');
+
+  // Chargement initial depuis IndexedDB (source de vérité locale)
   useEffect(() => {
     loadIdeas();
   }, []);
@@ -26,6 +31,14 @@ export default function Ideas() {
     }
   };
 
+  // Abonnement aux mises à jour temps réel
+  useEffect(() => {
+    return subscribe(() => {
+      // Quand le sync notifie un changement, on recharge depuis IndexedDB
+      loadIdeas();
+    });
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -35,45 +48,53 @@ export default function Ideas() {
       const fp = getFingerprint();
       if (!newIdea.title.trim()) return;
 
-      const result = await db.ideas.add({
+      const doc = {
         title: newIdea.title.trim(),
         description: newIdea.description.trim(),
         authorName: newIdea.anonymous ? null : 'Moi',
         anonymous: newIdea.anonymous,
-        fingerprint: newIdea.anonymous ? null : fp,
-        status: 'a_etudier',
+        fingerprint: newIdea.anonymous ? null : fingerprint,
+        status: 'a_etudier' as const,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-      });
+      };
 
-      const newIdeaObj = await db.ideas.get(result);
+      // Ajoute localement (optimiste)
+      const id = await db.ideas.add({ ...doc, createdAt: Date.now(), updatedAt: Date.now() });
+      const newIdeaObj = await db.ideas.get(id);
       setIdeas([newIdeaObj, ...ideas]);
+
+      // Envoie au serveur de sync
+      await create({ ...doc, id });
+
       setNewIdea({ title: '', description: '', anonymous: false });
       setShowForm(false);
     } catch (e) {
       console.error('Failed to create idea:', e);
-      setError('Erreur lors de la création de l\'idée. Réessaie.');
+      setError('Erreur lors de la création. Réessaie.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleStatusChange = async (id: number, status: 'a_etudier' | 'en_discussion' | 'transmise' | 'realisee' | 'non_retenue') => {
+  const handleStatusChange = async (id: string, status: 'a_etudier' | 'en_discussion' | 'transmise' | 'realisee' | 'non_retenue') => {
     try {
       await db.ideas.update(id, { status, updatedAt: Date.now() });
       setIdeas(ideas.map(i => i.id === id ? { ...i, status } : i));
+      await update(id, { status, updatedAt: Date.now() });
     } catch (e) {
       console.error('Failed to update idea:', e);
       setError('Erreur lors de la mise à jour');
-      loadIdeas(); // reload to sync
+      loadIdeas();
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Supprimer cette idée ?')) return;
     try {
       await db.ideas.delete(id);
       setIdeas(ideas.filter(i => i.id !== id));
+      await remove(id);
     } catch (e) {
       console.error('Failed to delete idea:', e);
       setError('Erreur lors de la suppression');
@@ -84,12 +105,17 @@ export default function Ideas() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Boîte à idées</h1>
-        <button
-          onClick={() => setShowForm(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700"
-        >
-          + Nouvelle idée
-        </button>
+        <div className="flex items-center gap-3">
+          <span className={`px-2 py-1 text-xs rounded-full ${isConnected ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+            {isConnected ? '🟢 Connecté' : '🟡 Hors ligne'}
+          </span>
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700"
+          >
+            + Nouvelle idée
+          </button>
+        </div>
       </div>
 
       {error && (

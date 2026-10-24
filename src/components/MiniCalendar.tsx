@@ -1,3 +1,4 @@
+import { isControle } from '@/lib/utils';
 import { useMemo, useState } from 'react';
 import type { Event } from '@/types';
 
@@ -51,6 +52,7 @@ export function MiniCalendar({ events, selected, onSelectDay, compact = false }:
   const [view, setView] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
 
   const eventDays = useEventDays(events);
+  const testDays = useEventDays(events.filter(isControle));
 
   // Grille de 6 semaines : les jours du mois Neighbor, complétés au début et
   // à la fin, comme un vrai calendrier papier.
@@ -65,13 +67,14 @@ export function MiniCalendar({ events, selected, onSelectDay, compact = false }:
         date,
         inMonth: date.getMonth() === view.getMonth(),
         hasEvent: eventDays.has(dayKey(date.getFullYear(), date.getMonth(), date.getDate())),
+        hasTest: testDays.has(dayKey(date.getFullYear(), date.getMonth(), date.getDate())),
         isToday:
           date.getDate() === today.getDate() &&
           date.getMonth() === today.getMonth() &&
           date.getFullYear() === today.getFullYear(),
       };
     });
-  }, [view, eventDays, today]);
+  }, [view, eventDays, testDays, today]);
 
   const shift = (delta: number) => setView(new Date(view.getFullYear(), view.getMonth() + delta, 1));
   const sameDay = (a: Date, b: Date) =>
@@ -115,7 +118,7 @@ export function MiniCalendar({ events, selected, onSelectDay, compact = false }:
       </div>
 
       <div className="grid grid-cols-7 gap-0.5">
-        {cells.map(({ date, inMonth, hasEvent, isToday }) => {
+        {cells.map(({ date, inMonth, hasEvent, hasTest, isToday }) => {
           const isSelected = selected ? sameDay(date, selected) : false;
           return (
             <button
@@ -134,6 +137,8 @@ export function MiniCalendar({ events, selected, onSelectDay, compact = false }:
                 className={
                   isSelected
                     ? 'font-bold leading-none'
+                    : hasTest
+                      ? 'font-extrabold leading-none text-red-600 dark:text-red-400'
                     : hasEvent
                       ? 'font-extrabold leading-none text-indigo-600 dark:text-indigo-400'
                       : 'leading-none'
@@ -144,7 +149,7 @@ export function MiniCalendar({ events, selected, onSelectDay, compact = false }:
               {hasEvent && (
                 <span
                   className={`absolute bottom-0.5 h-1.5 w-1.5 rounded-full ring-2 ring-white dark:ring-slate-800 ${
-                    isSelected ? 'bg-white' : 'bg-indigo-500'
+                    isSelected ? 'bg-white' : hasTest ? 'bg-red-500' : 'bg-indigo-500'
                   }`}
                   aria-hidden="true"
                 />

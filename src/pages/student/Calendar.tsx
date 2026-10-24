@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { formatDate, EVENT_CATEGORIES } from '@/lib/utils';
+import { formatDate, EVENT_CATEGORIES, isControle } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { MiniCalendar } from '@/components/MiniCalendar';
 import { LoadError } from '@/components/ui/LoadError';
@@ -134,24 +134,25 @@ export default function Calendar() {
                     const eventDate = new Date(event.date);
                     const isPast = eventDate < now;
                     const cat = EVENT_CATEGORIES[event.category];
+                    const test = isControle(event);
                     return (
                       <div
                         key={event.id}
                         className={`glass-card transition-all ${
                           isPast ? 'opacity-50' : ''
-                        }`}
+                        } ${test ? 'border-2 border-red-500/70 bg-red-500/5' : ''}`}
                       >
                         <div className="flex items-start gap-3">
-                          <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-indigo-500/10 dark:bg-indigo-500/20 flex flex-col items-center justify-center">
-                            <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400 leading-none">
+                          <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center ${test ? 'bg-red-500/15 dark:bg-red-500/25' : 'bg-indigo-500/10 dark:bg-indigo-500/20'}`}>
+                            <span className={`text-lg font-bold leading-none ${test ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
                               {eventDate.getDate()}
                             </span>
-                            <span className="text-[9px] text-indigo-500 dark:text-indigo-400 uppercase font-medium">
+                            <span className={`text-[9px] uppercase font-medium ${test ? 'text-red-500 dark:text-red-400' : 'text-indigo-500 dark:text-indigo-400'}`}>
                               {eventDate.toLocaleDateString('fr-FR', { month: 'short' })}
                             </span>
                           </div>
                           <div className="min-w-0 flex-1">
-                            <h3 className="font-bold text-sm">{event.title}</h3>
+                            <h3 className={`font-bold text-sm ${test ? 'text-red-600 dark:text-red-400' : ''}`}>{event.title}</h3>
                             <div className="flex items-center gap-2 mt-1 flex-wrap">
                               {cat && (
                                 <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-[10px] font-medium">

@@ -221,6 +221,11 @@ export const EVENT_CATEGORIES: Record<string, string> = {
   autre: '📌 Autre',
 };
 
+/** Un contrôle : catégorie « controle » ou le mot « contrôle » dans le titre. */
+export function isControle(e: { category?: string; title?: string }): boolean {
+  return e.category === 'controle' || /contr[oô]le/i.test(e.title || '');
+}
+
 export const SUBJECTS: Record<string, string> = {
   francais: 'Français',
   maths: 'Mathématiques',

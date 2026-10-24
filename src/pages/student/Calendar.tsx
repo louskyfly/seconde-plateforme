@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { api } from '@/lib/api';
+import { Link } from 'react-router-dom';
+import { api, subscribeHomework } from '@/lib/api';
+import { dayLabel, localDayKey, subjectChipClass } from '@/lib/homework';
 import { formatDate, EVENT_CATEGORIES } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { MiniCalendar } from '@/components/MiniCalendar';
 import { LoadError } from '@/components/ui/LoadError';
-import type { Event } from '@/types';
+import type { Event, HomeworkItem } from '@/types';
 
 function dayKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -35,6 +37,20 @@ export default function Calendar() {
   }, [load]);
 
   useAutoRefresh(load);
+
+  // Contrôles à venir, repris du cahier de textes (lecture seule, facultatif).
+  const [tests, setTests] = useState<HomeworkItem[]>([]);
+  useEffect(
+    () =>
+      subscribeHomework(
+        (h) => {
+          const todayKey = localDayKey();
+          setTests(h.days.filter((d) => d.date >= todayKey).flatMap((d) => d.items.filter((i) => i.is_test)));
+        },
+        () => setTests([])
+      ),
+    []
+  );
 
   const now = new Date();
 
@@ -82,6 +98,27 @@ export default function Calendar() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {!loading && tests.length > 0 && (
+        <div className="glass-card mb-5">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <h2 className="font-bold text-sm">📝 Contrôles à venir</h2>
+            <Link to="/devoirs" className="glass-button text-xs px-3 py-1.5">
+              Voir les devoirs
+            </Link>
+          </div>
+          <ul className="space-y-2">
+            {tests.slice(0, 5).map((t) => (
+              <li key={`${t.date}-${t.id}`} className="flex items-center gap-2 text-xs min-w-0">
+                <span className="text-gray-500 dark:text-gray-400 flex-shrink-0">{dayLabel(t.date)}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold truncate ${subjectChipClass(t.subject)}`}>
+                  {t.subject || 'Matière'}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

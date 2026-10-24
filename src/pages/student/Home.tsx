@@ -7,6 +7,7 @@ import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { MiniCalendar } from '@/components/MiniCalendar';
 import { BirthdayEntry } from '@/components/student/BirthdayEntry';
 import { normalizeSeasonTheme, type SeasonTheme } from '@/lib/season';
+import { localDayKey } from '@/lib/homework';
 import {
   formatDate,
   generateFingerprint,
@@ -102,6 +103,7 @@ export default function Home() {
   const [activePoll, setActivePoll] = useState<Poll | null>(null);
   const [resources, setResources] = useState<Resource[]>([]);
   const [latestProject, setLatestProject] = useState<Project | null>(null);
+  const [homeworkTodo, setHomeworkTodo] = useState(0);
   const cancelled = useRef(false);
 
   // Une seule fonction de chargement, réutilisée au montage, au retour sur
@@ -121,6 +123,16 @@ export default function Home() {
         api.getProjects(),
         api.getMyMessages(fingerprint),
       ]);
+      // Cahier de textes : facultatif, une erreur ici ne doit pas vider l'accueil.
+      api
+        .getHomework()
+        .then((h) => {
+          const todayKey = localDayKey();
+          if (!cancelled.current) {
+            setHomeworkTodo(h.days.filter((d) => d.date >= todayKey).reduce((n, d) => n + d.items.length, 0));
+          }
+        })
+        .catch(() => {});
       if (!cancelled.current) setOffline(false);
 
       const published = announcements
@@ -248,8 +260,8 @@ export default function Home() {
       )}
 
       {loading ? (
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 sm:gap-4">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
               className="glass aspect-square rounded-full animate-pulse flex flex-col items-center justify-center gap-2"
@@ -261,7 +273,7 @@ export default function Home() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 sm:gap-4">
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
             <Bubble
               to="/sondages"
               emoji="🗳️"
@@ -279,6 +291,12 @@ export default function Home() {
               emoji="📅"
               title="Agenda"
               meta={nextEvent ? formatDate(nextEvent.date) : ''}
+            />
+            <Bubble
+              to="/devoirs"
+              emoji="📒"
+              title="Devoirs"
+              meta={homeworkTodo > 0 ? `${homeworkTodo} à faire` : ''}
             />
             <Bubble
               to="/idees"

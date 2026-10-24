@@ -95,6 +95,7 @@ export default function Home() {
   const [offline, setOffline] = useState(!navigator.onLine);
   const [latestAnnouncement, setLatestAnnouncement] = useState<Announcement | null>(null);
   const [nextEvent, setNextEvent] = useState<Event | null>(null);
+  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [latestIdea, setLatestIdea] = useState<Idea | null>(null);
@@ -135,6 +136,7 @@ export default function Home() {
         .filter((e) => parseServerDate(e.date).getTime() >= now.getTime() - 60_000)
         .sort((a, b) => parseServerDate(a.date).getTime() - parseServerDate(b.date).getTime());
       setNextEvent(upcoming[0] ?? null);
+      setUpcomingEvents(upcoming.slice(0, 3));
       setEvents(events);
 
       // « Messages à lire » : le délégué a répondu et l'élève n'a pas encore
@@ -303,6 +305,8 @@ export default function Home() {
             />
           </div>
 
+          <Countdowns events={upcomingEvents} />
+
           <FeaturedBubble
             to="/informations"
             emoji="📢"
@@ -365,6 +369,55 @@ export default function Home() {
           </Link>
         </>
       )}
+    </div>
+  );
+}
+/* Comptes à rebours : les 3 prochains événements de l'agenda. */
+function eventTarget(e: Event): Date {
+  const d = parseServerDate(e.date);
+  if (e.time && /^\d{1,2}:\d{2}/.test(e.time)) {
+    const [h, m] = e.time.split(':').map(Number);
+    d.setHours(h, m, 0, 0);
+  }
+  return d;
+}
+
+function Countdowns({ events }: { events: Event[] }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (events.length === 0) {
+    return (
+      <Link to="/calendrier" className="glass-card mt-3 block text-center text-xs text-gray-500 dark:text-gray-400">
+        ⏳ Aucun événement à venir : les comptes à rebours apparaîtront dès qu'un événement sera ajouté à l'agenda.
+      </Link>
+    );
+  }
+
+  return (
+    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {events.map((e) => {
+        const ms = Math.max(0, eventTarget(e).getTime() - now);
+        const days = Math.floor(ms / 86_400_000);
+        const hours = Math.floor((ms % 86_400_000) / 3_600_000);
+        const mins = Math.floor((ms % 3_600_000) / 60_000);
+        const label =
+          ms === 0 ? "C'est maintenant !" : days > 0 ? `${days} j ${hours} h` : `${hours} h ${mins} min`;
+        return (
+          <Link key={e.id} to="/calendrier" className="glass-card block text-center animate-slideUp">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">⏳ Dans</p>
+            <p className="gradient-text-night mt-1 text-2xl font-bold">{label}</p>
+            <p className="mt-1 truncate text-sm font-medium text-gray-700 dark:text-gray-200">{e.title}</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              {parseServerDate(e.date).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {e.time ? ` à ${e.time}` : ''}
+            </p>
+          </Link>
+        );
+      })}
     </div>
   );
 }

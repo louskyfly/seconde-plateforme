@@ -1,38 +1,35 @@
-import { useState, useEffect } from 'react';
-import { db, getFingerprint, now } from '../lib/db';
+import { useState } from 'react';
 import { useFingerprint } from '../hooks/useFingerprint';
+import { useFirebaseSync } from '../hooks/useFirebaseSync';
+import { FB } from '../lib/firebase';
+
+/** Date locale au format AAAA-MM-JJ (toISOString() decale d'un jour en France). */
+const localIsoDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 export default function Calendar() {
   const fingerprint = useFingerprint();
-  const [events, setEvents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { items: events, loading, create, remove } = useFirebaseSync<any>(FB.events);
   const [showForm, setShowForm] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [newEvent, setNewEvent] = useState({ title: '', date: '', time: '', description: '', category: 'evenement' });
 
-  useEffect(() => {
-    loadEvents();
-  }, []);
-
-  const loadEvents = async () => {
-    const evts = await db.events.toArray();
-    setEvents(evts);
-    setLoading(false);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await db.events.add({ ...newEvent, createdAt: Date.now(), updatedAt: Date.now() });
-    const evt = await db.events.get(result);
-    setEvents([evt, ...events]);
+    try {
+      await create({ ...newEvent });
+    } catch (err) {
+      console.error(err);
+      alert('Erreur lors de la creation. Verifie ta connexion.');
+      return;
+    }
     setNewEvent({ title: '', date: '', time: '', description: '', category: 'evenement' });
     setShowForm(false);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Supprimer cet evenement ?')) return;
-    await db.events.delete(id);
-    setEvents(events.filter(e => e.id !== id));
+    await remove(id);
   };
 
   const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
@@ -43,7 +40,7 @@ export default function Calendar() {
   const renderDay = (day: number) => {
     const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
     const isToday = date.toDateString() === today.toDateString();
-    const dayEvents = events.filter(e => e.date === date.toISOString().split('T')[0]);
+    const dayEvents = events.filter(e => e.date === localIsoDate(date));
 
     return (
       <div key={day} className={`relative min-h-[100px] p-2 border ${isToday ? 'border-blue-500 bg-blue-50' : 'border-gray-100 bg-white'} rounded-lg`}>

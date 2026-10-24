@@ -141,7 +141,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </p>
               <div className="px-3 py-2 text-xs text-gray-500">
                 <p>Version 1.0.0</p>
-                <p className="mt-1">Données stockées localement</p>
+                <p className="mt-1">Données partagées (temps réel)</p>
               </div>
             </div>
           </nav>

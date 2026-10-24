@@ -1,22 +1,17 @@
-import { useState, useEffect } from 'react';
-import { db, getFingerprint } from '../lib/db';
+import { useState, useMemo } from 'react';
+import { getFingerprint } from '../lib/device';
 import { useFingerprint } from '../hooks/useFingerprint';
+import { useFirebaseSync } from '../hooks/useFirebaseSync';
+import { FB } from '../lib/firebase';
 
 export default function Messages() {
   const fingerprint = useFingerprint();
-  const [messages, setMessages] = useState<any[]>([]);
+  // Seuls les messages envoyes depuis cet appareil (empreinte locale).
+  const myFp = useMemo(() => getFingerprint(), []);
+  const { items, create, update } = useFirebaseSync<any>(FB.messages, { orderBy: 'fingerprint', equalTo: myFp });
+  const messages = useMemo(() => [...items].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)), [items]);
   const [showForm, setShowForm] = useState(false);
   const [newMessage, setNewMessage] = useState({ content: '', category: 'autre', anonymous: false, authorName: '' });
-
-  useEffect(() => {
-    loadMessages();
-  }, []);
-
-  const loadMessages = async () => {
-    const fp = getFingerprint();
-    const msgs = await db.messages.where('fingerprint').equals(fp).reverse().toArray();
-    setMessages(msgs);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,28 +19,29 @@ export default function Messages() {
     const isAnon = newMessage.anonymous;
     const author = newMessage.anonymous ? null : newMessage.authorName.trim();
 
-    const result = await db.messages.add({
-      content: newMessage.content.trim(),
-      category: newMessage.category.trim(),
-      anonymous: isAnon,
-      authorName: author,
-      fingerprint: fp,
-      status: 'nouveau',
-      delegateReply: null,
-      repliedAt: null,
-      responseReadAt: null,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    const msg = await db.messages.get(result);
-    setMessages([msg, ...messages]);
+    try {
+      await create({
+        content: newMessage.content.trim(),
+        category: newMessage.category.trim(),
+        anonymous: isAnon,
+        authorName: author,
+        fingerprint: fp,
+        status: 'nouveau',
+        delegateReply: null,
+        repliedAt: null,
+        responseReadAt: null,
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'envoi. Verifie ta connexion.");
+      return;
+    }
     setNewMessage({ content: '', category: 'autre', anonymous: false, authorName: '' });
     setShowForm(false);
   };
 
-  const handleRead = async (id: number) => {
-    await db.messages.update(id, { responseReadAt: Date.now() });
-    setMessages(messages.map(m => m.id === id ? { ...m, responseReadAt: Date.now() } : m));
+  const handleRead = async (id: string) => {
+    await update(id, { responseReadAt: Date.now() });
   };
 
   return (

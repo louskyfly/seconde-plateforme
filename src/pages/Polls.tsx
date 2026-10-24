@@ -1,79 +1,105 @@
-import { useState, useEffect } from 'react';
-import { db, getFingerprint } from '../lib/db';
+import { useState, useMemo } from 'react';
+import { ref, set as firebaseSet, update as firebaseUpdate, serverTimestamp } from 'firebase/database';
+import { getFingerprint } from '../lib/device';
 import { useFingerprint } from '../hooks/useFingerprint';
+import { useFirebaseSync, useFirebaseValue } from '../hooks/useFirebaseSync';
+import { db as fdb, FB } from '../lib/firebase';
 
+/**
+ * Donnees Firebase :
+ *  polls/{pollId}            -> { question, allowMultiple, showResults, anonymous, active, options: { o0: { text, position } } }
+ *  pollVotes/{pollId}/{empreinte} -> { options: { o0: true }, createdAt }   (un seul vote par appareil)
+ */
 export default function Polls() {
   const fingerprint = useFingerprint();
-  const [polls, setPolls] = useState<any[]>([]);
+  const myFp = useMemo(() => getFingerprint(), []);
+  const { items: pollItems, create } = useFirebaseSync<any>(FB.polls);
+  const { value: votesByPoll } = useFirebaseValue<Record<string, Record<string, any>>>(FB.pollVotes);
+  const [selection, setSelection] = useState<Record<string, string[]>>({});
   const [showForm, setShowForm] = useState(false);
   const [newPoll, setNewPoll] = useState({ question: '', options: ['', ''], allowMultiple: false, showResults: true, anonymous: true });
 
-  useEffect(() => {
-    loadPolls();
-  }, []);
-
-  const loadPolls = async () => {
-    const polls = await db.polls.orderBy('createdAt').reverse().toArray();
-    for (const poll of polls) {
-      const pollId = poll.id!;
-      const options = await db.pollOptions.where('pollId').equals(pollId).toArray();
-      const votes = await db.pollVotes.where('pollId').equals(pollId).toArray();
-      poll.options = options;
-      poll.totalVotes = votes.length;
-      poll.totalVoters = new Set(votes.map(v => v.voterFingerprint)).size;
-      if (fingerprint) {
-        const voted = await db.pollVotes.where('pollId').equals(pollId).and(v => v.voterFingerprint === fingerprint).first();
-        poll.hasVoted = !!voted;
-      }
-    }
-    setPolls(polls);
-  };
+  const polls = useMemo(() => {
+    return [...pollItems]
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      .map((poll: any) => {
+        const votes = (votesByPoll && votesByPoll[poll.id]) || {};
+        const counts: Record<string, number> = {};
+        let totalVotes = 0;
+        for (const v of Object.values(votes)) {
+          for (const oid of Object.keys((v as any)?.options || {})) {
+            counts[oid] = (counts[oid] || 0) + 1;
+            totalVotes++;
+          }
+        }
+        const options = Object.entries(poll.options || {})
+          .map(([id, o]: [string, any]) => ({ ...o, id, votes: counts[id] || 0 }))
+          .sort((a: any, b: any) => (a.position || 0) - (b.position || 0));
+        return {
+          ...poll,
+          options,
+          totalVotes,
+          totalVoters: Object.keys(votes).length,
+          hasVoted: !!votes[myFp],
+        };
+      });
+  }, [pollItems, votesByPoll, myFp]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPoll.question.trim() || newPoll.options.filter(o => o.trim()).length < 2) return;
 
-    const result = await db.polls.add({
-      question: newPoll.question.trim(),
-      allowMultiple: newPoll.allowMultiple,
-      showResults: newPoll.showResults,
-      anonymous: newPoll.anonymous,
-      active: true,
-      createdAt: Date.now(),
+    const options: Record<string, { text: string; position: number }> = {};
+    newPoll.options.forEach((text, i) => {
+      if (text.trim()) options[`o${i}`] = { text: text.trim(), position: i };
     });
 
-    const pollId = result;
-    for (let i = 0; i < newPoll.options.length; i++) {
-      if (newPoll.options[i].trim()) {
-        await db.pollOptions.add({ pollId, text: newPoll.options[i].trim(), position: i });
-      }
+    try {
+      await create({
+        question: newPoll.question.trim(),
+        allowMultiple: newPoll.allowMultiple,
+        showResults: newPoll.showResults,
+        anonymous: newPoll.anonymous,
+        active: true,
+        options,
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Erreur lors de la creation. Verifie ta connexion.');
+      return;
     }
 
-    loadPolls();
     setNewPoll({ question: '', options: ['', ''], allowMultiple: false, showResults: true, anonymous: true });
     setShowForm(false);
   };
 
-  const handleVote = async (pollId: number, optionIds: number[]) => {
+  const handleVote = async (pollId: string, optionIds: string[]) => {
     if (!optionIds.length) return;
-    const fp = getFingerprint();
-    const existing = await db.pollVotes.where('pollId').equals(pollId).and(v => v.voterFingerprint === fingerprint).first();
-    if (existing) return alert('Deja vote');
-
-    await db.transaction('rw', db.pollVotes, async () => {
-      for (const oid of optionIds) {
-        await db.pollVotes.add({ pollId, optionId: oid, voterFingerprint: fingerprint, createdAt: Date.now() });
-      }
-    });
-    loadPolls();
+    const fp = myFp || fingerprint;
+    if (votesByPoll?.[pollId]?.[fp]) return alert('Deja vote');
+    const options: Record<string, true> = {};
+    optionIds.forEach((oid) => (options[oid] = true));
+    try {
+      // Les regles Firebase refusent un 2e vote du meme appareil.
+      await firebaseSet(ref(fdb, `${FB.pollVotes}/${pollId}/${fp}`), { options, createdAt: serverTimestamp() });
+      setSelection((prev) => ({ ...prev, [pollId]: [] }));
+    } catch (err) {
+      console.error(err);
+      alert('Vote impossible (deja vote ou pas de connexion).');
+    }
   };
 
-  const handleDelete = async (id: number) => {
+  const toggleOption = (poll: any, oid: string) => {
+    setSelection((prev) => {
+      const current = prev[poll.id] || [];
+      if (!poll.allowMultiple) return { ...prev, [poll.id]: [oid] };
+      return { ...prev, [poll.id]: current.includes(oid) ? current.filter((x) => x !== oid) : [...current, oid] };
+    });
+  };
+
+  const handleDelete = async (id: string) => {
     if (!confirm('Supprimer ce sondage ?')) return;
-    await db.polls.delete(id);
-    await db.pollOptions.where('pollId').equals(id).delete();
-    await db.pollVotes.where('pollId').equals(id).delete();
-    setPolls(polls.filter(p => p.id !== id));
+    await firebaseUpdate(ref(fdb), { [`${FB.polls}/${id}`]: null, [`${FB.pollVotes}/${id}`]: null });
   };
 
   return (
@@ -145,10 +171,25 @@ export default function Polls() {
                 const optionVotes = opt.votes || 0;
                 const total = poll.totalVotes || 1;
                 const percent = Math.round((optionVotes / total) * 100);
+                const canVote = poll.active && !poll.hasVoted;
+                const selected = (selection[poll.id] || []).includes(opt.id);
                 return (
                   <div key={opt.id} className="mb-3">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-gray-700">{opt.text}</span>
+                      {canVote ? (
+                        <label className="flex items-center gap-2 text-gray-700 cursor-pointer">
+                          <input
+                            type={poll.allowMultiple ? 'checkbox' : 'radio'}
+                            name={`poll-${poll.id}`}
+                            checked={selected}
+                            onChange={() => toggleOption(poll, opt.id)}
+                            className="w-4 h-4 text-blue-600"
+                          />
+                          {opt.text}
+                        </label>
+                      ) : (
+                        <span className="text-gray-700">{opt.text}</span>
+                      )}
                       <span className="text-sm text-gray-500">{optionVotes} vote(s) ({percent}%)</span>
                     </div>
                     <div className="h-2 bg-gray-100 rounded overflow-hidden">
@@ -157,6 +198,16 @@ export default function Polls() {
                   </div>
                 );
               })}
+              {poll.active && !poll.hasVoted && (
+                <button
+                  onClick={() => handleVote(poll.id, selection[poll.id] || [])}
+                  disabled={!(selection[poll.id] || []).length}
+                  className="mt-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Voter
+                </button>
+              )}
+              {poll.hasVoted && <p className="mt-2 text-sm text-green-700">✓ Tu as vote</p>}
             </div>
           </div>
         ))}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSettings } from '../hooks/useSettings';
-import { getFingerprint } from '../lib/db';
+import { getFingerprint } from '../lib/device';
 
 export default function Settings() {
   const { settings, updateSettings } = useSettings();
@@ -91,10 +91,10 @@ export default function Settings() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mt-6">
-        <h2 className="text-lg font-semibold mb-4">Données locales</h2>
-        <p className="text-gray-600 mb-4">Toutes vos données sont stockées localement sur cet appareil (IndexedDB). Rien n'est envoyé sur un serveur.</p>
+        <h2 className="text-lg font-semibold mb-4">Données de cet appareil</h2>
+        <p className="text-gray-600 mb-4">Les données de la classe (idées, sondages, chat, fiches...) sont partagées en ligne. Seuls ton identifiant d'appareil, ton prénom et tes préférences restent sur cet appareil. « Tout effacer » ne supprime que ces données locales.</p>
         <div className="flex gap-2">
-          <button onClick={() => { if (confirm('Supprimer TOUTES les données ?')) { localStorage.clear(); indexedDB.deleteDatabase('SecondePlatformLocal'); location.reload(); } }} className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700">
+          <button onClick={() => { if (confirm('Effacer les données de CET appareil (identifiant, prénom, préférences) ? Les données partagées de la classe ne sont pas touchées.')) { localStorage.clear(); indexedDB.deleteDatabase('SecondePlatformLocal'); location.reload(); } }} className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700">
             Tout effacer
           </button>
           <button className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-200">

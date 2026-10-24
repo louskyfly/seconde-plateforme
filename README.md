@@ -277,3 +277,21 @@ Résultat :
 ## ✍️ Auteur
 
 Plateforme conçue sur demande pour un délégué de classe de seconde.
+## Données partagées (Firebase Realtime Database)
+
+Toutes les données de la classe (idées, sondages et votes, chat, messages au délégué,
+calendrier, révisions, fiches, élèves et groupes, réglages, journal admin) sont stockées
+dans la Realtime Database du projet Firebase `sync-3626f` et synchronisées en temps réel
+sur tous les appareils. Seuls l'identifiant d'appareil, le prénom du chat et les
+préférences d'affichage restent en local.
+
+Au premier lancement de la nouvelle version, chaque appareil importe une seule fois ses
+anciennes données locales (IndexedDB) dans les collections encore vides
+(`src/lib/migrateLocal.ts`).
+
+### Règles de sécurité
+
+Les règles sont dans `database.rules.json`. Elles ne sont **pas** déployées
+automatiquement : à copier dans la console Firebase
+(Realtime Database → Règles → coller → Publier) ou avec
+`npx firebase-tools deploy --only database` (connexion Google requise).

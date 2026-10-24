@@ -1,0 +1,589 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "ideas": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt",
+        "status"
+      ],
+      "$ideaId": {
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['title', 'status', 'createdAt'])",
+        "title": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 5000"
+        },
+        "authorName": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "anonymous": {
+          ".validate": "newData.isBoolean()"
+        },
+        "fingerprint": {
+          ".validate": "newData.isString() && newData.val().length <= 64"
+        },
+        "status": {
+          ".validate": "newData.isString() && newData.val().matches(/^(a_etudier|en_discussion|transmise|realisee|non_retenue)$/)"
+        },
+        "delegateResponse": {
+          ".validate": "newData.isString() && newData.val().length <= 5000"
+        },
+        "delegateRepliedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "id": {
+          ".validate": "newData.isString() && newData.val() === $ideaId"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "settings": {
+      ".read": true,
+      ".write": true,
+      ".validate": "newData.hasChildren()",
+      "className": {
+        ".validate": "newData.isString() && newData.val().length <= 60"
+      },
+      "delegateName": {
+        ".validate": "newData.isString() && newData.val().length <= 60"
+      },
+      "delegateLinkToken": {
+        ".validate": "newData.isString() && newData.val().length <= 64"
+      },
+      "passwordHash": {
+        ".validate": "newData.isString() && newData.val().length <= 200"
+      },
+      "accentColor": {
+        ".validate": "newData.isString() && newData.val().matches(/^#[0-9a-fA-F]{3,8}$/)"
+      },
+      "homeInfo": {
+        ".validate": "newData.isString() && newData.val().length <= 5000"
+      },
+      "homeImage": {
+        ".validate": "newData.isString() && newData.val().length <= 1500000"
+      },
+      "seasonTheme": {
+        ".validate": "newData.isString() && newData.val().length <= 30"
+      },
+      "maintenanceMode": {
+        ".validate": "newData.isBoolean()"
+      },
+      "maintenanceMessage": {
+        ".validate": "newData.isString() && newData.val().length <= 500"
+      },
+      "createdAt": {
+        ".validate": "newData.isNumber()"
+      },
+      "updatedAt": {
+        ".validate": "newData.isNumber()"
+      },
+      "$other": {
+        ".validate": false
+      }
+    },
+    "polls": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt"
+      ],
+      "$pollId": {
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['question', 'options', 'createdAt'])",
+        "question": {
+          ".validate": "newData.isString() && newData.val().length <= 300"
+        },
+        "allowMultiple": {
+          ".validate": "newData.isBoolean()"
+        },
+        "showResults": {
+          ".validate": "newData.isBoolean()"
+        },
+        "anonymous": {
+          ".validate": "newData.isBoolean()"
+        },
+        "active": {
+          ".validate": "newData.isBoolean()"
+        },
+        "closedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "options": {
+          "$optId": {
+            ".validate": "$optId.matches(/^o[0-9]{1,2}$/) && newData.hasChildren(['text'])",
+            "text": {
+              ".validate": "newData.isString() && newData.val().length <= 200"
+            },
+            "position": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "id": {
+          ".validate": "newData.isString() && newData.val() === $pollId"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "pollVotes": {
+      ".read": true,
+      "$pollId": {
+        ".write": "!newData.exists()",
+        "$fp": {
+          ".write": "!data.exists() && newData.exists()",
+          ".validate": "$fp.length <= 64 && newData.hasChildren(['options','createdAt'])",
+          "options": {
+            "$optId": {
+              ".validate": "newData.val() === true && newData.parent().parent().parent().parent().parent().child('polls/'+$pollId+'/options/'+$optId).exists()"
+            }
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "events": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt",
+        "date"
+      ],
+      "$eventId": {
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['title', 'date'])",
+        "title": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "date": {
+          ".validate": "newData.isString() && newData.val().matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/)"
+        },
+        "time": {
+          ".validate": "newData.isString() && newData.val().length <= 10"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 5000"
+        },
+        "category": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "id": {
+          ".validate": "newData.isString() && newData.val() === $eventId"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "revisions": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt",
+        "date"
+      ],
+      "$revId": {
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['title', 'date'])",
+        "title": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "subject": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "date": {
+          ".validate": "newData.isString() && newData.val().length <= 10"
+        },
+        "time": {
+          ".validate": "newData.isString() && newData.val().length <= 10"
+        },
+        "duration": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1440"
+        },
+        "location": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 5000"
+        },
+        "createdByFingerprint": {
+          ".validate": "newData.isString() && newData.val().length <= 64"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "id": {
+          ".validate": "newData.isString() && newData.val() === $revId"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "sheets": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt",
+        "status"
+      ],
+      "$sheetId": {
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['title', 'createdAt'])",
+        "title": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "subject": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "classLevel": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "description": {
+          ".validate": "newData.isString() && newData.val().length <= 5000"
+        },
+        "authorName": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "authorFingerprint": {
+          ".validate": "newData.isString() && newData.val().length <= 64"
+        },
+        "fileName": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "mimeType": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "fileSize": {
+          ".validate": "newData.isNumber()"
+        },
+        "hasFile": {
+          ".validate": "newData.isBoolean()"
+        },
+        "kind": {
+          ".validate": "newData.val() === 'image' || newData.val() === 'document'"
+        },
+        "status": {
+          ".validate": "newData.val() === 'active' || newData.val() === 'hidden'"
+        },
+        "fileData": {
+          ".validate": "newData.isString() && newData.val().length <= 600000"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "id": {
+          ".validate": "newData.isString() && newData.val() === $sheetId"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "sheetFiles": {
+      ".read": true,
+      "$sheetId": {
+        ".write": true,
+        ".validate": "newData.hasChildren(['data']) && newData.parent().parent().child('sheets/'+$sheetId).exists()",
+        "data": {
+          ".validate": "newData.isString() && newData.val().beginsWith('data:') && newData.val().length <= 6000000"
+        },
+        "mimeType": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "students": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt",
+        "lastName"
+      ],
+      "$studentId": {
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['firstName', 'lastName'])",
+        "firstName": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "lastName": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "birthday": {
+          ".validate": "newData.isString() && newData.val().length <= 10"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "id": {
+          ".validate": "newData.isString() && newData.val() === $studentId"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "studentGroups": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt"
+      ],
+      "$groupId": {
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['name'])",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "isPrivate": {
+          ".validate": "newData.isBoolean()"
+        },
+        "status": {
+          ".validate": "newData.isString() && newData.val().matches(/^(en_attente|valide|refuse)$/)"
+        },
+        "createdByFingerprint": {
+          ".validate": "newData.isString() && newData.val().length <= 64"
+        },
+        "validatedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "validatedBy": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "members": {
+          "$memberId": {
+            ".validate": "newData.hasChildren(['memberName','memberKey'])",
+            "studentId": {
+              ".validate": "newData.isString() && newData.val().length <= 40"
+            },
+            "memberName": {
+              ".validate": "newData.isString() && newData.val().length <= 100"
+            },
+            "memberKey": {
+              ".validate": "newData.isString() && newData.val().length <= 100"
+            },
+            "addedByFingerprint": {
+              ".validate": "newData.isString() && newData.val().length <= 64"
+            },
+            "addedAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "id": {
+          ".validate": "newData.isString() && newData.val() === $groupId"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "messages": {
+      ".read": true,
+      ".indexOn": [
+        "fingerprint",
+        "createdAt"
+      ],
+      "$msgId": {
+        ".write": true,
+        ".validate": "!newData.exists() || newData.hasChildren(['content', 'createdAt'])",
+        "content": {
+          ".validate": "newData.isString() && newData.val().length <= 5000"
+        },
+        "category": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "anonymous": {
+          ".validate": "newData.isBoolean()"
+        },
+        "authorName": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "fingerprint": {
+          ".validate": "newData.isString() && newData.val().length <= 64"
+        },
+        "status": {
+          ".validate": "newData.isString() && newData.val().length <= 30"
+        },
+        "delegateReply": {
+          ".validate": "newData.isString() && newData.val().length <= 5000"
+        },
+        "repliedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "responseReadAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "id": {
+          ".validate": "newData.isString() && newData.val() === $msgId"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "chatUsers": {
+      ".read": true,
+      "$fp": {
+        ".write": true,
+        ".validate": "$fp.length <= 64 && newData.hasChildren(['displayName'])",
+        "displayName": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        },
+        "kind": {
+          ".validate": "newData.val() === 'student' || newData.val() === 'delegate'"
+        },
+        "lastSeenAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "chatMessages": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt"
+      ],
+      "$msgId": {
+        ".write": true,
+        ".validate": "!newData.exists() || (newData.hasChildren(['senderId','senderName','createdAt']) && ((newData.child('content').isString() && newData.child('content').val().length > 0) || newData.hasChild('image')))",
+        "senderId": {
+          ".validate": "newData.isString() && newData.val().length <= 64"
+        },
+        "senderName": {
+          ".validate": "newData.isString() && newData.val().length <= 20"
+        },
+        "senderKind": {
+          ".validate": "newData.val() === 'student' || newData.val() === 'delegate'"
+        },
+        "content": {
+          ".validate": "newData.isString() && newData.val().length <= 2000"
+        },
+        "image": {
+          ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length <= 1500000"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "deletedAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "deletedBy": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "chatReactions": {
+      ".read": true,
+      "$msgId": {
+        ".write": "!newData.exists()",
+        "$reaction": {
+          ".validate": "$reaction === 'pouce' || $reaction === 'rire' || $reaction === 'coeur'",
+          "$fp": {
+            ".write": true,
+            ".validate": "$fp.length <= 64 && newData.val() === true"
+          }
+        }
+      }
+    },
+    "adminLog": {
+      ".read": true,
+      ".indexOn": [
+        "createdAt"
+      ],
+      "$logId": {
+        ".write": "!data.exists()",
+        ".validate": "newData.hasChildren(['action','createdAt'])",
+        "action": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "targetType": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "targetId": {
+          ".validate": "newData.isString() && newData.val().length <= 64"
+        },
+        "detail": {
+          ".validate": "newData.isString() && newData.val().length <= 500"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "meta": {
+      ".read": true,
+      "migrated": {
+        "$path": {
+          ".write": "!data.exists()",
+          ".validate": "newData.val() === true"
+        }
+      }
+    }
+  }
+}

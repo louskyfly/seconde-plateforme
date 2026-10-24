@@ -323,6 +323,12 @@ export interface AdminLog {
   createdAt: number;
 }
 
+/**
+ * Ancienne base locale (IndexedDB, propre à chaque appareil).
+ * Elle n'est plus utilisée par les pages : toutes les données partagées sont
+ * dans Firebase. Elle ne sert plus qu'à l'import unique (src/lib/migrateLocal.ts)
+ * des données déjà saisies sur un appareil.
+ */
 class LocalDatabase extends Dexie {
   chatMessages!: Table<ChatMessage>;
   ideas!: Table<Idea>;
@@ -395,44 +401,8 @@ export const db = new LocalDatabase();
 
 export const generateId = () => uuidv4();
 export const now = () => Date.now();
-export const fingerprint = () => {
-  if (typeof window !== 'undefined') {
-    let fp = localStorage.getItem('device_fingerprint');
-    if (!fp) {
-      fp = crypto.randomUUID();
-      localStorage.setItem('device_fingerprint', fp);
-    }
-    return fp;
-  }
-  return crypto.randomUUID();
-};
-
-export const getSettings = async () => {
-  return db.settings.get(1) || {
-    id: 1,
-    className: 'Seconde 9',
-    delegateName: 'Lucas',
-    delegateLinkToken: '7xK4p',
-    passwordHash: '$2a$10$dev',
-    accentColor: '#3b82f6',
-    homeInfo: '',
-    seasonTheme: 'aucun',
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-};
-
-export const saveSettings = async (settings: Partial<Settings>) => {
-  const existing = await db.settings.get(1);
-  const updated = { ...existing, ...settings, updatedAt: Date.now() };
-  if (existing) {
-    await db.settings.put(updated as Settings);
-  } else {
-    await db.settings.add({ id: 1, ...settings, createdAt: Date.now(), updatedAt: Date.now() } as Settings);
-  }
-  return updated;
-};
-
-export const getFingerprint = () => fingerprint();
+export { getFingerprint } from './device';
+import { getFingerprint as _fp } from './device';
+export const fingerprint = () => _fp();
 
 export default db;

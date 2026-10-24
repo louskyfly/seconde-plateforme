@@ -1,7 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
-import { db } from '../lib/db';
+import { ref, get, push, update as firebaseUpdate, query, orderByChild, limitToLast, onValue, serverTimestamp } from 'firebase/database';
+import { db as fdb, FB, BACKUP_PATHS, countChildren } from '../lib/firebase';
+import { getSharedSettings } from '../lib/settings';
 import { useSettings } from '../hooks/useSettings';
-import { verifyPassword } from '../utils/password';
+import { verifyPassword, hashPassword } from '../utils/password';
+
+/** Journal d'administration partage (adminLog/{id}). */
+async function logAdmin(action: string, targetType: string | null = null, detail: string | null = null) {
+  try {
+    const r = push(ref(fdb, FB.adminLog));
+    const entry: Record<string, any> = { action, createdAt: serverTimestamp() };
+    if (targetType) entry.targetType = targetType;
+    if (detail) entry.detail = detail;
+    await firebaseUpdate(ref(fdb), { [`${FB.adminLog}/${r.key}`]: entry });
+  } catch (e) {
+    console.error('adminLog:', e);
+  }
+}
 import QRCode from 'qrcode';
 
 export default function Admin() {
@@ -57,36 +72,39 @@ export default function Admin() {
   };
 
   useEffect(() => {
-    loadAll();
+    getOverview().then(setOverview).catch(console.error);
+    const q = query(ref(fdb, FB.adminLog), orderByChild('createdAt'), limitToLast(50));
+    const unsub = onValue(q, (snap) => {
+      const val = (snap.val() || {}) as Record<string, any>;
+      setLogs(
+        Object.entries(val)
+          .map(([id, l]) => ({ ...l, id }))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      );
+    });
+    return () => unsub();
   }, []);
 
-  const loadAll = async () => {
-    const [overviewData, logsData] = await Promise.all([
-      getOverview(),
-      db.adminLog.orderBy('id').reverse().limit(50).toArray(),
-    ]);
-    setOverview(overviewData);
-    setLogs(logsData);
-  };
-
   const getOverview = async () => {
-    const sheets = await db.sheets.count();
-    const hiddenSheets = await db.sheets.where('status').equals('hidden').count();
-    const chatMessages = await db.chatMessagesDB.count();
-    const chatUsers = await db.chatUsers.where('kind').equals('student').count();
-    const allChatMessages = await db.chatMessagesDB.toArray();
-    const imagesPosted = allChatMessages.filter(m => m.image).length;
-    return { sheets, hiddenSheets, chatMessages, chatUsers, imagesPosted };
+    const [sheetsSnap, chatMessages, chatUsers, imagesSnap] = await Promise.all([
+      get(ref(fdb, FB.sheets)),
+      countChildren(FB.chatMessages),
+      countChildren(FB.chatUsers),
+      get(query(ref(fdb, FB.chatMessages), orderByChild('createdAt'), limitToLast(200))),
+    ]);
+    const sheetList = Object.values((sheetsSnap.val() || {}) as Record<string, any>);
+    const hiddenSheets = sheetList.filter((s) => s.status === 'hidden').length;
+    const imagesPosted = Object.values((imagesSnap.val() || {}) as Record<string, any>).filter((m) => m.image).length;
+    return { sheets: sheetList.length - hiddenSheets, hiddenSheets, chatMessages, chatUsers, imagesPosted };
   };
 
   const handleExport = async () => {
-    const tables = db.tables.map(t => t.name).filter(t => !t.startsWith('_'));
-    const data: Record<string, any[]> = {};
-    for (const table of tables) {
-      const rows = await db.table(table).toArray();
-      data[table] = rows;
+    const data: Record<string, any> = {};
+    for (const path of BACKUP_PATHS) {
+      const snap = await get(ref(fdb, path));
+      data[path] = snap.val();
     }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ format: 'seconde-firebase-v1', exportedAt: Date.now(), data }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -100,43 +118,91 @@ export default function Admin() {
     if (!file) return;
     const text = await file.text();
     try {
-      const data = JSON.parse(text) as Record<string, any[]>;
-      const tableInstances = db.tables.map(t => db.table(t.name));
-      await db.transaction('rw', tableInstances, async () => {
-        for (const [table, rows] of Object.entries(data)) {
-          if (db.table(table)) {
-            await db.table(table).clear();
-            await db.table(table).bulkAdd(rows);
+      const parsed = JSON.parse(text);
+      if (parsed?.format !== 'seconde-firebase-v1' || typeof parsed.data !== 'object') {
+        alert('Fichier invalide (sauvegarde Firebase attendue)');
+        return;
+      }
+      if (!confirm('Remplacer TOUTES les données partagées de la classe par cette sauvegarde ?')) return;
+      // Ecriture element par element : les regles Firebase n'autorisent pas
+      // l'ecrasement d'une collection entiere d'un coup. On supprime d'abord
+      // l'existant, puis on ecrit la sauvegarde (2 envois separes).
+      const failed: string[] = [];
+      for (const path of BACKUP_PATHS) {
+        if (path === FB.adminLog) continue;
+        const incoming = parsed.data[path];
+        try {
+          if (path === FB.settings) {
+            if (incoming && typeof incoming === 'object') await firebaseUpdate(ref(fdb, FB.settings), incoming);
+            continue;
           }
+          const current = (await get(ref(fdb, path))).val() || {};
+          const deletions: Record<string, null> = {};
+          for (const key of Object.keys(current)) deletions[`${path}/${key}`] = null;
+          if (Object.keys(deletions).length) await firebaseUpdate(ref(fdb), deletions);
+          // Profondeur a laquelle l'ecriture est autorisee par les regles.
+          const depth = path === FB.chatReactions ? 3 : path === FB.pollVotes ? 2 : 1;
+          const writes: Record<string, any> = {};
+          const flatten = (prefix: string, value: any, level: number) => {
+            if (level === depth || !value || typeof value !== 'object') {
+              writes[prefix] = value;
+              return;
+            }
+            for (const [k, v] of Object.entries(value)) flatten(`${prefix}/${k}`, v, level + 1);
+          };
+          for (const [key, value] of Object.entries(incoming || {})) flatten(`${path}/${key}`, value, 1);
+          if (Object.keys(writes).length) {
+            // les fichiers des fiches doivent arriver apres les fiches (regles)
+            await firebaseUpdate(ref(fdb), writes);
+          }
+        } catch (err) {
+          console.error('restore', path, err);
+          failed.push(path);
         }
-      });
+      }
+      if (failed.length) alert(`Certaines parties n'ont pas pu être restaurées : ${failed.join(', ')}`);
+      await logAdmin('restauration', 'sauvegarde', file.name);
       alert('Restauration réussie');
       window.location.reload();
     } catch (e) {
-      alert('Fichier invalide');
+      console.error(e);
+      alert('Fichier invalide ou restauration refusée');
     }
   };
 
   const handleActivate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const settingsData = await db.settings.get(1);
-    if (!settingsData) return alert('Config manquante');
+    const settingsData = await getSharedSettings();
     const valid = await verifyPassword(password, settingsData.passwordHash);
     if (!valid) return alert('Mot de passe incorrect');
-    await db.settings.put({ ...settingsData, maintenanceMode: true, maintenanceMessage: message || 'Maintenance en cours' });
+    await updateSettings({ maintenanceMode: true, maintenanceMessage: message || 'Maintenance en cours' });
+    await logAdmin('maintenance_on', 'settings', message || null);
     alert('Mode maintenance activé');
     setPassword('');
     setMessage('');
   };
 
   const handleDeactivate = async () => {
-    await db.settings.update(1, { maintenanceMode: false, maintenanceMessage: null });
+    await updateSettings({ maintenanceMode: false, maintenanceMessage: null });
+    await logAdmin('maintenance_off', 'settings');
     alert('Mode maintenance désactivé');
   };
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Implementation would hash new password
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const current = String(fd.get('current') || '');
+    const next = String(fd.get('next') || '');
+    const confirmNext = String(fd.get('confirm') || '');
+    if (next.length < 6) return alert('Le nouveau mot de passe doit faire au moins 6 caractères');
+    if (next !== confirmNext) return alert('Les mots de passe ne correspondent pas');
+    const s = await getSharedSettings();
+    if (!(await verifyPassword(current, s.passwordHash))) return alert('Mot de passe actuel incorrect');
+    await updateSettings({ passwordHash: await hashPassword(next) });
+    await logAdmin('mot_de_passe', 'settings');
+    form.reset();
+    alert('Mot de passe modifié');
   };
 
   return (
@@ -223,7 +289,7 @@ export default function Admin() {
           </div>
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             <h3 className="font-semibold text-gray-900 mb-4">Sauvegardes automatiques</h3>
-            <p className="text-gray-600 mb-4">Les sauvegardes sont créées automatiquement chaque jour.</p>
+            <p className="text-gray-600 mb-4">Les données sont stockées dans Firebase (partagées par toute la classe). Pense à exporter une sauvegarde de temps en temps.</p>
           </div>
         </div>
       )}
@@ -334,15 +400,15 @@ export default function Admin() {
         <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Mot de passe actuel</label>
-            <input type="password" className="w-full p-3 border border-gray-300 rounded-lg" />
+            <input name="current" type="password" className="w-full p-3 border border-gray-300 rounded-lg" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
-            <input type="password" className="w-full p-3 border border-gray-300 rounded-lg" required />
+            <input name="next" type="password" className="w-full p-3 border border-gray-300 rounded-lg" required />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Confirmer le nouveau mot de passe</label>
-            <input type="password" className="w-full p-3 border border-gray-300 rounded-lg" required />
+            <input name="confirm" type="password" className="w-full p-3 border border-gray-300 rounded-lg" required />
           </div>
           <button type="submit" className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700">Changer</button>
         </form>

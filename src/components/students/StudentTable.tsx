@@ -24,8 +24,8 @@ function birthdayLabel(value: string | null): string {
 
 interface Props {
   students: Student[];
-  onEdit?: (id: number, patch: Partial<Student>) => Promise<void>;
-  onDelete?: (id: number) => Promise<void>;
+  onEdit?: (id: string, patch: Partial<Student>) => Promise<void>;
+  onDelete?: (id: string) => Promise<void>;
   onError?: (message: string) => void;
   /**
    * Vue élève : le tableau est affiché sans les boutons Modifier et Retirer.
@@ -47,8 +47,8 @@ interface Props {
  * modification, sans attendre un nouvel aller-retour.
  */
 export function StudentTable({ students, onEdit, onDelete, onError, readOnly = false }: Props) {
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [editing, setEditing] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
   const [anniversaire, setAnniversaire] = useState('');
@@ -72,7 +72,7 @@ export function StudentTable({ students, onEdit, onDelete, onError, readOnly = f
     setErreur('');
   };
 
-  const saveEdit = async (id: number) => {
+  const saveEdit = async (id: string) => {
     if (prenom.trim().length < 2 || nom.trim().length < 2) {
       setErreur('Le prénom et le nom sont obligatoires.');
       return;

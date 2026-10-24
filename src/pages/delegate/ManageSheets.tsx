@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { FbImage } from '@/components/ui/FbImage';
 import { getRelativeTime, SUBJECTS } from '@/lib/utils';
 import type { Sheet } from '@/types';
 import { SheetViewButton } from '@/components/SheetViewer';
@@ -174,12 +175,7 @@ export default function ManageSheets() {
             <div key={sheet.id} className="glass-card flex flex-col sm:flex-row gap-3">
               <div className="sm:w-28 h-24 sm:h-auto flex-shrink-0 rounded-xl overflow-hidden bg-indigo-500/10 flex items-center justify-center">
                 {sheet.kind === 'image' ? (
-                  <img
-                    src={api.sheetFileUrl(sheet.id, true)}
-                    alt=""
-                    loading="lazy"
-                    className="w-full h-full object-cover"
-                  />
+                  <FbImage fileKey={`sheet:${sheet.id}`} load={() => api.getSheetFile(sheet.id)} alt="" loading="lazy" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-3xl">📄</span>
                 )}

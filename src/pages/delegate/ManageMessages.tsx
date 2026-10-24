@@ -129,10 +129,10 @@ export function ManageMessages() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('all');
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<Message | null>(null);
   const [toReply, setToReply] = useState<Message | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [flash, setFlash] = useState('');
 
   const load = () => {

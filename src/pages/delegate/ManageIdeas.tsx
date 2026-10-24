@@ -95,9 +95,9 @@ export function ManageIdeas() {
   const [search, setSearch] = useState('');
   const [responseTarget, setResponseTarget] = useState<Idea | null>(null);
   const [toDelete, setToDelete] = useState<Idea | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   /** Confirmation éphémère affichée après un changement de statut. */
-  const [flash, setFlash] = useState<{ id: number; text: string } | null>(null);
+  const [flash, setFlash] = useState<{ id: string; text: string } | null>(null);
 
   const load = () => {
     setLoading(true);

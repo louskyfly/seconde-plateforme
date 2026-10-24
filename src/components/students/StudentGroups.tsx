@@ -183,7 +183,7 @@ export function StudentGroups() {
     }
   };
 
-  const ajouterMembre = async (groupId: number, name: string) => {
+  const ajouterMembre = async (groupId: string, name: string) => {
     setBusy(true);
     setErreur('');
     try {
@@ -196,7 +196,7 @@ export function StudentGroups() {
     }
   };
 
-  const retirerMembre = async (groupId: number, cle: string) => {
+  const retirerMembre = async (groupId: string, cle: string) => {
     setBusy(true);
     setErreur('');
     try {
@@ -209,7 +209,7 @@ export function StudentGroups() {
     }
   };
 
-  const supprimer = async (groupId: number) => {
+  const supprimer = async (groupId: string) => {
     if (!window.confirm('Supprimer ton groupe ? Le délégué n’en verra plus trace.')) return;
     setBusy(true);
     setErreur('');

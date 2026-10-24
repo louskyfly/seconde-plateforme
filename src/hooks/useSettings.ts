@@ -1,32 +1,55 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useFirebaseValue } from './useFirebaseSync';
-import { FB } from '../lib/firebase';
-import { saveSharedSettings, withDefaults, type SharedSettings } from '../lib/settings';
+import { useState, useEffect } from 'react';
+import { api } from '@/lib/api';
+import { applyAccent } from '@/lib/accent';
+import { applySeason } from '@/lib/season';
+import type { Settings } from '@/types';
 
-/** Réglages de la classe, partagés par tous les appareils via Firebase. */
+let settingsCache: Settings | null = null;
+let settingsPromise: Promise<Settings> | null = null;
+
+function fetchSettings(): Promise<Settings> {
+  if (!settingsPromise) {
+    settingsPromise = api
+      .getSettings()
+      .then((s) => {
+        settingsCache = s;
+        settingsPromise = null;
+        return s;
+      })
+      .catch((err) => {
+        settingsPromise = null;
+        throw err;
+      });
+  }
+  return settingsPromise;
+}
+
+export function refreshSettings(): Promise<Settings> {
+  settingsCache = null;
+  settingsPromise = null;
+  return fetchSettings();
+}
+
 export function useSettings() {
-  const { value, loading: fbLoading } = useFirebaseValue<Partial<SharedSettings>>(FB.settings);
-  // Hors ligne, Firebase peut ne jamais repondre : on n'attend pas plus de 4 s
-  // (valeurs par defaut, mises a jour des que la connexion revient).
-  const [timedOut, setTimedOut] = useState(false);
+  const [settings, setSettings] = useState<Settings | null>(settingsCache);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    const t = setTimeout(() => setTimedOut(true), 4000);
-    return () => clearTimeout(t);
+    let alive = true;
+    const source = settingsCache ? Promise.resolve(settingsCache) : fetchSettings();
+    source
+      .then((s) => {
+        if (!alive) return;
+        setSettings(s);
+        applyAccent(s.accent_color);
+        applySeason(s.season_theme);
+      })
+      .catch(() => {})
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
   }, []);
-  const loading = fbLoading && !timedOut;
-  const settings = useMemo(() => (loading ? null : withDefaults(value)), [value, loading]);
 
-  const updateSettings = useCallback(async (updates: Partial<SharedSettings>) => {
-    try {
-      await saveSharedSettings(updates);
-    } catch (e) {
-      console.error('Failed to save settings:', e);
-      throw e;
-    }
-  }, []);
-
-  // Conservé pour compatibilité : les données arrivent déjà en temps réel.
-  const refreshSettings = useCallback(async () => {}, []);
-
-  return { settings, loading, updateSettings, refreshSettings };
+  return { settings, loading };
 }

@@ -1,42 +1,22 @@
 {
-  "name": "Seconde Platform",
+  "name": "Seconde",
   "short_name": "Seconde",
-  "description": "Plateforme collaborative pour la classe de Seconde - 100% local",
+  "description": "Plateforme des délégués de classe - Seconde",
   "start_url": "/seconde-plateforme/",
-  "display": "standalone",
-  "background_color": "#f9fafb",
-  "theme_color": "#3b82f6",
-  "orientation": "portrait-primary",
   "scope": "/seconde-plateforme/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a1220",
+  "theme_color": "#0a1220",
+  "lang": "fr",
   "icons": [
-    {
-      "src": "/seconde-plateforme/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/seconde-plateforme/icons/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/seconde-plateforme/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/seconde-plateforme/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/seconde-plateforme/icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
   ],
   "categories": ["education", "productivity"],
   "shortcuts": [
-    {
-      "name": "Chat",
-      "short_name": "Chat",
-      "description": "Ouvrir le chat",
-      "url": "/seconde-plateforme/chat",
-      "icons": [{ "src": "/seconde-plateforme/icons/icon-192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Idées",
-      "short_name": "Idées",
-      "description": "Voir les idées",
-      "url": "/seconde-plateforme/idees",
-      "icons": [{ "src": "/seconde-plateforme/icons/icon-192.png", "sizes": "192x192" }]
-    }
+    { "name": "Chat", "short_name": "Chat", "url": "/seconde-plateforme/chat", "icons": [{ "src": "/seconde-plateforme/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Idées", "short_name": "Idées", "url": "/seconde-plateforme/idees", "icons": [{ "src": "/seconde-plateforme/icons/icon-192.png", "sizes": "192x192" }] }
   ]
 }

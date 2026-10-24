@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { fileToDataUri } from '@/lib/image';
 import { getRelativeTime } from '@/lib/utils';
+import { FbImage } from '@/components/ui/FbImage';
 import type { ChatConversation, ChatMessage } from '@/types';
 
 const POLL_MS = 3000;
@@ -9,7 +10,7 @@ const MAX_IMAGE_INPUT_BYTES = 12 * 1024 * 1024;
 
 interface GroupChatViewProps {
   fingerprint: string;
-  groupId: number;
+  groupId: string;
   groupName: string;
   onBack: () => void;
 }
@@ -27,10 +28,10 @@ export function GroupChatView({ fingerprint, groupId, groupName, onBack }: Group
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const stickToBottom = useRef(true);
-  const lastIdRef = useRef(0);
+  const lastIdRef = useRef("");
   const [closed, setClosed] = useState(false);
 
-  const applyReactionCounts = (messageId: number, counts: Record<string, { total: number; mine: boolean }>) => {
+  const applyReactionCounts = (messageId: string, counts: Record<string, { total: number; mine: boolean }>) => {
     setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: counts } : m)));
   };
 
@@ -46,7 +47,7 @@ export function GroupChatView({ fingerprint, groupId, groupName, onBack }: Group
   };
 
   useEffect(() => {
-    lastIdRef.current = messages.length ? messages[messages.length - 1].id : 0;
+    lastIdRef.current = messages.length ? messages[messages.length - 1].id : '';
   }, [messages]);
 
   /* Chargement initial : conversation */
@@ -111,7 +112,7 @@ export function GroupChatView({ fingerprint, groupId, groupName, onBack }: Group
 
     const load = async () => {
       try {
-        const data = await api.getChatMessages(fingerprint, conversation.id, 0);
+        const data = await api.getChatMessages(fingerprint, conversation.id, '');
         if (!mounted) return;
         setMessages(data.messages);
         stickToBottom.current = true;
@@ -284,7 +285,7 @@ function ChatMessageItem({
   canReact: boolean;
   fingerprint: string;
   onReact: (r: 'pouce' | 'rire' | 'coeur') => void;
-  onLongPress?: (id: number) => void;
+  onLongPress?: (id: string) => void;
 }) {
   const reactions = message.reactions || {};
   const myReactions = Object.entries(reactions).filter(([, v]) => v.mine).map(([k]) => k);
@@ -302,7 +303,12 @@ function ChatMessageItem({
           {!isMine && <p className="text-xs font-medium mb-0.5 opacity-70">{message.sender_name}</p>}
           <p className="whitespace-pre-wrap break-words">{message.content || (message.has_image ? '📷 Photo' : '')}</p>
           {message.has_image && (
-            <img src={`/api/chat/messages/${message.id}/image${fingerprint ? `?fingerprint=${fingerprint}` : ''}`} alt="Photo" className="mt-1 max-h-48 rounded-lg" />
+            <FbImage
+              fileKey={`chat:${message.conversation_id}:${message.id}`}
+              load={() => api.getChatImage(message.id, message.conversation_id)}
+              alt="Photo"
+              className="mt-1 max-h-48 rounded-lg"
+            />
           )}
         </div>
         {canReact && (

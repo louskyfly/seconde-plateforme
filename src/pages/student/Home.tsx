@@ -20,8 +20,7 @@ import type { Announcement, Idea, Poll, Event, Resource, Project } from '@/types
 const SEASON_GREETING: Record<SeasonTheme, string> = {
   aucun: '',
   halloween: '🎃 Joyeux Halloween à toute la classe !',
-  noel: "🎄 Joyeuses fêtes de fin d'année !",
-  nuit: '🌙 Belle nuit à toute la classe !',
+  noel: '🎄 Joyeuses fêtes de fin d’année !',
 };
 
 interface BubbleProps {

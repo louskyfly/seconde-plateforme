@@ -39,9 +39,8 @@ export function StorageWarning() {
     try {
       // L'export arrive en `Content-Disposition: attachment` : il faut déclencher
       // l'enregistrement du fichier nous-mêmes, `fetch` ne le fait pas.
-      const res = await fetch('/api/admin/export', { credentials: 'include' });
-      if (!res.ok) throw new Error('Export refusé par le serveur');
-      const blob = await res.blob();
+      const payload = await api.exportDatabase();
+      const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       const stamp = new Date().toISOString().slice(0, 10);

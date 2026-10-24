@@ -18,7 +18,7 @@ export default function Announcements() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -48,7 +48,7 @@ export default function Announcements() {
     ? announcements.filter((a) => a.category === activeCategory)
     : announcements;
 
-  const toggle = useCallback((id: number) => {
+  const toggle = useCallback((id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
   }, []);
 

@@ -239,7 +239,7 @@ export function ManageAnnouncements() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [toDelete, setToDelete] = useState<Announcement | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);

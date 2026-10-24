@@ -10,7 +10,8 @@ http.createServer((req, res) => {
     return res.end('{"status":"ok","redirect":true}');
   }
   let dest = TARGET;
-  if (path.startsWith('/gestion') || path.startsWith('/admin') || path.startsWith('/login')) dest = TARGET + 'login';
+  // L'ancien lien délégué (/gestion/<jeton>/) existe à nouveau sur le nouveau site.
+  if (path.startsWith('/admin') || path.startsWith('/login')) dest = TARGET + 'gestion';
   else if (path.length > 1 && !path.startsWith('/api')) dest = TARGET + path.replace(/^\/+/, '');
   res.writeHead(301, { Location: dest, 'Cache-Control': 'no-cache' });
   res.end('Le site a déménagé : ' + dest);

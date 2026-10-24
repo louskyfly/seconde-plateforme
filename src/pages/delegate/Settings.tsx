@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import { api } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
-import { useSettings } from '../../hooks/useSettings';
+import { useSettings, refreshSettings } from '@/hooks/useSettings';
 import { applyAccent } from '@/lib/accent';
 import { applySeason, normalizeSeasonTheme, SEASON_THEMES, type SeasonTheme } from '@/lib/season';
 import { fileToDataUri } from '@/lib/image';
@@ -11,7 +11,7 @@ import { Modal } from '@/components/ui/Modal';
 
 export function Settings() {
   const { token } = useParams<{ token: string }>();
-  const { settings, refreshSettings } = useSettings();
+  const { settings } = useSettings();
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -333,7 +333,7 @@ export function Settings() {
           </div>
         )}
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          Le lien d'accès délégué reste privé : {window.location.origin}/gestion/{token || '•••'}
+          Le lien d'accès délégué reste privé : {window.location.origin}{import.meta.env.BASE_URL}gestion/{token || '•••'}
         </p>
       </div>
 
@@ -480,9 +480,9 @@ export function Settings() {
       <div className="glass-card space-y-4">
         <h2 className="font-semibold">💾 Sauvegarde des données</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Tant qu'aucun disque persistant n'est attaché au serveur, la base est effacée à
-          chaque redéploiement. Exporte une sauvegarde après chaque session importante, et
-          restaure-la si les données disparaissent.
+          Les données sont enregistrées dans Firebase (stockage durable et gratuit). Tu peux
+          quand même télécharger une sauvegarde de temps en temps, par précaution, et la
+          restaurer en cas de fausse manipulation.
         </p>
 
         {storage && (
@@ -576,7 +576,7 @@ export function Settings() {
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
           Votre nouveau lien d'accès délégué est :
         </p>
-        <p className="glass-card text-sm break-all">{window.location.origin}/gestion/{newToken}/</p>
+        <p className="glass-card text-sm break-all">{window.location.origin}{import.meta.env.BASE_URL}gestion/{newToken}/</p>
         <p className="text-xs text-red-500 mt-3">
           Enregistrez ce lien maintenant : vous avez été déconnecté et devrez vous reconnecter avec ce nouveau lien.
         </p>

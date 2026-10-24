@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
+import { useFileUrl } from '@/lib/fileUrl';
 import type { Sheet } from '@/types';
 
 interface SheetViewerProps {
@@ -27,9 +28,13 @@ export function SheetViewer({ sheet, onClose }: SheetViewerProps) {
     setZoom(1);
   }, [sheet?.id]);
 
+  const { url, failed } = useFileUrl(sheet ? `sheet:${sheet.id}` : null, () =>
+    sheet ? api.getSheetFile(sheet.id) : Promise.resolve(null)
+  );
+
   if (!sheet) return null;
 
-  const fileUrl = api.sheetFileUrl(sheet.id, true);
+  const fileUrl = url || '';
   const isImage = sheet.kind === 'image';
   const isPdf = sheet.mime_type === 'application/pdf';
 
@@ -39,7 +44,16 @@ export function SheetViewer({ sheet, onClose }: SheetViewerProps) {
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-3 whitespace-pre-line">{sheet.description}</p>
       )}
 
-      {broken ? (
+      {!url && !failed ? (
+        <div className="flex items-center justify-center gap-3 py-16 text-sm text-gray-500 dark:text-gray-400">
+          <span className="inline-block w-5 h-5 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+          Chargement de la fiche…
+        </div>
+      ) : failed ? (
+        <div className="rounded-xl border border-amber-300/50 bg-amber-500/10 px-4 py-6 text-center text-sm text-gray-600 dark:text-gray-300">
+          ⚠️ Fichier introuvable.
+        </div>
+      ) : broken ? (
         <div className="rounded-xl border border-amber-300/50 bg-amber-500/10 px-4 py-6 text-center">
           <p className="text-3xl mb-2">⚠️</p>
           <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
@@ -83,6 +97,7 @@ export function SheetViewer({ sheet, onClose }: SheetViewerProps) {
           </div>
         </>
       ) : isPdf ? (
+        <>
         <iframe
           src={fileUrl}
           title={sheet.title}
@@ -90,6 +105,12 @@ export function SheetViewer({ sheet, onClose }: SheetViewerProps) {
           className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white"
           style={{ height: '70dvh' }}
         />
+        <div className="mt-3 text-center">
+          <a href={fileUrl} target="_blank" rel="noopener" className="glass-button text-xs px-4 py-2 inline-block">
+            Ouvrir le PDF en plein écran
+          </a>
+        </div>
+        </>
       ) : (
         <div className="rounded-xl bg-gray-100 dark:bg-gray-800/60 py-10 text-center">
           <p className="text-3xl mb-2">📄</p>

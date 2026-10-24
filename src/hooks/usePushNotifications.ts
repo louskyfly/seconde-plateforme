@@ -16,11 +16,10 @@ function urlBase64ToBuffer(base64String: string): ArrayBuffer {
 }
 
 export function usePushNotifications() {
-  const supported =
-    typeof window !== 'undefined' &&
-    'Notification' in window &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window;
+  // Les notifications push demandaient un serveur (clés VAPID + envoi) : le
+  // site est désormais 100 % statique (GitHub Pages + Firebase), elles sont
+  // donc désactivées et le bouton n'est plus proposé.
+  const supported = false as boolean;
 
   const initialStatus: PushStatus = !supported
     ? 'unsupported'

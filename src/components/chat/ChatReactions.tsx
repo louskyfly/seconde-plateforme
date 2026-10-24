@@ -26,10 +26,10 @@ export function ChatReactions({
   open,
   onOpenChange,
 }: {
-  messageId: number;
+  messageId: string;
   fingerprint: string | null;
   initial: Record<string, { total: number; mine: boolean }>;
-  onChange: (messageId: number, counts: Record<string, { total: number; mine: boolean }>) => void;
+  onChange: (messageId: string, counts: Record<string, { total: number; mine: boolean }>) => void;
   /** Ouvert depuis l'appui long sur la bulle, ou via le petit bouton. */
   open: boolean;
   onOpenChange: (open: boolean) => void;

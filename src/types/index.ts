@@ -4,12 +4,12 @@ export interface Settings {
   accent_color: string;
   home_info: string;
   home_image: string | null;
-  /** Thème de saison : 'aucun' | 'halloween' | 'noel' | 'nuit' */
+  /** Thème de saison : 'aucun' | 'halloween' | 'noel' */
   season_theme?: string;
 }
 
 export interface Announcement {
-  id: number;
+  id: string;
   title: string;
   description: string;
   category: string;
@@ -25,7 +25,7 @@ export interface Announcement {
 }
 
 export interface Idea {
-  id: number;
+  id: string;
   title: string;
   description: string;
   category: string;
@@ -39,7 +39,7 @@ export interface Idea {
 
 /** Réponse d'un élève sous une idée. Suppression logique via `deleted_at`. */
 export interface IdeaReply {
-  id: number;
+  id: string;
   content: string;
   /** null quand la réponse a été supprimée. */
   author_name: string | null;
@@ -52,7 +52,7 @@ export interface IdeaReply {
 }
 
 export interface Message {
-  id: number;
+  id: string;
   content: string;
   category: string;
   anonymous: number;
@@ -69,7 +69,7 @@ export interface Message {
 }
 
 export interface Poll {
-  id: number;
+  id: string;
   question: string;
   allow_multiple: number;
   show_results: number;
@@ -87,14 +87,14 @@ export interface Poll {
 }
 
 export interface PollOption {
-  id: number;
-  poll_id: number;
+  id: string;
+  poll_id: string;
   text: string;
   vote_count?: number;
 }
 
 export interface Event {
-  id: number;
+  id: string;
   title: string;
   date: string;
   time: string | null;
@@ -105,7 +105,7 @@ export interface Event {
 }
 
 export interface RevisionSession {
-  id: number;
+  id: string;
   title: string;
   subject: string;
   date: string;
@@ -123,7 +123,7 @@ export interface RevisionSession {
 }
 
 export interface Resource {
-  id: number;
+  id: string;
   title: string;
   description: string;
   subject: string;
@@ -134,7 +134,7 @@ export interface Resource {
 }
 
 export interface Project {
-  id: number;
+  id: string;
   name: string;
   description: string;
   status: string;
@@ -163,7 +163,7 @@ export interface MaintenanceState {
 
 /** Une ligne de `maintenance_log`, telle que renvoyée par /api/maintenance/history. */
 export interface MaintenanceLogEntry {
-  id: number;
+  id: string;
   active: number;
   message: string;
   activated_by: string | null;
@@ -173,7 +173,7 @@ export interface MaintenanceLogEntry {
 }
 
 export interface ChatUser {
-  id: number;
+  id: string;
   display_name: string;
   kind: string;
   fingerprint?: string | null;
@@ -183,13 +183,13 @@ export interface ChatUser {
 }
 
 export interface ChatConversation {
-  id: number;
+  id: string;
   title: string | null;
   is_group: number;
 }
 
 export interface ChatMemberInfo {
-  id: number;
+  id: string;
   display_name: string;
   kind: string;
   joined_at: string;
@@ -210,9 +210,9 @@ export type ChatReaction = 'pouce' | 'rire' | 'coeur';
 export type ChatReactionCounts = Record<string, { total: number; mine: boolean }>;
 
 export interface ChatMessage {
-  id: number;
-  conversation_id: number;
-  sender_id: number;
+  id: string;
+  conversation_id: string;
+  sender_id: string;
   sender_name: string;
   sender_kind: string;
   content: string;
@@ -224,9 +224,9 @@ export interface ChatMessage {
 
 /** Conversation de chat de groupe validé. */
 export interface GroupChatConversation {
-  id: number;
+  id: string;
   title: string;
-  group_id: number;
+  group_id: string;
   closed: number;
   last_activity_at: string;
   group_name: string;
@@ -261,7 +261,7 @@ export interface VisitStats {
 }
 
 export interface Student {
-  id: number;
+  id: string;
   first_name: string;
   last_name: string;
   /** Anniversaire en MM-JJ, ou null si l'élève n'en a pas communiqué. */
@@ -280,8 +280,8 @@ export type StudentGroupStatus = 'en_attente' | 'valide' | 'refuse';
  */
 export interface GroupMember {
   /** Identifiant de la ligne du membre, stable même sans fiche élève. */
-  id: number;
-  student_id: number | null;
+  id: string;
+  student_id: string | null;
   /** Nom à afficher, tel que tapé. */
   name: string;
   /** Nom normalisé (minuscules, sans accents) : sert à retirer un membre. */
@@ -291,7 +291,7 @@ export interface GroupMember {
 }
 
 export interface StudentGroup {
-  id: number;
+  id: string;
   name: string;
   is_private: number;
   status: StudentGroupStatus;
@@ -305,7 +305,7 @@ export interface StudentGroup {
 }
 
 export interface Sheet {
-  id: number;
+  id: string;
   title: string;
   subject: string;
   class_level: string | null;
@@ -329,10 +329,10 @@ export interface SheetListResponse {
 }
 
 export interface AdminLogEntry {
-  id: number;
+  id: string;
   action: string;
   target_type: string | null;
-  target_id: number | null;
+  target_id: string | null;
   detail: string | null;
   created_at: string;
 }

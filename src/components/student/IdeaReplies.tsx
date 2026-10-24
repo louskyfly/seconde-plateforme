@@ -11,7 +11,7 @@ import type { IdeaReply } from '@/types';
  * supprimer, identifié par son fingerprint — comme dans le chat, pour éviter
  * qu'un élève efface les mots des autres.
  */
-export function IdeaReplies({ ideaId, onCountChange }: { ideaId: number; onCountChange?: (n: number) => void }) {
+export function IdeaReplies({ ideaId, onCountChange }: { ideaId: string; onCountChange?: (n: number) => void }) {
   const [replies, setReplies] = useState<IdeaReply[]>([]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');

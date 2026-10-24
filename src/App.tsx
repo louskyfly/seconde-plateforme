@@ -1,81 +1,92 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
-import { migrateLocalDataOnce } from './lib/migrateLocal';
-import Home from './pages/Home';
-import Chat from './pages/Chat';
-import Ideas from './pages/Ideas';
-import Revisions from './pages/Revisions';
-import Sheets from './pages/Sheets';
-import Students from './pages/Students';
-import Calendar from './pages/Calendar';
-import Polls from './pages/Polls';
-import Messages from './pages/Messages';
-import Admin from './pages/Admin';
-import Settings from './pages/Settings';
-import Login from './pages/Login';
-import Layout from './components/Layout';
-import AdminLayout, { AdminProtectedRoute } from './components/AdminLayout';
-import './index.css';
+import { StudentLayout } from './components/layout/StudentLayout';
+import DelegateLayout from './components/layout/DelegateLayout';
+import { AuthProvider } from './hooks/useAuth';
+import { PageLoader } from './components/ui/PageLoader';
+import { MaintenanceGate } from './components/MaintenanceGate';
+import { useVisitTracker } from './hooks/useVisitTracker';
+import { BirthdayAnimation } from './components/BirthdayAnimation';
 
-function App() {
-  const [initialized, setInitialized] = useState(false);
+const Home = lazy(() => import('./pages/student/Home'));
+const Announcements = lazy(() => import('./pages/student/Announcements'));
+const Ideas = lazy(() => import('./pages/student/Ideas'));
+const MessageDelegate = lazy(() => import('./pages/student/MessageDelegate'));
+const Polls = lazy(() => import('./pages/student/Polls'));
+const Calendar = lazy(() => import('./pages/student/Calendar'));
+const Resources = lazy(() => import('./pages/student/Resources'));
+const Projects = lazy(() => import('./pages/student/Projects'));
+const StudentList = lazy(() => import('./pages/student/StudentList'));
+const Revisions = lazy(() => import('./pages/student/Revisions'));
+const Chat = lazy(() => import('./pages/student/Chat'));
+const Sheets = lazy(() => import('./pages/student/Sheets'));
+const DelegateLogin = lazy(() => import('./pages/delegate/Login'));
+const DelegateDashboard = lazy(() => import('./pages/delegate/Dashboard'));
+const DelegateMessages = lazy(() => import('./pages/delegate/ManageMessages'));
+const DelegateIdeas = lazy(() => import('./pages/delegate/ManageIdeas'));
+const DelegatePolls = lazy(() => import('./pages/delegate/ManagePolls'));
+const DelegateAnnouncements = lazy(() => import('./pages/delegate/ManageAnnouncements'));
+const DelegateCalendar = lazy(() => import('./pages/delegate/ManageCalendar'));
+const DelegateResources = lazy(() => import('./pages/delegate/ManageResources'));
+const DelegateProjects = lazy(() => import('./pages/delegate/ManageProjects'));
+const DelegateStudents = lazy(() => import('./pages/delegate/ManageStudents'));
+const DelegateRevisions = lazy(() => import('./pages/delegate/ManageRevisions'));
+const DelegateChat = lazy(() => import('./pages/delegate/ManageChat'));
+const DelegateSheets = lazy(() => import('./pages/delegate/ManageSheets'));
+const DelegateSettings = lazy(() => import('./pages/delegate/Settings'));
 
-  useEffect(() => {
-    // Import unique des anciennes données locales (IndexedDB) vers Firebase.
-    migrateLocalDataOnce().catch(console.error);
-    setInitialized(true);
-  }, []);
-
-  if (!initialized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-600">Initialisation...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/*"
-          element={
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/chat" element={<Chat />} />
-                <Route path="/idees" element={<Ideas />} />
-                <Route path="/revisions" element={<Revisions />} />
-                <Route path="/fiches" element={<Sheets />} />
-                <Route path="/eleves" element={<Students />} />
-                <Route path="/calendrier" element={<Calendar />} />
-                <Route path="/sondages" element={<Polls />} />
-                <Route path="/messages" element={<Messages />} />
-                <Route path="/parametres" element={<Settings />} />
-              </Routes>
-            </Layout>
-          }
-        />
-        <Route
-          path="/admin/*"
-          element={
-            <AdminLayout>
-              <AdminProtectedRoute>
-                <Routes>
-                  <Route path="/" element={<Admin />} />
-                  <Route path="*" element={<Navigate to="/admin" replace />} />
-                </Routes>
-              </AdminProtectedRoute>
-            </AdminLayout>
-          }
-        />
-      </Routes>
-    </div>
-  );
+/** Comptabilise la visite courante. Doit vivre sous le routeur. */
+function VisitTracker() {
+  useVisitTracker();
+  return null;
 }
 
-export default App;
+export default function App() {
+  return (
+    <AuthProvider>
+      <VisitTracker />
+      <BirthdayAnimation />
+      <Suspense fallback={<PageLoader />}>
+        <MaintenanceGate>
+          <Routes>
+            {/* Student space */}
+            <Route element={<StudentLayout />}>
+              <Route path="/" element={<Home />} />
+              <Route path="/informations" element={<Announcements />} />
+              <Route path="/idees" element={<Ideas />} />
+              <Route path="/messagerie" element={<MessageDelegate />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/fiches" element={<Sheets />} />
+              <Route path="/sondages" element={<Polls />} />
+              <Route path="/calendrier" element={<Calendar />} />
+              <Route path="/ressources" element={<Resources />} />
+              <Route path="/projets" element={<Projects />} />
+              <Route path="/classe" element={<StudentList />} />
+              <Route path="/revisions" element={<Revisions />} />
+            </Route>
+
+            {/* Delegate space */}
+            <Route path="/gestion" element={<DelegateLogin />} />
+            <Route path="/gestion/:token" element={<DelegateLayout />}>
+              <Route index element={<DelegateDashboard />} />
+              <Route path="messages" element={<DelegateMessages />} />
+              <Route path="chat" element={<DelegateChat />} />
+              <Route path="idees" element={<DelegateIdeas />} />
+              <Route path="sondages" element={<DelegatePolls />} />
+              <Route path="annonces" element={<DelegateAnnouncements />} />
+              <Route path="calendrier" element={<DelegateCalendar />} />
+              <Route path="ressources" element={<DelegateResources />} />
+              <Route path="fiches" element={<DelegateSheets />} />
+              <Route path="projets" element={<DelegateProjects />} />
+              <Route path="classe" element={<DelegateStudents />} />
+              <Route path="revisions" element={<DelegateRevisions />} />
+              <Route path="parametres" element={<DelegateSettings />} />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </MaintenanceGate>
+      </Suspense>
+    </AuthProvider>
+  );
+}

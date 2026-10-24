@@ -3,6 +3,8 @@ import { api } from '@/lib/api';
 import { fileToDataUri } from '@/lib/image';
 import { cleanFirstName, getRelativeTime, isValidFirstName, setAppBadge, setFirstName } from '@/lib/utils';
 import { ChatReactions, LONG_PRESS_MS } from './ChatReactions';
+import { FbImage } from '@/components/ui/FbImage';
+import { loadFileUrl } from '@/lib/fileUrl';
 import type { ChatConversation, ChatMessage, ChatUser } from '@/types';
 
 const POLL_MS = 3000;
@@ -34,7 +36,7 @@ const [uploading, setUploading] = useState(false);
 const [newCount, setNewCount] = useState(0);
 
   /** Sélecteur de réactions ouvert, par identifiant de message. */
-  const [reactionFor, setReactionFor] = useState<number | null>(null);
+  const [reactionFor, setReactionFor] = useState<string | null>(null);
   const longPressTimer = useRef<number | null>(null);
 
   /** Les réactions sont réservées aux élèves : le délégué répond, il ne réagit pas. */
@@ -44,13 +46,13 @@ const [newCount, setNewCount] = useState(0);
     if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
   };
 
-  const startLongPress = (messageId: number) => {
+  const startLongPress = (messageId: string) => {
     cancelLongPress();
     longPressTimer.current = window.setTimeout(() => setReactionFor(messageId), LONG_PRESS_MS);
   };
 
   /** Met à jour les compteurs d'un seul message, sans recharger tout le fil. */
-  const applyReactionCounts = (messageId: number, counts: Record<string, { total: number; mine: boolean }>) => {
+  const applyReactionCounts = (messageId: string, counts: Record<string, { total: number; mine: boolean }>) => {
     setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reactions: counts } : m)));
   };
 
@@ -62,10 +64,10 @@ const [newCount, setNewCount] = useState(0);
    * plus du tableau `messages` (avant, la fonction était figée au premier rendu
    * et le bouton « Actualiser » pouvait être nécessaire pour voir les messages).
    */
-  const lastIdRef = useRef(0);
+  const lastIdRef = useRef("");
 
   useEffect(() => {
-    lastIdRef.current = messages.length ? messages[messages.length - 1].id : 0;
+    lastIdRef.current = messages.length ? messages[messages.length - 1].id : '';
   }, [messages]);
 
   const scrollToBottom = useCallback((smooth = false) => {
@@ -139,7 +141,7 @@ const [newCount, setNewCount] = useState(0);
 
     const load = async () => {
       try {
-        const data = await api.getChatMessages(fingerprint, conversation.id, 0);
+        const data = await api.getChatMessages(fingerprint, conversation.id, '');
         if (!mounted) return;
         setMessages(data.messages);
         stickToBottom.current = true;
@@ -385,12 +387,16 @@ const [newCount, setNewCount] = useState(0);
                 </div>
 
                 {m.has_image === 1 && (
-                  <img
-                    src={api.chatImageUrl(m.id, fingerprint)}
+                  <FbImage
+                    fileKey={`chat:${m.id}`}
+                    load={() => api.getChatImage(m.id)}
                     alt="Photo envoyée"
-                    loading="lazy"
                     className="rounded-xl max-h-64 w-full object-cover my-1 cursor-zoom-in"
-                    onClick={() => window.open(api.chatImageUrl(m.id, fingerprint), '_blank', 'noopener')}
+                    onClick={() => {
+                      loadFileUrl(`chat:${m.id}`, () => api.getChatImage(m.id)).then((u) => {
+                        if (u) window.open(u, '_blank', 'noopener');
+                      });
+                    }}
                   />
                 )}
 

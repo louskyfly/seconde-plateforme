@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { api } from '@/lib/api';
+import { FbImage } from '@/components/ui/FbImage';
 import { fileToDataUri, readAsDataUri } from '@/lib/image';
 import { getRelativeTime, SUBJECTS, generateFingerprint } from '@/lib/utils';
 import type { Sheet } from '@/types';
@@ -254,12 +255,7 @@ export default function Sheets() {
           {sheets.map((sheet) => (
             <div key={sheet.id} className="glass-card flex flex-col">
               {sheet.kind === 'image' ? (
-                <img
-                  src={api.sheetFileUrl(sheet.id, true)}
-                  alt={sheet.title}
-                  loading="lazy"
-                  className="w-full h-36 object-cover rounded-t-xl"
-                />
+                <FbImage fileKey={`sheet:${sheet.id}`} load={() => api.getSheetFile(sheet.id)} alt={sheet.title} loading="lazy" className="w-full h-36 object-cover rounded-t-xl" />
               ) : (
                 <div className="w-full h-36 rounded-t-xl bg-gradient-to-br from-indigo-500/15 to-indigo-500/5 flex items-center justify-center text-4xl">
                   📄

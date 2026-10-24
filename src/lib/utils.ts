@@ -82,7 +82,11 @@ export function generateFingerprint(): string {
   const CLE = 'voter_fp';
   const COOKIE = 'voter_fp';
 
-  let fp = safeLocalGet(CLE);
+  // L'identifiant de la version précédente du site (Firebase) est repris en
+  // priorité : les sessions de révision et idées déjà publiées restent ainsi
+  // reconnues comme « les miennes ».
+  let fp = safeLocalGet(CLE) || safeLocalGet('device_fingerprint');
+  if (fp) safeLocalSet(CLE, fp);
 
   if (!fp) {
     // Récupération depuis le cookie : l'élève revient après avoir vidé les
@@ -92,11 +96,15 @@ export function generateFingerprint(): string {
   }
 
   if (!fp) {
-    fp = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    fp =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : Math.random().toString(36).substring(2) + Date.now().toString(36);
     writeCookie(COOKIE, fp);
     safeLocalSet(CLE, fp);
   }
 
+  if (!readCookie(COOKIE)) writeCookie(COOKIE, fp);
   return fp;
 }
 

@@ -216,7 +216,7 @@ export function ManagePolls() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Poll | null>(null);
   const [toDelete, setToDelete] = useState<Poll | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [flash, setFlash] = useState('');
 
   const load = () => {

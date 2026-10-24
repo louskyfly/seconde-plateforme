@@ -24,10 +24,10 @@ function GroupCard({
 }: {
   group: StudentGroup;
   students: Student[];
-  onStatus: (id: number, status: StudentGroupStatus) => Promise<void>;
-  onRemoveMember: (groupId: number, memberKey: string) => Promise<void>;
-  onJoin: (groupId: number, studentId: number) => Promise<void>;
-  onDelete: (id: number) => Promise<void>;
+  onStatus: (id: string, status: StudentGroupStatus) => Promise<void>;
+  onRemoveMember: (groupId: string, memberKey: string) => Promise<void>;
+  onJoin: (groupId: string, studentId: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [aJoindre, setAJoindre] = useState('');
   const [busy, setBusy] = useState(false);
@@ -41,7 +41,7 @@ function GroupCard({
   // La composition d'un groupe comporte des fiches du tableau et des noms que
   // les élèves ont tapés. Seules les fiches ont un `student_id`, et c'est
   //elles qui sont comparées ici pour proposer les élèves qui manquent.
-  const choisis = group.members.map((m) => m.student_id).filter((v): v is number => typeof v === 'number');
+  const choisis = group.members.map((m) => m.student_id).filter((v): v is string => typeof v === 'string');
   const disponibles = students.filter((s) => !choisis.includes(s.id));
 
   const changerStatut = async (status: StudentGroupStatus) => {
@@ -57,7 +57,7 @@ function GroupCard({
   };
 
   const rejoindre = async () => {
-    const id = Number(aJoindre);
+    const id = aJoindre;
     if (!id) return;
     setBusy(true);
     setErreur('');
@@ -262,7 +262,7 @@ export default function ManageStudents() {
     }
   };
 
-  const modifierEleve = async (id: number, patch: Partial<Student>) => {
+  const modifierEleve = async (id: string, patch: Partial<Student>) => {
     setErreur('');
     try {
       await api.updateStudent(id, patch);
@@ -273,7 +273,7 @@ export default function ManageStudents() {
     }
   };
 
-  const supprimerEleve = async (id: number) => {
+  const supprimerEleve = async (id: string) => {
     await api.deleteStudent(id);
     setErreur('');
     // Les groupes bougent aussi (l'élève disparaît de son équipe).
@@ -302,7 +302,7 @@ export default function ManageStudents() {
     }
   };
 
-  const statut = async (id: number, valeur: StudentGroupStatus) => {
+  const statut = async (id: string, valeur: StudentGroupStatus) => {
     setErreur('');
     try {
       await api.updateGroupStatus(id, valeur);
@@ -313,17 +313,17 @@ export default function ManageStudents() {
     }
   };
 
-  const rejoindre = async (groupId: number, studentId: number) => {
+  const rejoindre = async (groupId: string, studentId: string) => {
     await api.proposeGroupMember(groupId, { student_id: studentId });
     setGroups(await api.getStudentGroups());
   };
 
-  const retirerMembre = async (groupId: number, memberKey: string) => {
+  const retirerMembre = async (groupId: string, memberKey: string) => {
     await api.removeGroupMember(groupId, memberKey);
     setGroups(await api.getStudentGroups());
   };
 
-  const supprimerGroupe = async (id: number) => {
+  const supprimerGroupe = async (id: string) => {
     await api.deleteStudentGroup(id);
     setErreur('');
     setGroups(await api.getStudentGroups());

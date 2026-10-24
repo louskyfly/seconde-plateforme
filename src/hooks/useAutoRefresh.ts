@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { DATA_CHANGED_EVENT } from '@/lib/api';
 
 /**
  * Rafraîchit une page quand l'élève la rouvre.
@@ -35,9 +36,20 @@ export function useAutoRefresh(
       if (document.visibilityState === 'visible') run();
     };
 
+    // Temps réel : Firebase prévient dès qu'une donnée suivie change.
+    let pending: number | null = null;
+    const onData = () => {
+      if (pending != null) return;
+      pending = window.setTimeout(() => {
+        pending = null;
+        run();
+      }, 150);
+    };
+
     document.addEventListener('visibilitychange', onWake);
     window.addEventListener('focus', onWake);
     window.addEventListener('online', onWake);
+    window.addEventListener(DATA_CHANGED_EVENT, onData);
 
     const id = intervalMs > 0 ? window.setInterval(run, intervalMs) : null;
 
@@ -45,6 +57,8 @@ export function useAutoRefresh(
       document.removeEventListener('visibilitychange', onWake);
       window.removeEventListener('focus', onWake);
       window.removeEventListener('online', onWake);
+      window.removeEventListener(DATA_CHANGED_EVENT, onData);
+      if (pending != null) window.clearTimeout(pending);
       if (id != null) window.clearInterval(id);
     };
   }, [enabled, intervalMs]);

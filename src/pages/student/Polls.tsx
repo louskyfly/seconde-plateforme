@@ -8,9 +8,9 @@ import type { Poll } from '@/types';
 export default function Polls() {
   const [polls, setPolls] = useState<Poll[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedOptions, setSelectedOptions] = useState<Record<number, number[]>>({});
-  const [votedPolls, setVotedPolls] = useState<Set<number>>(new Set());
-  const [voting, setVoting] = useState<number | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string[]>>({});
+  const [votedPolls, setVotedPolls] = useState<Set<string>>(new Set());
+  const [voting, setVoting] = useState<string | null>(null);
   const [error, setError] = useState('');
   /** true quand le chargement a échoué : sert à ne pas afficher « aucun sondage ». */
   const [loadError, setLoadError] = useState(false);
@@ -42,7 +42,7 @@ export default function Polls() {
 
   useAutoRefresh(load);
 
-  const toggleOption = useCallback((pollId: number, optionId: number, allowMultiple: boolean) => {
+  const toggleOption = useCallback((pollId: string, optionId: string, allowMultiple: boolean) => {
     setSelectedOptions((prev) => {
       const current = prev[pollId] || [];
       if (allowMultiple) {

@@ -307,6 +307,20 @@ export default function Home() {
 
           <Countdowns events={upcomingEvents} />
 
+          <a
+            href="https://docs.google.com/document/d/1kJTRlBuCdz-m-DaBwjdnjq43d7bMviU4j9v59HsUwnM/edit?usp=drivesdk"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="glass-card mt-3 flex items-center gap-3 animate-slideUp"
+          >
+            <span className="text-2xl" aria-hidden="true">🏫</span>
+            <span className="flex-1">
+              <span className="block text-sm font-bold text-gray-800 dark:text-gray-100">Conseil de classe</span>
+              <span className="block text-xs text-gray-500 dark:text-gray-400">Récap du semestre à remplir avant le conseil</span>
+            </span>
+            <span className="text-gray-400" aria-hidden="true">↗</span>
+          </a>
+
           <FeaturedBubble
             to="/informations"
             emoji="📢"

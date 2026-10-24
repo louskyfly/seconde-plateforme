@@ -5,7 +5,6 @@ import { useSettings } from '@/hooks/useSettings';
 import { usePendingPolls } from '@/hooks/usePendingPolls';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { MiniCalendar } from '@/components/MiniCalendar';
-import { BirthdayEntry } from '@/components/student/BirthdayEntry';
 import { normalizeSeasonTheme, type SeasonTheme } from '@/lib/season';
 import {
   formatDate,
@@ -318,9 +317,6 @@ export default function Home() {
           <div className="mt-3">
             <MiniCalendar events={events} compact onSelectDay={() => navigate('/calendrier')} />
           </div>
-
-          {/* Anniversaire : l'élève saisit sa date, animation collective le jour J. */}
-          <BirthdayEntry />
 
           {/* Messages à lire : le student ne voit que ses propres échanges, le
               compteur ne porte que sur ce qu'il a envoyé sans réponse. */}

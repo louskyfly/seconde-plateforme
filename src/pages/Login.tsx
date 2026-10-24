@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { db } from '../lib/db';
+import { getSharedSettings } from '../lib/settings';
 import { verifyPassword } from '../utils/password';
 
 export default function Login() {
@@ -18,11 +18,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const settings = await db.settings.get(1);
-      if (!settings) {
-        setError('Configuration manquante');
-        return;
-      }
+      const settings = await getSharedSettings();
 
       const valid = await verifyPassword(password, settings.passwordHash);
       if (!valid) {
@@ -81,7 +77,7 @@ export default function Login() {
         </form>
 
         <p className="text-center text-sm text-gray-500 mt-6">
-          Les données sont stockées localement sur votre appareil (IndexedDB).
+          Les données de la classe sont partagées et synchronisées en ligne.
         </p>
       </div>
     </div>

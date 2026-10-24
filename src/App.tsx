@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { db } from './lib/db';
+import { migrateLocalDataOnce } from './lib/migrateLocal';
 import Home from './pages/Home';
 import Chat from './pages/Chat';
 import Ideas from './pages/Ideas';
@@ -21,7 +21,8 @@ function App() {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    db.open().catch(console.error);
+    // Import unique des anciennes données locales (IndexedDB) vers Firebase.
+    migrateLocalDataOnce().catch(console.error);
     setInitialized(true);
   }, []);
 

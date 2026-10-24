@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
-import { db } from '../lib/db';
+import { getSharedSettings } from '../lib/settings';
 import { verifyPassword } from '../utils/password';
 
 const ADMIN_AUTH_KEY = 'admin_authenticated';
@@ -18,9 +18,8 @@ export function useAdminAuth() {
   }, []);
 
   const login = async (password: string) => {
-    const settings = await db.settings.get(1);
-    if (!settings) throw new Error('Configuration manquante');
-    
+    const settings = await getSharedSettings();
+
     const valid = await verifyPassword(password, settings.passwordHash);
     if (!valid) throw new Error('Mot de passe incorrect');
     

@@ -1,19 +1,63 @@
-import { useState, useEffect, useRef } from 'react';
-import { db, getFingerprint } from '../lib/db';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { ref, set as firebaseSet, update as firebaseUpdate, remove as firebaseRemove, get, serverTimestamp } from 'firebase/database';
+import { getFingerprint, getLocalDisplayName, setLocalDisplayName } from '../lib/device';
 import { useFingerprint } from '../hooks/useFingerprint';
+import { useFirebaseSync, useFirebaseValue } from '../hooks/useFirebaseSync';
+import { db as fdb, FB } from '../lib/firebase';
+import { compressImage } from '../lib/image';
 
 const REACTIONS = ['pouce', 'rire', 'coeur'] as const;
 type Reaction = typeof REACTIONS[number];
 
+const CONVERSATION = { id: 'classe', title: 'Groupe classe' };
+
+/** Ancien prenom saisi dans la version locale (IndexedDB), pour ne pas le redemander. */
+async function legacyDisplayName(fp: string): Promise<string> {
+  try {
+    const { hasLegacyLocalDb } = await import('../lib/migrateLocal');
+    if (!(await hasLegacyLocalDb())) return '';
+    const { db } = await import('../lib/db');
+    const u = await db.chatUsers.where('fingerprint').equals(fp).first();
+    return u?.displayName || '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Donnees Firebase :
+ *  chatMessages/{id}                      -> { senderId (empreinte), senderName, senderKind, content, image?, createdAt }
+ *  chatReactions/{messageId}/{reaction}/{empreinte} -> true
+ *  chatUsers/{empreinte}                  -> { displayName, kind, lastSeenAt }   (pour les statistiques admin)
+ * Le prenom reste aussi en local (localStorage) : il est propre a l'appareil.
+ */
 export default function Chat() {
-  const fingerprint = useFingerprint();
+  useFingerprint();
+  const fp = useMemo(() => getFingerprint(), []);
   const [user, setUser] = useState<any>(null);
-  const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [newImage, setNewImage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [conversation, setConversation] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const conversation = CONVERSATION;
+
+  const { items: rawMessages } = useFirebaseSync<any>(FB.chatMessages, { limitToLast: 50 });
+  const { value: reactionsByMsg } = useFirebaseValue<Record<string, Record<string, Record<string, true>>>>(FB.chatReactions);
+
+  const messages = useMemo(() => {
+    return [...rawMessages]
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+      .map((msg: any) => {
+        const counts: Record<string, { total: number; mine: boolean }> = {};
+        const byReaction = (reactionsByMsg && reactionsByMsg[msg.id]) || {};
+        for (const r of REACTIONS) {
+          const users = Object.keys(byReaction[r] || {});
+          if (users.length) counts[r] = { total: users.length, mine: users.includes(fp) };
+        }
+        return { ...msg, senderName: msg.senderName || 'Inconnu', senderKind: msg.senderKind || 'student', reactions: counts };
+      });
+  }, [rawMessages, reactionsByMsg, fp]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -21,131 +65,51 @@ export default function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
-
-  const init = async () => {
-    try {
-      // Get or create user
-      let user = await db.chatUsers.where('fingerprint').equals(fingerprint).first();
-      if (!user) {
-        const result = await db.chatUsers.add({
-          displayName: '',
-          kind: 'student',
-          fingerprint,
-          createdAt: Date.now(),
-          lastSeenAt: Date.now(),
-        });
-        user = { id: result, displayName: '', kind: 'student', fingerprint, lastSeenAt: Date.now() };
-      } else if (!user.displayName) {
-        // Need to set name
-      }
-      setUser(user);
-
-      // Get default conversation
-      let conv = await db.chatConversations.where('isGroup').equals(1).first();
-      if (!conv) {
-        const delegate = await db.chatUsers.where('kind').equals('delegate').first();
-        const delegateId = delegate?.id || 1;
-        const id = await db.chatConversations.add({
-          title: 'Groupe classe',
-          isGroup: true,
-          createdBy: delegateId,
-          groupId: null,
-          closed: false,
-          createdAt: Date.now(),
-          lastActivityAt: Date.now(),
-        });
-        conv = { id, title: 'Groupe classe', isGroup: true, createdBy: delegateId, groupId: null, closed: false };
-      }
-      setConversation(conv);
-
-      // Add user to conversation
-      if (conv && user && conv.id && user.id) {
-        await db.chatMembers.put({
-          conversationId: conv.id,
-          userId: user.id,
-          lastReadAt: Date.now(),
-          lastReadMessageId: 0,
-          joinedAt: Date.now(),
-        });
-      }
-
-      // Load messages
-      loadMessages();
-    } catch (e) {
-      console.error('Chat init error:', e);
-    }
-  };
-
-  const loadMessages = async () => {
-    if (!conversation) return;
-    const msgs = await db.chatMessagesDB
-      .where('conversationId')
-      .equals(conversation.id)
-      .reverse()
-      .limit(50)
-      .toArray();
-    // Reverse to show oldest first
-    const sorted = msgs.reverse();
-    // Add reactions and sender info
-    for (const msg of sorted) {
-      const sender = await db.chatUsers.get(msg.senderId);
-      (msg as any).senderName = sender?.displayName || 'Inconnu';
-      (msg as any).senderKind = sender?.kind || 'student';
-      if (msg.id) {
-        (msg as any).reactions = await getReactions(msg.id);
-      }
-    }
-    setMessages(sorted);
-  };
-
-  const getReactions = async (messageId: number) => {
-    const reactions = await db.chatReactions.where('messageId').equals(messageId).toArray();
-    const counts: Record<string, { total: number; mine: boolean }> = {};
-    const currentUserId = await getCurrentUserId();
-    for (const r of reactions) {
-      if (!counts[r.reaction]) counts[r.reaction] = { total: 0, mine: false };
-      counts[r.reaction].total++;
-      if (r.userId === currentUserId) counts[r.reaction].mine = true;
-    }
-    return counts;
-  };
-
-  const getCurrentUserId = async () => {
-    const user = await db.chatUsers.where('fingerprint').equals(fingerprint).first();
-    return user?.id;
-  };
+  }, [messages.length]);
 
   useEffect(() => {
-    init();
-  }, []);
+    let cancelled = false;
+    (async () => {
+      let displayName = getLocalDisplayName();
+      if (!displayName) {
+        displayName = await legacyDisplayName(fp);
+        if (displayName) setLocalDisplayName(displayName);
+      }
+      if (cancelled) return;
+      setUser({ id: fp, displayName, kind: 'student', fingerprint: fp });
+      if (displayName) registerUser(displayName);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fp]);
 
-  // Auto-refresh messages
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (conversation) loadMessages();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [conversation]);
+  const registerUser = (displayName: string) => {
+    firebaseUpdate(ref(fdb, `${FB.chatUsers}/${fp}`), {
+      displayName,
+      kind: 'student',
+      lastSeenAt: serverTimestamp(),
+    }).catch((e) => console.error('chatUsers:', e));
+  };
 
   const handleSend = async () => {
     if (!newMessage.trim() && !newImage) return;
-    if (!conversation || !user) return;
+    if (!user) return;
 
     setSending(true);
     try {
-      await db.chatMessagesDB.add({
-        conversationId: conversation.id,
-        senderId: user.id,
+      const msgRef = ref(fdb, `${FB.chatMessages}/${crypto.randomUUID().replace(/-/g, '')}`);
+      const doc: Record<string, any> = {
+        senderId: fp,
+        senderName: user.displayName,
+        senderKind: 'student',
         content: newMessage.trim(),
-        image: newImage || undefined,
-        createdAt: Date.now(),
-      });
-
+        createdAt: serverTimestamp(),
+      };
+      if (newImage) doc.image = newImage;
+      await firebaseSet(msgRef, doc);
       setNewMessage('');
       setNewImage(null);
-      // Reload messages
-      loadMessages();
     } catch (e) {
       console.error('Send error:', e);
       alert('Erreur envoi message');
@@ -154,8 +118,9 @@ export default function Chat() {
     }
   };
 
-  const handleImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       alert('Seules les images sont acceptées');
@@ -165,34 +130,27 @@ export default function Chat() {
       alert('Image trop volumineuse (max 3 Mo)');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setNewImage(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const data = await compressImage(file, 1280, 0.75);
+      if (data.length > 1_500_000) {
+        alert('Image trop volumineuse');
+        return;
+      }
+      setNewImage(data);
+    } catch {
+      alert("Impossible de lire l'image");
+    }
   };
 
-  const handleReaction = async (messageId: number, reaction: Reaction) => {
-    const currentUserId = await getCurrentUserId();
-    if (!currentUserId) return;
-
-    const existing = await db.chatReactions
-      .where('[messageId+reaction+userId]')
-      .equals([messageId, reaction, currentUserId])
-      .first();
-
-    if (existing) {
-      await db.chatReactions.delete(existing.id);
-    } else {
-      await db.chatReactions.add({
-        messageId,
-        reaction,
-        userId: currentUserId,
-        createdAt: Date.now(),
-      });
+  const handleReaction = async (messageId: string, reaction: Reaction) => {
+    const path = `${FB.chatReactions}/${messageId}/${reaction}/${fp}`;
+    const mine = !!reactionsByMsg?.[messageId]?.[reaction]?.[fp];
+    try {
+      if (mine) await firebaseRemove(ref(fdb, path));
+      else await firebaseSet(ref(fdb, path), true);
+    } catch (e) {
+      console.error('Reaction error:', e);
     }
-    // Reload messages to update reactions
-    loadMessages();
   };
 
   if (!user) {
@@ -215,9 +173,10 @@ export default function Chat() {
           e.preventDefault();
           const name = new FormData(e.currentTarget).get('name') as string;
           if (name && name.trim()) {
-            // Update user name
-            db.chatUsers.update(user.id, { displayName: name.trim().split(' ')[0] });
-            setUser({ ...user, displayName: name.trim().split(' ')[0] });
+            const first = name.trim().split(' ')[0];
+            setLocalDisplayName(first);
+            registerUser(first);
+            setUser({ ...user, displayName: first });
           }
         }}>
           <input
@@ -253,7 +212,7 @@ export default function Chat() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={messagesEndRef}>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-64 text-gray-400">
             <p>Aucun message pour l'instant. Soyez le premier à écrire !</p>
@@ -262,8 +221,8 @@ export default function Chat() {
           messages.map((msg) => (
             <MessageBubble
               key={msg.id}
-              message={msg}
-              isOwn={msg.senderId === user.id}
+              message={{ ...msg, isOwn: msg.senderId === fp }}
+              isOwn={msg.senderId === fp}
               onReaction={(r) => handleReaction(msg.id, r)}
             />
           ))
@@ -287,6 +246,7 @@ export default function Chat() {
         <div className="flex items-end gap-2">
           <label className="flex-1">
             <input
+              ref={fileInputRef}
               type="file"
               accept="image/*"
               onChange={handleImagePick}
@@ -295,7 +255,7 @@ export default function Chat() {
             />
             <button
               type="button"
-              onClick={() => {}}
+              onClick={() => fileInputRef.current?.click()}
               disabled={sending || !!newImage}
               className="w-full p-3 border-2 border-dashed border-gray-300 rounded-xl text-center text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
             >

@@ -1,16 +1,18 @@
-const CACHE_NAME = 'seconde-platform-v1';
+// v2 : les pages HTML sont servies depuis le réseau en priorité, pour que les
+// appareils récupèrent tout de suite les nouvelles versions du site.
+const CACHE_NAME = 'seconde-platform-v2';
+const BASE = '/seconde-plateforme/';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon.svg',
+  BASE,
+  BASE + 'manifest.json',
+  BASE + 'icon.svg',
 ];
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(STATIC_ASSETS).catch(() => undefined);
     })
   );
   self.skipWaiting();
@@ -40,6 +42,26 @@ self.addEventListener('fetch', (event) => {
   // Skip chrome-extension and other non-http(s) schemes
   if (!request.url.startsWith('http')) return;
 
+  // Ne jamais intercepter les autres domaines (Firebase, polices...).
+  if (new URL(request.url).origin !== self.location.origin) return;
+
+  // Pages HTML : réseau d'abord, cache seulement hors ligne.
+  if (request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html')) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(BASE, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(BASE).then((r) => r || new Response('Hors ligne', { status: 503 })))
+    );
+    return;
+  }
+
+  // Fichiers statiques (noms avec hash) : cache d'abord.
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       // Return cached response if available
@@ -64,12 +86,12 @@ self.addEventListener('fetch', (event) => {
       }).catch(() => {
         // Offline fallback for navigation requests
         if (request.mode === 'navigate') {
-          return caches.match('/index.html');
+          return caches.match(BASE);
         }
         return new Response('Hors ligne', { status: 503, statusText: 'Service Unavailable' });
       });
-    });
-  });
+    })
+  );
 });
 
 // Handle push notifications

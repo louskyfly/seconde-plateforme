@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../hooks/useSettings';
-import { db } from '../lib/db';
+import { FB, countChildren } from '../lib/firebase';
 
 export default function Home() {
   const { settings } = useSettings();
@@ -16,11 +16,11 @@ export default function Home() {
   useEffect(() => {
     const loadStats = async () => {
       const [ideas, messages, sheets, revisions, students] = await Promise.all([
-        db.ideas.count(),
-        db.messages.count(),
-        db.sheets.count(),
-        db.revisionSessions.count(),
-        db.students.count(),
+        countChildren(FB.ideas),
+        countChildren(FB.messages),
+        countChildren(FB.sheets),
+        countChildren(FB.revisions),
+        countChildren(FB.students),
       ]);
       setStats({ ideas, messages, sheets, revisions, students });
     };
@@ -41,7 +41,7 @@ export default function Home() {
           Bienvenue, {settings?.className || 'Seconde 9'} 👋
         </h1>
         <p className="text-gray-600 mt-1">
-          Votre espace collaboratif 100% local - donnees sur votre appareil
+          Votre espace collaboratif - donnees partagees avec toute la classe
         </p>
       </div>
 
@@ -85,12 +85,12 @@ export default function Home() {
       </div>
 
       <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
-        <h3 className="font-semibold text-blue-800 mb-2">💡 Mode 100% local</h3>
+        <h3 className="font-semibold text-blue-800 mb-2">💡 Donnees partagees</h3>
         <ul className="text-sm text-blue-700 space-y-1">
-          <li>• Toutes les donnees restent sur votre appareil (IndexedDB)</li>
-          <li>• Fonctionne hors ligne — pas besoin d'Internet</li>
+          <li>• Idees, sondages, chat, fiches, calendrier... sont visibles par toute la classe</li>
+          <li>• Mise a jour en temps reel sur tous les appareils</li>
           <li>• Installable comme app native (PWA)</li>
-          <li>• Aucune donnee n'est envoyee a un serveur</li>
+          <li>• Seuls ton identifiant d'appareil et ton prenom restent sur cet appareil</li>
         </ul>
       </div>
     </div>

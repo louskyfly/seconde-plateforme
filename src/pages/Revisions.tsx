@@ -1,44 +1,41 @@
-import { useState, useEffect } from 'react';
-import { db, getFingerprint, now } from '../lib/db';
+import { useState, useMemo } from 'react';
+import { getFingerprint } from '../lib/device';
 import { useFingerprint } from '../hooks/useFingerprint';
+import { useFirebaseSync } from '../hooks/useFirebaseSync';
+import { FB } from '../lib/firebase';
 
 export default function Revisions() {
   const fingerprint = useFingerprint();
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { items, loading, create, remove } = useFirebaseSync<any>(FB.revisions);
+  const sessions = useMemo(
+    () => [...items].sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))),
+    [items]
+  );
   const [showForm, setShowForm] = useState(false);
   const [newSession, setNewSession] = useState({
     title: '', subject: 'autre', date: '', time: '', duration: 60, location: '', description: ''
   });
 
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  const loadSessions = async () => {
-    const sessions = await db.revisionSessions.orderBy('date').toArray();
-    setSessions(sessions);
-    setLoading(false);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await db.revisionSessions.add({
-      ...newSession,
-      createdByFingerprint: getFingerprint(),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    const newS = await db.revisionSessions.get(result);
-    setSessions([newS, ...sessions]);
+    try {
+      await create({
+        ...newSession,
+        duration: Number.isFinite(newSession.duration) ? newSession.duration : 60,
+        createdByFingerprint: getFingerprint(),
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Erreur lors de la creation. Verifie ta connexion.');
+      return;
+    }
     setNewSession({ title: '', subject: 'autre', date: '', time: '', duration: 60, location: '', description: '' });
     setShowForm(false);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Supprimer cette session ?')) return;
-    await db.revisionSessions.delete(id);
-    setSessions(sessions.filter(s => s.id !== id));
+    await remove(id);
   };
 
   return (

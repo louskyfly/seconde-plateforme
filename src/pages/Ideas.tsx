@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { getFingerprint } from '../lib/db';
+import { getFingerprint } from '../lib/device';
 import { useFingerprint } from '../hooks/useFingerprint';
 import { useFirebaseSync } from '../hooks/useFirebaseSync';
 

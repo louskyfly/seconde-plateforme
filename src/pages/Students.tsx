@@ -1,38 +1,40 @@
-import { useState, useEffect } from 'react';
-import { db, getFingerprint } from '../lib/db';
+import { useState, useMemo } from 'react';
+import { ref, push, remove as firebaseRemove } from 'firebase/database';
+import { getFingerprint } from '../lib/device';
 import { useFingerprint } from '../hooks/useFingerprint';
+import { useFirebaseSync } from '../hooks/useFirebaseSync';
+import { db as fdb, FB, clean } from '../lib/firebase';
+
+const memberKeyOf = (name: string) =>
+  name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 
 export default function Students() {
   const fingerprint = useFingerprint();
-  const [students, setStudents] = useState<any[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
+  const { items: studentItems, create: createStudent, remove: removeStudent } = useFirebaseSync<any>(FB.students);
+  const { items: groupItems, create: createGroup, remove: removeGroup } = useFirebaseSync<any>(FB.studentGroups);
+  const students = useMemo(() => [...studentItems].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)), [studentItems]);
+  const groups = useMemo(
+    () =>
+      groupItems.map((g: any) => ({
+        ...g,
+        members: Object.entries(g.members || {}).map(([id, m]: [string, any]) => ({ ...m, id })),
+      })),
+    [groupItems]
+  );
   const [showStudentForm, setShowStudentForm] = useState(false);
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [newStudent, setNewStudent] = useState({ firstName: '', lastName: '', birthday: '' });
-  const [newGroup, setNewGroup] = useState({ name: '', isPrivate: false, studentIds: [] as number[], memberNames: [] as string[] });
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    const [students, groups] = await Promise.all([
-      db.students.toArray(),
-      db.studentGroups.toArray(),
-    ]);
-    const groupsWithMembers = await Promise.all(groups.map(async (g) => {
-      const members = await db.studentGroupMembers.where('groupId').equals(g.id!).toArray();
-      return { ...g, members };
-    }));
-    setStudents(students);
-    setGroups(groupsWithMembers);
-  };
+  const [newGroup, setNewGroup] = useState({ name: '', isPrivate: false, studentIds: [] as string[], memberNames: [] as string[] });
 
   const handleStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = await db.students.add({ ...newStudent, createdAt: Date.now() });
-    const student = await db.students.get(result);
-    setStudents([student, ...students]);
+    try {
+      await createStudent({ ...newStudent });
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'ajout. Verifie ta connexion.");
+      return;
+    }
     setNewStudent({ firstName: '', lastName: '', birthday: '' });
     setShowStudentForm(false);
   };
@@ -41,63 +43,52 @@ export default function Students() {
     e.preventDefault();
     const fp = getFingerprint();
     const isPrivate = newGroup.isPrivate;
-    const result = await db.studentGroups.add({
-      name: newGroup.name.trim(),
-      isPrivate,
-      status: 'en_attente',
-      createdByFingerprint: isPrivate ? fp : null,
-      createdAt: Date.now(),
-    });
-    const groupId = result;
-
+    const members: Record<string, any> = {};
+    const seen = new Set<string>();
+    const addMember = (studentId: string | null, memberName: string) => {
+      const memberKey = memberKeyOf(memberName);
+      if (!memberKey || seen.has(memberKey)) return;
+      seen.add(memberKey);
+      const key = push(ref(fdb, FB.studentGroups)).key as string;
+      members[key] = clean({ studentId, memberName, memberKey, addedByFingerprint: fp, addedAt: Date.now() });
+    };
     for (const studentId of newGroup.studentIds) {
-      const student = await db.students.get(studentId);
-      if (student) {
-        await db.studentGroupMembers.add({
-          groupId,
-          studentId,
-          memberName: `${student.firstName} ${student.lastName}`,
-          memberKey: `${student.firstName} ${student.lastName}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(),
-          addedByFingerprint: fp,
-        });
-      }
+      const student = students.find((st: any) => st.id === studentId);
+      if (student) addMember(studentId, `${student.firstName} ${student.lastName}`);
     }
     for (const name of newGroup.memberNames) {
-      if (!name.trim()) continue;
-      const key = name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
-      const exists = await db.studentGroupMembers.where('groupId').equals(groupId).and(m => m.memberKey === key).first();
-      if (!exists) {
-        await db.studentGroupMembers.add({
-          groupId,
-          studentId: null,
-          memberName: name.trim(),
-          memberKey: key,
-          addedByFingerprint: fp,
-        });
-      }
+      if (name.trim()) addMember(null, name.trim());
+    }
+    try {
+      await createGroup({
+        name: newGroup.name.trim(),
+        isPrivate,
+        status: 'en_attente',
+        createdByFingerprint: isPrivate ? fp : null,
+        members,
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Erreur lors de la creation du groupe. Verifie ta connexion.');
+      return;
     }
 
-    loadData();
     setNewGroup({ name: '', isPrivate: false, studentIds: [], memberNames: [] });
     setShowGroupForm(false);
   };
 
-  const handleDeleteStudent = async (id: number) => {
+  const handleDeleteStudent = async (id: string) => {
     if (!confirm('Supprimer cet eleve ?')) return;
-    await db.students.delete(id);
-    setStudents(students.filter(s => s.id !== id));
+    await removeStudent(id);
   };
 
-  const handleDeleteGroup = async (id: number) => {
+  const handleDeleteGroup = async (id: string) => {
     if (!confirm('Supprimer ce groupe ?')) return;
-    await db.studentGroups.delete(id);
-    await db.studentGroupMembers.where('groupId').equals(id).delete();
-    setGroups(groups.filter(g => g.id !== id));
+    await removeGroup(id);
   };
 
-  const handleDeleteMember = async (groupId: number, memberId: number) => {
-    await db.studentGroupMembers.delete(memberId);
-    setGroups(groups.map(g => g.id === groupId ? { ...g, members: g.members.filter((m: any) => m.id !== memberId) } : g));
+  const handleDeleteMember = async (groupId: string, memberId: string) => {
+    await firebaseRemove(ref(fdb, `${FB.studentGroups}/${groupId}/members/${memberId}`));
   };
 
   return (
@@ -157,7 +148,7 @@ export default function Students() {
               <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-1">
                 {students.filter(s => !newGroup.studentIds.includes(s.id!)).map(student => (
                   <label key={student.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded">
-                    <input type="checkbox" checked={newGroup.studentIds.includes(student.id!)} onChange={(e) => setNewGroup({...newGroup, studentIds: e.target.checked ? [...newGroup.studentIds, student.id!] : newGroup.studentIds.filter((id: number) => id !== student.id)})} className="w-4 h-4 text-blue-600 rounded" />
+                    <input type="checkbox" checked={newGroup.studentIds.includes(student.id!)} onChange={(e) => setNewGroup({...newGroup, studentIds: e.target.checked ? [...newGroup.studentIds, student.id!] : newGroup.studentIds.filter((id: string) => id !== student.id)})} className="w-4 h-4 text-blue-600 rounded" />
                     <span className="text-sm">{student.firstName} {student.lastName}</span>
                   </label>
                 ))}

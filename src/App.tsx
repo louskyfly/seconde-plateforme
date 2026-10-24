@@ -20,6 +20,7 @@ const StudentList = lazy(() => import('./pages/student/StudentList'));
 const Revisions = lazy(() => import('./pages/student/Revisions'));
 const Chat = lazy(() => import('./pages/student/Chat'));
 const Sheets = lazy(() => import('./pages/student/Sheets'));
+const Homework = lazy(() => import('./pages/student/Homework'));
 const DelegateLogin = lazy(() => import('./pages/delegate/Login'));
 const DelegateDashboard = lazy(() => import('./pages/delegate/Dashboard'));
 const DelegateMessages = lazy(() => import('./pages/delegate/ManageMessages'));
@@ -59,6 +60,7 @@ export default function App() {
               <Route path="/fiches" element={<Sheets />} />
               <Route path="/sondages" element={<Polls />} />
               <Route path="/calendrier" element={<Calendar />} />
+              <Route path="/devoirs" element={<Homework />} />
               <Route path="/ressources" element={<Resources />} />
               <Route path="/projets" element={<Projects />} />
               <Route path="/classe" element={<StudentList />} />

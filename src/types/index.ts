@@ -344,3 +344,31 @@ export interface AdminOverview {
   chatUsers: number;
   imagesPosted: number;
 }
+
+/* ---------------- Cahier de textes (lecture seule) ---------------- */
+
+/** Un devoir, tel qu'écrit par la synchronisation externe (École Directe). */
+export interface HomeworkItem {
+  id: string;
+  /** Jour où le travail est à rendre (AAAA-MM-JJ). */
+  date: string;
+  subject: string;
+  teacher: string;
+  content: string;
+  /** Jour où le travail a été donné (AAAA-MM-JJ), ou chaîne vide. */
+  given_on: string;
+  is_test: boolean;
+}
+
+export interface HomeworkDay {
+  date: string;
+  items: HomeworkItem[];
+}
+
+export interface Homework {
+  /** Dernière synchronisation (ms epoch), ou null si aucune donnée. */
+  updated_at: number | null;
+  source: string;
+  /** Jours triés par date croissante. */
+  days: HomeworkDay[];
+}

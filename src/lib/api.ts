@@ -48,6 +48,8 @@ import type {
   SheetListResponse,
   AdminLogEntry,
   AdminOverview,
+  Homework,
+  HomeworkItem,
 } from '../types';
 
 /* ------------------------------------------------------------------------ */
@@ -814,6 +816,43 @@ const BACKUP_PATHS = [
 /* API publique (mêmes noms et formes que l'ancien client HTTP)             */
 /* ------------------------------------------------------------------------ */
 
+
+/* ------------------------------------------------------------------------ */
+/* Cahier de textes                                                         */
+/* ------------------------------------------------------------------------ */
+
+const HOMEWORK_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function shapeHomework(raw: any): Homework {
+  const value = raw && typeof raw === 'object' ? raw : {};
+  const daysRaw = value.days && typeof value.days === 'object' ? value.days : {};
+  const days = Object.keys(daysRaw)
+    .filter((date) => HOMEWORK_DATE.test(date))
+    .sort()
+    .map((date) => {
+      const itemsRaw = daysRaw[date] && typeof daysRaw[date] === 'object' ? daysRaw[date] : {};
+      const items: HomeworkItem[] = Object.entries(itemsRaw)
+        .filter(([, it]) => it && typeof it === 'object')
+        .map(([id, it]: [string, any]) => ({
+          id,
+          date,
+          subject: typeof it.subject === 'string' ? it.subject : '',
+          teacher: typeof it.teacher === 'string' ? it.teacher : '',
+          content: typeof it.content === 'string' ? it.content : '',
+          given_on: typeof it.givenOn === 'string' && HOMEWORK_DATE.test(it.givenOn) ? it.givenOn : '',
+          is_test: it.isTest === true,
+        }))
+        .sort((a, b) => a.subject.localeCompare(b.subject, 'fr') || a.id.localeCompare(b.id));
+      return { date, items };
+    })
+    .filter((d) => d.items.length > 0);
+  return {
+    updated_at: typeof value.updatedAt === 'number' ? value.updatedAt : null,
+    source: typeof value.source === 'string' && value.source ? value.source : 'École Directe',
+    days,
+  };
+}
+
 export const api = {
   /* ---------------- Auth ---------------- */
   login: async (password: string, token?: string): Promise<{ success: boolean }> => {
@@ -1355,6 +1394,13 @@ export const api = {
     await write(() => set(ref(db, `events/${id}`), null));
     return { success: true };
   },
+
+  /* ---------------- Cahier de textes (lecture seule) ---------------- */
+  /**
+   * Devoirs synchronisés depuis École Directe par un script externe : le site
+   * ne fait que lire `homework`. Jours triés par date, devoirs par matière.
+   */
+  getHomework: async (): Promise<Homework> => shapeHomework(await watch('homework')),
 
   /* ---------------- Resources ---------------- */
   getResources: async (): Promise<Resource[]> =>
@@ -2319,6 +2365,38 @@ export const api = {
   },
   getStorageInfo: async (): Promise<any> => api.getStorage(),
 };
+
+/**
+ * Suit le cahier de textes en temps réel : `onData` reçoit la valeur courante
+ * tout de suite, puis à chaque nouvelle synchronisation. Renvoie la fonction
+ * qui arrête le suivi (à appeler au démontage).
+ */
+export function subscribeHomework(
+  onData: (homework: Homework) => void,
+  onError?: (err: unknown) => void
+): () => void {
+  let active = true;
+  const emit = () => {
+    api
+      .getHomework()
+      .then((h) => {
+        if (active) onData(h);
+      })
+      .catch((err) => {
+        if (active) onError?.(err);
+      });
+  };
+  const onChange = (ev: globalThis.Event) => {
+    const paths: string[] | undefined = (ev as CustomEvent).detail?.paths;
+    if (!paths || paths.includes('homework')) emit();
+  };
+  emit();
+  window.addEventListener(DATA_CHANGED_EVENT, onChange);
+  return () => {
+    active = false;
+    window.removeEventListener(DATA_CHANGED_EVENT, onChange);
+  };
+}
 
 // Tests automatisés uniquement (build branché sur l'émulateur) : jamais en production.
 if (import.meta.env.VITE_FIREBASE_EMULATOR && typeof window !== 'undefined') {

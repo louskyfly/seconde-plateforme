@@ -5,6 +5,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { SiteStatusCard } from '@/components/delegate/SiteStatusCard';
 import { StorageWarning } from '@/components/delegate/StorageWarning';
 import { VisitStatsCard } from '@/components/delegate/VisitStatsCard';
+import { HomeworkSyncCard } from '@/components/delegate/HomeworkSyncCard';
 import type { AdminLogEntry, AdminOverview, Stats } from '@/types';
 
 interface StatCardProps {
@@ -81,6 +82,8 @@ function Dashboard() {
       <SiteStatusCard />
 
       <VisitStatsCard />
+
+      <HomeworkSyncCard />
 
       {loading ? (
         <div className="flex justify-center py-12">

@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: '/fiches', emoji: '📝', label: 'Fiches' },
   { to: '/sondages', emoji: '🗳️', label: 'Sondages' },
   { to: '/calendrier', emoji: '📅', label: 'Agenda' },
+  { to: '/devoirs', emoji: '📒', label: 'Devoirs' },
   { to: '/ressources', emoji: '📚', label: 'Ressources' },
   { to: '/projets', emoji: '🚀', label: 'Projets' },
   { to: '/classe', emoji: '👥', label: 'Classe' },

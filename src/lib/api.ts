@@ -12,10 +12,14 @@
  * `fb:change` prévient les pages (voir useAutoRefresh) qu'il faut se
  * rafraîchir : une nouvelle idée, un vote ou un message apparaît tout seul.
  */
-import { ref, onValue, set, update, push, runTransaction } from 'firebase/database';
+import { ref, onValue, set, update, push, runTransaction, get } from 'firebase/database';
 import { db, clean } from './firebase';
 import { hashPassword, verifyPassword } from '@/utils/password';
 import { cleanFirstName, generateFingerprint, getFirstName, isValidFirstName } from './utils';
+
+/** Pièces jointes « Parler au délégué » : ~1 Mo de fichier (base64 ≈ +37 %). */
+export const MAX_FILE_BYTES = 1024 * 1024;
+const MAX_FILE_CHARS = 1_450_000;
 import type {
   Settings,
   Announcement,
@@ -1131,6 +1135,23 @@ export const api = {
       updatedAt: now,
     });
     await write(() => set(ref(db, `messages/${id}`), value));
+    const file = data?.file;
+    if (file && typeof file.data === 'string') {
+      if (file.data.length > MAX_FILE_CHARS) fail('Fichier trop lourd (1 Mo maximum)');
+      try {
+        await write(() =>
+          set(ref(db, `messageFiles/${id}`), {
+            name: cleanText(file.name, 120) || 'fichier',
+            type: cleanText(file.type, 100) || 'application/octet-stream',
+            size: Number(file.size) || 0,
+            data: file.data,
+            createdAt: now,
+          })
+        );
+      } catch {
+        fail("Le message est parti, mais pas le fichier joint. Réessaie avec un fichier plus léger.");
+      }
+    }
     const s = await rawSettings();
     return shapeMessage({ ...value, id } as Row, s.delegateName || undefined);
   },
@@ -1168,8 +1189,24 @@ export const api = {
     const after = (await watch('messages')) || {};
     return shapeMessage({ ...(after[id] || {}), id } as Row);
   },
+  getMessageFileInfo: async (id: string): Promise<{ name: string; size: number } | null> => {
+    const [n, z] = await Promise.all([
+      get(ref(db, `messageFiles/${id}/name`)),
+      get(ref(db, `messageFiles/${id}/size`)),
+    ]);
+    if (!n.exists()) return null;
+    return { name: String(n.val()), size: Number(z.val()) || 0 };
+  },
+  getMessageFile: async (id: string): Promise<{ name: string; type: string; data: string } | null> => {
+    requireDelegate();
+    const snap = await get(ref(db, `messageFiles/${id}`));
+    if (!snap.exists()) return null;
+    const v = snap.val();
+    return { name: String(v.name || 'fichier'), type: String(v.type || ''), data: String(v.data || '') };
+  },
   deleteMessage: async (id: string): Promise<{ success: boolean }> => {
     requireDelegate();
+    await write(() => set(ref(db, `messageFiles/${id}`), null));
     await write(() => set(ref(db, `messages/${id}`), null));
     return { success: true };
   },

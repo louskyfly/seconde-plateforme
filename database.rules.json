@@ -897,6 +897,31 @@
           ".validate": "newData.val() === true"
         }
       }
+    },
+    "messageFiles": {
+      ".read": true,
+      "$msgId": {
+        ".write": true,
+        ".validate": "!newData.exists() || (newData.hasChildren(['name', 'type', 'data']) && newData.parent().parent().child('messages').child($msgId).exists())",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length <= 120"
+        },
+        "type": {
+          ".validate": "newData.isString() && newData.val().length <= 100"
+        },
+        "size": {
+          ".validate": "newData.isNumber() && newData.val() <= 1048576"
+        },
+        "data": {
+          ".validate": "newData.isString() && newData.val().beginsWith('data:') && newData.val().length <= 1450000"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 600000"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

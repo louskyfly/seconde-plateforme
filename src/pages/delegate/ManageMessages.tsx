@@ -1,8 +1,55 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import { api } from '@/lib/api';
 import type { Message } from '@/types';
 import { formatDateTime, MESSAGE_STATUSES, CATEGORIES_MESSAGE } from '@/lib/utils';
 import { Modal } from '@/components/ui/Modal';
+
+function Attachment({ id }: { id: string }) {
+  const [info, setInfo] = useState<{ name: string; size: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    api.getMessageFileInfo(id).then((i) => { if (alive) setInfo(i); }).catch(() => {});
+    return () => { alive = false; };
+  }, [id]);
+  if (!info) return null;
+  const open = async (e: ReactMouseEvent) => {
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      const f = await api.getMessageFile(id);
+      if (!f) return;
+      const blob = await (await fetch(f.data)).blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = f.name;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      alert("Impossible d'ouvrir le fichier.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={open}
+      disabled={busy}
+      className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 rounded-lg px-3 py-1.5 max-w-full"
+    >
+      <span className="truncate">📎 {info.name}</span>
+      <span className="text-xs text-gray-500 shrink-0">
+        {busy ? 'Ouverture…' : `${Math.max(1, Math.round(info.size / 1024))} Ko`}
+      </span>
+    </button>
+  );
+}
 
 type StatusFilter = 'all' | 'nouveau' | 'lu' | 'traite';
 
@@ -280,6 +327,8 @@ export function ManageMessages() {
                 <p className={`mt-1 text-gray-800 dark:text-gray-200 text-sm ${isExpanded ? '' : 'overflow-hidden max-h-12'}`}>
                   {m.content}
                 </p>
+
+                <Attachment id={m.id} />
 
                 {m.delegate_reply && (
                   <div className="mt-3 ml-2 pl-3 border-l-2 border-indigo-400 bg-indigo-500/5 rounded-r-lg py-2 pr-3">

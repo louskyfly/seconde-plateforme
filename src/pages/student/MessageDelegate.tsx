@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { api, MAX_FILE_BYTES } from '@/lib/api';
 import { CATEGORIES_MESSAGE, generateFingerprint, getRelativeTime } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 import { useFirstNamePrompt } from '@/hooks/useFirstNamePrompt';
@@ -79,6 +79,25 @@ export default function MessageDelegate() {
   // Permet à l'élève de voir une réponse du délégué sans recharger la page.
   useAutoRefresh(useCallback(() => loadHistory(false), [loadHistory]));
 
+  const [attachment, setAttachment] = useState<{ name: string; type: string; size: number; data: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    setError('');
+    if (!f) { setAttachment(null); return; }
+    if (f.size > MAX_FILE_BYTES) {
+      setError('Fichier trop lourd : 1 Mo maximum. Pour une photo, fais une capture d\'écran ou réduis-la.');
+      e.target.value = '';
+      setAttachment(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setAttachment({ name: f.name, type: f.type || 'application/octet-stream', size: f.size, data: String(reader.result) });
+    reader.onerror = () => setError('Impossible de lire ce fichier.');
+    reader.readAsDataURL(f);
+  };
+
   const handleSubmit = async () => {
     if (!content.trim()) return;
 
@@ -98,15 +117,19 @@ export default function MessageDelegate() {
         anonymous: anonymous ? 1 : 0,
         author_name: authorName,
         fingerprint: generateFingerprint(),
+        file: attachment || undefined,
       });
       setContent('');
+      setAttachment(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setCategory('question');
       setAnonymous(false);
       setSent(true);
       timerRef.current = window.setTimeout(() => setSent(false), 5000);
       loadHistory();
-    } catch {
-      setError("Erreur lors de l'envoi. Réessaie.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      setError(msg.startsWith('Le message est parti') ? msg : "Erreur lors de l'envoi. Réessaie.");
     } finally {
       setSending(false);
     }
@@ -177,6 +200,33 @@ export default function MessageDelegate() {
           <p className="text-xs text-gray-500 dark:text-gray-400 text-right mt-1">
             {content.length}/1000
           </p>
+        </div>
+
+        <div>
+          <input
+            ref={fileInputRef}
+            id="msg-file"
+            type="file"
+            accept="image/*,application/pdf,.doc,.docx,.odt,.txt,.ppt,.pptx,.xls,.xlsx"
+            onChange={handleFile}
+            className="hidden"
+          />
+          {attachment ? (
+            <div className="flex items-center justify-between gap-2 glass-input text-sm">
+              <span className="truncate">📎 {attachment.name} ({Math.max(1, Math.round(attachment.size / 1024))} Ko)</span>
+              <button
+                type="button"
+                onClick={() => { setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                className="text-red-500 text-xs font-semibold shrink-0"
+              >
+                Retirer
+              </button>
+            </div>
+          ) : (
+            <label htmlFor="msg-file" className="glass-button w-full flex items-center justify-center gap-2 cursor-pointer text-sm">
+              📎 Joindre un fichier (photo, PDF… 1 Mo max)
+            </label>
+          )}
         </div>
 
         <label className="flex items-center gap-2 cursor-pointer">

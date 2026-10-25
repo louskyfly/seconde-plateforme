@@ -2,7 +2,7 @@
 // Les pages HTML viennent du réseau en priorité, pour que chaque appareil
 // récupère tout de suite la nouvelle version du site. Les données (Firebase)
 // ne passent jamais par ce service worker.
-const CACHE_NAME = 'seconde-platform-v3';
+const CACHE_NAME = 'seconde-platform-v4';
 const BASE = '/seconde-plateforme/';
 const STATIC_ASSETS = [BASE, BASE + 'manifest.json', BASE + 'favicon.svg', BASE + 'icons/icon-192.png'];
 
@@ -45,19 +45,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Fichiers statiques (noms avec hash) : cache d'abord.
+  // Autres fichiers (JS, CSS, images) : réseau d'abord aussi, cache seulement
+  // hors ligne. (Le « cache d'abord » gardait d'anciennes versions du site.)
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type !== 'basic') return response;
+    fetch(request)
+      .then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(() => new Response('Hors ligne', { status: 503, statusText: 'Service Unavailable' }));
-    })
+        }
+        return response;
+      })
+      .catch(() =>
+        caches
+          .match(request)
+          .then((cached) => cached || new Response('Hors ligne', { status: 503, statusText: 'Service Unavailable' }))
+      )
   );
 });
 

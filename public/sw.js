@@ -2,7 +2,7 @@
 // Les pages HTML viennent du réseau en priorité, pour que chaque appareil
 // récupère tout de suite la nouvelle version du site. Les données (Firebase)
 // ne passent jamais par ce service worker.
-const CACHE_NAME = 'seconde-platform-v4';
+const CACHE_NAME = 'seconde-platform-v5';
 const BASE = '/seconde-plateforme/';
 const STATIC_ASSETS = [BASE, BASE + 'manifest.json', BASE + 'favicon.svg', BASE + 'icons/icon-192.png'];
 
@@ -47,8 +47,10 @@ self.addEventListener('fetch', (event) => {
 
   // Autres fichiers (JS, CSS, images) : réseau d'abord aussi, cache seulement
   // hors ligne. (Le « cache d'abord » gardait d'anciennes versions du site.)
+  // cache: 'no-cache' = on redemande toujours au serveur s'il y a plus récent
+  // (sinon le navigateur garde jusqu'à 10 min une ancienne copie du fichier).
   event.respondWith(
-    fetch(request)
+    fetch(request, { cache: 'no-cache' })
       .then((response) => {
         if (response && response.status === 200 && response.type === 'basic') {
           const copy = response.clone();

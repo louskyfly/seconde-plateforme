@@ -2,7 +2,7 @@ import { isControle } from '@/lib/utils';
 import { useMemo, useState } from 'react';
 import type { Event } from '@/types';
 
-const WEEKDAYS = ['L', 'M', 'J', 'V', 'S', 'D', 'D'];
+const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const MONTHS = [
   'janvier',
   'février',

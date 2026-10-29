@@ -14,6 +14,16 @@
  */
 import { ref, onValue, set, update, push, runTransaction, get } from 'firebase/database';
 import { db, clean } from './firebase';
+import {
+  authReady,
+  currentUid,
+  isAuthAvailable,
+  signInDelegate,
+  createDelegateAccount,
+  signOutAuth,
+  initAuthAfterLogout,
+  changeAuthPassword,
+} from './auth';
 import { hashPassword, verifyPassword } from '@/utils/password';
 import { cleanFirstName, generateFingerprint, getFirstName, isValidFirstName } from './utils';
 
@@ -110,6 +120,9 @@ function explain(err: unknown): never {
 
 async function write<T>(op: () => Promise<T>): Promise<T> {
   try {
+    // Sous les règles Firebase durcies, aucune écriture n'est acceptée avant
+    // que la connexion (anonyme ou délégué) soit établie.
+    await authReady;
     return await op();
   } catch (err) {
     explain(err);
@@ -149,6 +162,14 @@ function watch(path: string): Promise<any> {
   const existing = watched.get(path);
   if (existing) return existing.loaded ? Promise.resolve(existing.value) : existing.ready;
 
+  return authReady.then(() => {
+    const again = watched.get(path);
+    if (again) return again.loaded ? again.value : again.ready;
+    return startWatch(path);
+  });
+}
+
+function startWatch(path: string): Promise<any> {
   let resolveFn!: (v: any) => void;
   let rejectFn!: (e: unknown) => void;
   const entry: Watched = {
@@ -248,6 +269,16 @@ function newId(path: string): string {
   return push(ref(db, path)).key as string;
 }
 
+/** uid Firebase de l'auteur (null si Firebase Auth n'est pas activé). */
+function authorUid(): string | undefined {
+  return currentUid() || undefined;
+}
+
+/** Clé de vote : uid Firebase si disponible, sinon empreinte (mode historique). */
+function voterKeyFor(fp?: string | null): string {
+  return currentUid() || (fp ? safeKey(fp) : '');
+}
+
 /** Une clé Firebase ne peut contenir ni . # $ [ ] / */
 function safeKey(value: unknown): string {
   return String(value ?? '')
@@ -319,6 +350,36 @@ function localDay(ms = Date.now()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * Identifiants des messages anonymes envoyés depuis cet appareil.
+ *
+ * Un message anonyme n'est volontairement lié à aucun identifiant côté base.
+ * Pour que l'élève retrouve quand même son historique, on garde la liste des
+ * identifiants localement : rien ne permet de le relier à l'appareil depuis
+ * Firebase, et vider le stockage du site efface simplement cet historique.
+ */
+const ANON_MESSAGE_IDS_KEY = 'anon_message_ids';
+
+function readAnonymousMessageIds(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ANON_MESSAGE_IDS_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberAnonymousMessage(id: string): void {
+  try {
+    const ids = readAnonymousMessageIds();
+    if (ids.includes(id)) return;
+    ids.unshift(id);
+    localStorage.setItem(ANON_MESSAGE_IDS_KEY, JSON.stringify(ids.slice(0, 200)));
+  } catch {
+    /* stockage indisponible : l'historique local est simplement absent */
+  }
+}
+
 async function sha256Hex(text: string): Promise<string> {
   try {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -360,18 +421,100 @@ const DEFAULT_MAINTENANCE_MESSAGE =
   'Le site est temporairement indisponible pour maintenance. Merci de revenir plus tard.';
 const SEASON_THEMES = ['aucun', 'halloween', 'noel'];
 
+/** Bornes par défaut d'un groupe de travail. */
+const DEFAULT_GROUP_MIN = 3;
+const DEFAULT_GROUP_MAX = 4;
+const HARD_GROUP_MAX = 20;
+
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Math.trunc(Number(value));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+/** Limites de groupe réglées par le délégué (settings/groupMin & groupMax). */
+async function groupLimits(): Promise<{ min: number; max: number }> {
+  const s = await rawSettings();
+  const min = clampInt(s.groupMin, 1, HARD_GROUP_MAX, DEFAULT_GROUP_MIN);
+  const max = clampInt(s.groupMax, min, HARD_GROUP_MAX, Math.max(min, DEFAULT_GROUP_MAX));
+  return { min, max };
+}
+
+/** La création de groupes est-elle ouverte aux élèves ? */
+async function groupsOpen(): Promise<boolean> {
+  const s = await rawSettings();
+  return s.groupsOpen === true;
+}
+
+/**
+ * Compatibilité temporaire : tant que `database.rules.json` n'autorise pas les
+ * champs `groupMin`, `groupMax` et `groupsOpen` dans `settings`, ces réglages
+ * sont stockés dans un marqueur invisible à la fin de `homeInfo`.
+ *
+ * Dès que les règles sont déployées, les vrais champs existent et ce marqueur
+ * n'est plus utilisé. `shapeSettings` retire toujours le marqueur du texte
+ * affiché, pour qu'il ne soit jamais visible sur l'accueil.
+ */
+const GROUP_MARKER = /\[\[group-config:(\{[^}]*\})\]\]/;
+
+function readGroupMarker(homeInfo: unknown): { min: number; max: number; open: boolean } | null {
+  const match = String(homeInfo || '').match(GROUP_MARKER);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    const min = clampInt(parsed.min, 1, HARD_GROUP_MAX, DEFAULT_GROUP_MIN);
+    const max = clampInt(parsed.max, min, HARD_GROUP_MAX, Math.max(min, DEFAULT_GROUP_MAX));
+    return { min, max, open: parsed.open === true };
+  } catch {
+    return null;
+  }
+}
+
+function stripGroupMarker(homeInfo: unknown): string {
+  return String(homeInfo || '')
+    .replace(GROUP_MARKER, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function withGroupMarker(homeInfo: unknown, cfg: { min: number; max: number; open: boolean }): string {
+  const marker = `[[group-config:${JSON.stringify(cfg)}]]`;
+  const text = stripGroupMarker(homeInfo).slice(0, Math.max(0, 5000 - marker.length - 2));
+  return text ? `${text}\n\n${marker}` : marker;
+}
+
+/** N'accepte que des liens http(s) : bloque `javascript:` et les schémas exotiques. */
+function cleanUrl(value: unknown, max = 2000): string | null {
+  const raw = cleanText(value, max);
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return null;
+}
+
 async function rawSettings(): Promise<Record<string, any>> {
-  return (await watch('settings')) || {};
+  const s = (await watch('settings')) || {};
+  // Compatibilité : les réglages de groupe peuvent vivre dans homeInfo tant
+  // que les règles Firebase n'autorisent pas les champs dédiés.
+  if (s.groupMin === undefined) {
+    const cfg = readGroupMarker(s.homeInfo);
+    if (cfg) return { ...s, groupMin: cfg.min, groupMax: cfg.max, groupsOpen: cfg.open };
+  }
+  return s;
 }
 
 function shapeSettings(s: Record<string, any>): Settings {
+  const min = clampInt(s.groupMin, 1, HARD_GROUP_MAX, DEFAULT_GROUP_MIN);
+  const max = clampInt(s.groupMax, min, HARD_GROUP_MAX, Math.max(min, DEFAULT_GROUP_MAX));
   return {
     class_name: s.className || 'Seconde 9',
     delegate_name: s.delegateName || 'Délégué',
     accent_color: s.accentColor || '#3b5ba6',
-    home_info: s.homeInfo || '',
+    home_info: stripGroupMarker(s.homeInfo),
     home_image: s.homeImage || null,
     season_theme: SEASON_THEMES.includes(s.seasonTheme) ? s.seasonTheme : 'aucun',
+    group_min: min,
+    group_max: max,
+    groups_open: s.groupsOpen === true ? 1 : 0,
   };
 }
 
@@ -457,7 +600,7 @@ function shapeMessage(m: Row, delegateName?: string): Message {
 /* Sondages                                                                 */
 /* ------------------------------------------------------------------------ */
 
-function shapePoll(p: Row, votesByPoll: any, fp?: string): Poll {
+function shapePoll(p: Row, votesByPoll: any, voterKey?: string): Poll {
   const votes: Record<string, any> = (votesByPoll && votesByPoll[p.id]) || {};
   const optionCounts: Record<string, number> = {};
   let totalVotes = 0;
@@ -483,7 +626,7 @@ function shapePoll(p: Row, votesByPoll: any, fp?: string): Poll {
     options,
     total_votes: totalVotes,
     total_voters: Object.keys(votes).length,
-    has_voted: !!(fp && votes[safeKey(fp)]),
+    has_voted: !!(voterKey && votes[safeKey(voterKey)]),
   };
 }
 
@@ -493,7 +636,6 @@ function shapePoll(p: Row, votesByPoll: any, fp?: string): Poll {
 
 const MIN_GROUP = 3;
 const MAX_GROUP = 4;
-
 function shapeStudent(s: Row): Student {
   return {
     id: s.id,
@@ -532,7 +674,11 @@ function shapeGroup(g: Row, studentsById: Record<string, any>, fp?: string): Stu
 
 async function loadGroups(fp?: string): Promise<StudentGroup[]> {
   const [groups, students] = await Promise.all([watch('studentGroups'), watch('students')]);
+  const delegate = isDelegate();
+  const me = fp ? safeKey(fp) : '';
   return rows(groups)
+    // Un groupe privé n'est visible que par son créateur et le délégué.
+    .filter((g) => delegate || !g.isPrivate || (me.length >= 8 && g.createdByFingerprint === me))
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
     .map((g) => shapeGroup(g, students || {}, fp));
 }
@@ -578,11 +724,12 @@ async function addMembers(
   return updates;
 }
 
-/** Validation d'un groupe : 3 à 4 élèves, aucun déjà dans un autre groupe validé. */
+/** Validation d'un groupe : bornes réglées par le délégué, aucun élève déjà dans un autre groupe validé. */
 async function claimGroup(groupId: string, members: Record<string, any>): Promise<Record<string, any>> {
+  const { min, max } = await groupLimits();
   const list = Object.values(members || {}) as any[];
-  if (list.length < MIN_GROUP) fail(`Un groupe doit contenir au moins ${MIN_GROUP} élèves`);
-  if (list.length > MAX_GROUP) fail(`Un groupe ne peut pas dépasser ${MAX_GROUP} élèves`, 400);
+  if (list.length < min) fail(`Un groupe doit contenir au moins ${min} élève${min > 1 ? 's' : ''}`);
+  if (list.length > max) fail(`Un groupe ne peut pas dépasser ${max} élève${max > 1 ? 's' : ''}`, 400);
   const [groups, students] = await Promise.all([watch('studentGroups'), watch('students')]);
   const ids = new Set(list.map((m) => m.studentId).filter(Boolean));
   const keys = new Set(list.map((m) => m.memberKey).filter(Boolean));
@@ -716,6 +863,40 @@ function liveMessages(value: any): Row[] {
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
+/** Durée de conservation du chat de classe : 2 jours. */
+const CHAT_RETENTION_MS = 2 * 24 * 60 * 60 * 1000;
+const CHAT_PURGE_STAMP = 'chat_purge_at';
+
+/**
+ * Purge les messages du chat de plus de 2 jours.
+ *
+ * Elle est exécutée par l'application (élève ou délégué) au plus une fois par
+ * heure et par appareil : sans serveur planifié, c'est ce qui garantit que la
+ * règle des 2 jours s'applique réellement. Les erreurs sont ignorées : un
+ * appareil sans droit de suppression ne doit pas casser le chat.
+ */
+async function purgeOldChat(value?: any): Promise<void> {
+  try {
+    const last = Number(localStorage.getItem(CHAT_PURGE_STAMP) || 0);
+    if (Date.now() - last < 60 * 60 * 1000) return;
+    localStorage.setItem(CHAT_PURGE_STAMP, String(Date.now()));
+    const all = value || (await watch('chatMessages')) || {};
+    const cutoff = Date.now() - CHAT_RETENTION_MS;
+    const updates: Record<string, null> = {};
+    for (const [id, m] of Object.entries(all)) {
+      const createdAt = Number((m as any)?.createdAt) || 0;
+      if (createdAt > 0 && createdAt < cutoff) {
+        updates[`chatMessages/${id}`] = null;
+        updates[`chatImages/${id}`] = null;
+        updates[`chatReactions/${id}`] = null;
+      }
+    }
+    if (Object.keys(updates).length) await update(ref(db), updates);
+  } catch {
+    /* la purge réessaiera plus tard */
+  }
+}
+
 /** Le groupe validé dont l'élève fait partie (créateur, ajouté par lui, ou prénom). */
 async function findMyGroup(fp: string): Promise<Row | null> {
   const groups = rows(await watch('studentGroups')).filter((g) => g.status === 'valide');
@@ -820,7 +1001,33 @@ const BACKUP_PATHS = [
 
 export const api = {
   /* ---------------- Auth ---------------- */
-  login: async (password: string, token?: string): Promise<{ success: boolean }> => {
+  /** Un compte délégué existe-t-il déjà (Firebase Auth) ? */
+  delegateAccountExists: async (): Promise<boolean> => {
+    const snap = await get(ref(db, 'delegates'));
+    const value = snap.val();
+    return !!value && typeof value === 'object' && Object.keys(value).length > 0;
+  },
+  /** Première configuration : crée le compte délégué et le déclare comme tel. */
+  setupDelegate: async (email: string, password: string, token?: string): Promise<{ success: boolean }> => {
+    if (!isAuthAvailable()) {
+      fail("La configuration du compte délégué nécessite Firebase Authentication (fournisseur e-mail/mot de passe).", 501);
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) fail('Adresse e-mail invalide');
+    if (!password || password.length < 8) fail('Le mot de passe doit faire au moins 8 caractères');
+    const s = await rawSettings();
+    if (token && token !== (s.delegateLinkToken || DEFAULT_LINK_TOKEN)) fail('Lien d\u2019accès invalide', 403);
+    if (await api.delegateAccountExists()) fail('Un compte délégué existe déjà pour cette classe', 409);
+    const uid = await createDelegateAccount(email, password);
+    await set(ref(db, `delegates/${uid}`), true);
+    try {
+      sessionStorage.setItem(AUTH_KEY, '1');
+    } catch {
+      /* ignoré */
+    }
+    void logAdmin('delegate_setup', 'auth', null, 'Compte délégué créé');
+    return { success: true };
+  },
+  login: async (password: string, token?: string, email?: string): Promise<{ success: boolean }> => {
     if (!password) fail('Mot de passe requis');
     let attempts: number[] = [];
     try {
@@ -831,18 +1038,54 @@ export const api = {
       attempts = [];
     }
     if (attempts.length >= 8) fail('Trop de tentatives. Réessayez dans 15 minutes.', 429);
+
     const s = await rawSettings();
     if (token && token !== (s.delegateLinkToken || DEFAULT_LINK_TOKEN)) fail('Lien d\u2019accès invalide', 403);
-    const ok = await verifyPassword(password, s.passwordHash || DEFAULT_PASSWORD_HASH);
-    if (!ok) {
-      attempts.push(Date.now());
+
+    if (isAuthAvailable()) {
+      // Mode sécurisé : le mot de passe est vérifié par Firebase Auth, jamais
+      // stocké ni comparé dans le navigateur.
+      if (!email || !email.trim()) fail('Adresse e-mail du délégué requise');
+      let uid: string;
       try {
-        localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
-      } catch {
-        /* ignoré */
+        uid = await signInDelegate(email, password);
+      } catch (err: any) {
+        attempts.push(Date.now());
+        try {
+          localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
+        } catch {
+          /* ignoré */
+        }
+        const code = String(err?.code || '');
+        if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
+          fail('E-mail ou mot de passe incorrect', 401);
+        }
+        if (code.includes('too-many-requests')) fail('Trop de tentatives. Réessayez dans 15 minutes.', 429);
+        fail('Connexion Firebase impossible : vérifie ta connexion et réessaie.', 0);
       }
-      fail('Mot de passe incorrect', 401);
+      const delegates = (await get(ref(db, 'delegates'))).val() || {};
+      if (!delegates[uid]) {
+        if (Object.keys(delegates).length > 0) {
+          await signOutAuth();
+          fail("Ce compte n'est pas le délégué de cette classe", 403);
+        }
+        // Aucun délégué déclaré : ce premier compte connecté le devient.
+        await set(ref(db, `delegates/${uid}`), true);
+      }
+    } else {
+      // Mode historique (Firebase Auth pas encore activé).
+      const ok = await verifyPassword(password, s.passwordHash || DEFAULT_PASSWORD_HASH);
+      if (!ok) {
+        attempts.push(Date.now());
+        try {
+          localStorage.setItem(LOGIN_ATTEMPTS_KEY, JSON.stringify(attempts));
+        } catch {
+          /* ignoré */
+        }
+        fail('Mot de passe incorrect', 401);
+      }
     }
+
     try {
       localStorage.removeItem(LOGIN_ATTEMPTS_KEY);
       sessionStorage.setItem(AUTH_KEY, '1');
@@ -858,9 +1101,21 @@ export const api = {
     } catch {
       /* ignoré */
     }
+    if (isAuthAvailable()) {
+      // Le délégué repasse en connexion anonyme (élève) pour ne pas rester
+      // connecté avec son compte privilégié sur un appareil partagé.
+      try {
+        await signOutAuth();
+        await initAuthAfterLogout();
+      } catch {
+        /* ignoré */
+      }
+    }
     return { success: true };
   },
-  checkAuth: async (): Promise<{ authenticated: boolean }> => ({ authenticated: isDelegate() }),
+  checkAuth: async (): Promise<{ authenticated: boolean }> => ({
+    authenticated: isDelegate() && (!isAuthAvailable() || !!currentUid()),
+  }),
   validateToken: async (token: string): Promise<{ valid: boolean }> => {
     const s = await rawSettings();
     return { valid: !!token && token === (s.delegateLinkToken || DEFAULT_LINK_TOKEN) };
@@ -877,7 +1132,21 @@ export const api = {
       if (!/^#[0-9a-fA-F]{3,8}$/.test(String(data.accent_color).trim())) fail('Couleur invalide');
       patch.accentColor = String(data.accent_color).trim();
     }
-    if (data.home_info !== undefined) patch.homeInfo = cleanText(data.home_info, 5000);
+    if (data.home_info !== undefined) {
+      const raw = (await watch('settings')) || {};
+      const text = cleanText(data.home_info, 5000);
+      if (raw.groupMin === undefined) {
+        // Mode compatibilité : on réécrit le marqueur avec le texte.
+        const cfg = readGroupMarker(raw.homeInfo) || {
+          min: DEFAULT_GROUP_MIN,
+          max: DEFAULT_GROUP_MAX,
+          open: false,
+        };
+        patch.homeInfo = withGroupMarker(text, cfg);
+      } else {
+        patch.homeInfo = text;
+      }
+    }
     if (data.home_image !== undefined) {
       if (data.home_image && String(data.home_image).length > 1_500_000) fail('Image trop volumineuse');
       patch.homeImage = data.home_image || null;
@@ -887,7 +1156,48 @@ export const api = {
       if (!SEASON_THEMES.includes(theme)) fail('Thème de saison invalide');
       patch.seasonTheme = theme;
     }
-    await write(() => update(ref(db, 'settings'), patch));
+    if (data.groups_open !== undefined) {
+      patch.groupsOpen = flag(data.groups_open, false);
+    }
+    if (data.group_min !== undefined || data.group_max !== undefined) {
+      const current = await rawSettings();
+      const min = clampInt(
+        data.group_min !== undefined ? data.group_min : current.groupMin,
+        1,
+        HARD_GROUP_MAX,
+        DEFAULT_GROUP_MIN
+      );
+      const rawMax = data.group_max !== undefined ? Number(data.group_max) : Number(current.groupMax);
+      if (Number.isFinite(rawMax) && rawMax < min) {
+        fail('Le maximum doit être supérieur ou égal au minimum');
+      }
+      const max = clampInt(rawMax, min, HARD_GROUP_MAX, Math.max(min, DEFAULT_GROUP_MAX));
+      patch.groupMin = min;
+      patch.groupMax = max;
+    }
+    const hasGroupPatch =
+      patch.groupMin !== undefined || patch.groupMax !== undefined || patch.groupsOpen !== undefined;
+    try {
+      await write(() => update(ref(db, 'settings'), patch));
+    } catch (err: any) {
+      // Règles Firebase pas encore mises à jour : on range les réglages de
+      // groupe dans le marqueur de homeInfo (invisible pour les élèves).
+      const refused = String(err?.message || '').includes('refusée');
+      if (!hasGroupPatch || !refused) throw err;
+      const raw = (await watch('settings')) || {};
+      const existing = readGroupMarker(raw.homeInfo);
+      const cfg = {
+        min: patch.groupMin ?? existing?.min ?? DEFAULT_GROUP_MIN,
+        max: patch.groupMax ?? existing?.max ?? DEFAULT_GROUP_MAX,
+        open: patch.groupsOpen !== undefined ? patch.groupsOpen === true : existing?.open === true,
+      };
+      await write(() =>
+        update(ref(db, 'settings'), {
+          homeInfo: withGroupMarker(raw.homeInfo, cfg),
+          updatedAt: Date.now(),
+        })
+      );
+    }
     return shapeSettings(await rawSettings());
   },
   regenerateToken: async (): Promise<{ token: string }> => {
@@ -903,7 +1213,21 @@ export const api = {
   changePassword: async (old_password: string, new_password: string): Promise<{ success: boolean }> => {
     requireDelegate();
     if (!old_password || !new_password) fail('Ancien et nouveau mot de passe requis');
-    if (new_password.length < 6) fail('Le nouveau mot de passe doit faire au moins 6 caractères');
+    if (new_password.length < 8) fail('Le nouveau mot de passe doit faire au moins 8 caractères');
+    if (isAuthAvailable()) {
+      // Le compte Firebase porte le mot de passe : on ne stocke plus de hash.
+      try {
+        await changeAuthPassword(new_password);
+      } catch (err: any) {
+        const code = String(err?.code || '');
+        if (code.includes('requires-recent-login')) {
+          fail('Reconnecte-toi, puis change le mot de passe dans les minutes qui suivent.', 401);
+        }
+        fail('Modification du mot de passe impossible pour le moment', 0);
+      }
+      void logAdmin('password_change', 'settings', null, 'Mot de passe Firebase modifié');
+      return { success: true };
+    }
     const s = await rawSettings();
     if (!(await verifyPassword(old_password, s.passwordHash || DEFAULT_PASSWORD_HASH))) {
       fail('Ancien mot de passe incorrect', 401);
@@ -939,7 +1263,7 @@ export const api = {
       category: cleanText(data?.category, 30) || 'general',
       importance: cleanText(data?.importance, 30) || 'normal',
       author: cleanText(data?.author, 60) || 'Délégué',
-      attachmentUrl: cleanText(data?.attachment_url, 1000) || undefined,
+      attachmentUrl: cleanUrl(data?.attachment_url, 1000) || undefined,
       image: data?.image || undefined,
       published: flag(data?.published, true),
       createdAt: now,
@@ -959,7 +1283,7 @@ export const api = {
     if (data?.category !== undefined) patch.category = cleanText(data.category, 30) || 'general';
     if (data?.importance !== undefined) patch.importance = cleanText(data.importance, 30) || 'normal';
     if (data?.author !== undefined) patch.author = cleanText(data.author, 60) || 'Délégué';
-    if (data?.attachment_url !== undefined) patch.attachmentUrl = cleanText(data.attachment_url, 1000) || null;
+    if (data?.attachment_url !== undefined) patch.attachmentUrl = cleanUrl(data.attachment_url, 1000) || null;
     if (data?.image !== undefined) {
       if (data.image && String(data.image).length > 1_500_000) fail('Image trop volumineuse');
       patch.image = data.image || null;
@@ -1015,6 +1339,7 @@ export const api = {
       anonymous,
       authorName: anonymous ? undefined : author,
       fingerprint: fp || undefined,
+      authorUid: anonymous ? undefined : authorUid(),
       status: 'a_etudier',
       createdAt: now,
       updatedAt: now,
@@ -1084,7 +1409,7 @@ export const api = {
     const replyId = newId(`ideaReplies/${id}`);
     const now = Date.now();
     await write(() =>
-      set(ref(db, `ideaReplies/${id}/${replyId}`), clean({ content, authorName: author, fingerprint: fp || undefined, createdAt: now }))
+      set(ref(db, `ideaReplies/${id}/${replyId}`), clean({ content, authorName: author, fingerprint: fp || undefined, authorUid: authorUid(), createdAt: now }))
     );
     replyToIdea.set(replyId, id);
     return { id: replyId, content, author_name: author, deleted_at: null, created_at: iso(now), mine: true, can_delete: true };
@@ -1129,11 +1454,15 @@ export const api = {
       category: cleanText(data?.category, 30) || 'autre',
       anonymous,
       authorName: anonymous ? undefined : author,
-      fingerprint: fp || undefined,
+      // Un message anonyme ne conserve AUCUN lien vers l'appareil : sinon
+      // n'importe quel lecteur de la base pouvait recouper avec chatUsers.
+      fingerprint: anonymous ? undefined : fp || undefined,
+      authorUid: anonymous ? undefined : authorUid(),
       status: 'nouveau',
       createdAt: now,
       updatedAt: now,
     });
+    if (anonymous) rememberAnonymousMessage(id);
     await write(() => set(ref(db, `messages/${id}`), value));
     const file = data?.file;
     if (file && typeof file.data === 'string') {
@@ -1159,8 +1488,9 @@ export const api = {
     const fp = safeKey(fingerprint);
     if (!fp) fail('Fingerprint requis');
     const [all, s] = await Promise.all([watch('messages'), rawSettings()]);
+    const anon = new Set(readAnonymousMessageIds());
     return rows(all)
-      .filter((m) => m.fingerprint === fp)
+      .filter((m) => m.fingerprint === fp || anon.has(m.id))
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
       .slice(0, 50)
       .map((m) => shapeMessage(m, s.delegateName || undefined));
@@ -1169,7 +1499,8 @@ export const api = {
     const fp = safeKey(fingerprint);
     const all = (await watch('messages')) || {};
     const m = all[id];
-    if (!m || m.fingerprint !== fp) fail('Message introuvable', 404);
+    const mine = !!m && (m.fingerprint === fp || readAnonymousMessageIds().includes(id));
+    if (!mine) fail('Message introuvable', 404);
     if (!m.responseReadAt) await write(() => update(ref(db, `messages/${id}`), { responseReadAt: Date.now() }));
     return { success: true };
   },
@@ -1218,12 +1549,12 @@ export const api = {
     return rows(polls)
       .filter((p) => delegate || p.active !== false)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-      .map((p) => shapePoll(p, votes, fingerprint));
+      .map((p) => shapePoll(p, votes, voterKeyFor(fingerprint)));
   },
   getPoll: async (id: string): Promise<Poll> => {
     const [polls, votes] = await Promise.all([watch('polls'), watch('pollVotes')]);
     if (!polls?.[id]) fail('Sondage introuvable', 404);
-    return shapePoll({ ...polls[id], id } as Row, votes);
+    return shapePoll({ ...polls[id], id } as Row, votes, voterKeyFor());
   },
   createPoll: async (data: any): Promise<Poll> => {
     requireDelegate();
@@ -1253,17 +1584,19 @@ export const api = {
   votePoll: async (id: string, option_ids: string[], fingerprint: string): Promise<any> => {
     if (!Array.isArray(option_ids) || option_ids.length === 0) fail('Au moins une option requise');
     const fp = safeKey(fingerprint);
-    if (fp.length < 8) fail('Identifiant appareil manquant', 401);
+    const voterKey = voterKeyFor(fingerprint);
+    if (voterKey.length < 8) fail('Identifiant appareil manquant', 401);
     const [poll, votes] = await Promise.all([findItem('polls', id), watch('pollVotes')]);
     if (!poll) fail('Sondage introuvable', 404);
     if (poll.active === false) fail('Ce sondage est fermé');
     if (!poll.allowMultiple && option_ids.length > 1) fail('Ce sondage n\u2019autorise qu\u2019un seul choix');
-    if (votes?.[id]?.[fp]) fail('Vous avez déjà voté');
+    if (votes?.[id]?.[voterKey] || votes?.[id]?.[fp]) fail('Vous avez déjà voté');
     const valid = new Set(Object.keys(poll.options || {}));
     for (const o of option_ids) if (!valid.has(String(o))) fail('Option invalide');
     try {
-      await set(ref(db, `pollVotes/${id}/${fp}`), {
+      await set(ref(db, `pollVotes/${id}/${voterKey}`), {
         options: Object.fromEntries(option_ids.map((o) => [String(o), true])),
+        voterUid: authorUid() || null,
         createdAt: Date.now(),
       });
     } catch (err) {
@@ -1273,7 +1606,7 @@ export const api = {
       }
       explain(err);
     }
-    return shapePoll({ ...poll, id } as Row, await watch('pollVotes'), fp);
+    return shapePoll({ ...poll, id } as Row, await watch('pollVotes'), voterKey);
   },
   updatePoll: async (id: string, data: any): Promise<Poll> => {
     requireDelegate();
@@ -1327,7 +1660,7 @@ export const api = {
     }
     await write(() => update(ref(db), updates));
     const after = (await watch('polls')) || {};
-    return shapePoll({ ...(after[id] || {}), id } as Row, await watch('pollVotes'));
+    return shapePoll({ ...(after[id] || {}), id } as Row, await watch('pollVotes'), voterKeyFor());
   },
   deletePoll: async (id: string): Promise<{ success: boolean }> => {
     requireDelegate();
@@ -1421,8 +1754,8 @@ export const api = {
           title,
           description: cleanText(data?.description, 5000),
           subject: cleanText(data?.subject, 40) || 'autre',
-          fileUrl: cleanText(data?.file_url, 2000) || undefined,
-          linkUrl: cleanText(data?.link_url, 2000) || undefined,
+          fileUrl: cleanUrl(data?.file_url, 2000) || undefined,
+          linkUrl: cleanUrl(data?.link_url, 2000) || undefined,
           createdAt: now,
           updatedAt: now,
         })
@@ -1438,8 +1771,8 @@ export const api = {
     if (data?.title !== undefined) patch.title = cleanText(data.title, 200) || all[id].title;
     if (data?.description !== undefined) patch.description = cleanText(data.description, 5000);
     if (data?.subject !== undefined) patch.subject = cleanText(data.subject, 40) || 'autre';
-    if (data?.file_url !== undefined) patch.fileUrl = cleanText(data.file_url, 2000) || null;
-    if (data?.link_url !== undefined) patch.linkUrl = cleanText(data.link_url, 2000) || null;
+    if (data?.file_url !== undefined) patch.fileUrl = cleanUrl(data.file_url, 2000) || null;
+    if (data?.link_url !== undefined) patch.linkUrl = cleanUrl(data.link_url, 2000) || null;
     await write(() => update(ref(db, `resources/${id}`), patch));
     return (await api.getResources()).find((r) => r.id === id)!;
   },
@@ -1571,6 +1904,9 @@ export const api = {
     if (!delegate) {
       by = safeKey(data?.fingerprint);
       if (by.length < 8) fail('Identifiant appareil manquant', 401);
+      if (!(await groupsOpen())) {
+        fail('La création de groupes est fermée par le délégué pour le moment', 403);
+      }
       const pending = rows(groups).some((g) => g.createdByFingerprint === by && g.status === 'en_attente');
       if (pending) {
         fail('Tu as déjà un groupe en attente : modifie-le ou supprime-le avant d\u2019en créer un autre', 409);
@@ -1579,6 +1915,12 @@ export const api = {
     const id = newId('studentGroups');
     const now = Date.now();
     const memberUpdates = await addMembers(id, {}, (data.student_ids || []).map(String), data.member_names || [], by);
+    if (!delegate) {
+      const { min, max } = await groupLimits();
+      const count = Object.keys(memberUpdates).length;
+      if (count < min) fail(`Un groupe doit contenir au moins ${min} élève${min > 1 ? 's' : ''}`);
+      if (count > max) fail(`Un groupe ne peut pas dépasser ${max} élève${max > 1 ? 's' : ''}`);
+    }
     const updates: Record<string, any> = {
       [`studentGroups/${id}/id`]: id,
       [`studentGroups/${id}/name`]: name,
@@ -1589,6 +1931,7 @@ export const api = {
       ...memberUpdates,
     };
     if (by) updates[`studentGroups/${id}/createdByFingerprint`] = by;
+    if (by) updates[`studentGroups/${id}/createdByUid`] = authorUid() || null;
     if (delegate && data?.validate_now === true) {
       const members: Record<string, any> = {};
       for (const [k, v] of Object.entries(memberUpdates)) members[k] = v;
@@ -1631,11 +1974,17 @@ export const api = {
     const by = delegate ? null : safeKey(fingerprint);
     if (!delegate) {
       if (!by || by.length < 8) fail('Identifiant appareil manquant', 401);
+      if (!(await groupsOpen())) {
+        fail('La création et la modification des groupes sont fermées par le délégué', 403);
+      }
       if (g.isPrivate && g.createdByFingerprint !== by) {
         fail('Seul le signataire ou le délégué peut modifier un groupe privé', 403);
       }
     }
-    if (Object.keys(g.members || {}).length >= MAX_GROUP) fail(`Un groupe ne peut pas dépasser ${MAX_GROUP} élèves`);
+    const { max } = await groupLimits();
+    if (Object.keys(g.members || {}).length >= max) {
+      fail(`Un groupe ne peut pas dépasser ${max} élève${max > 1 ? 's' : ''}`);
+    }
     const updates = await addMembers(
       id,
       g.members || {},
@@ -1657,8 +2006,13 @@ export const api = {
     if (!g) fail('Groupe introuvable', 404);
     const delegate = isDelegate();
     const by = safeKey(fingerprint);
-    if (!delegate && (!by || g.createdByFingerprint !== by)) {
-      fail(g.isPrivate ? 'Seul le signataire ou le délégué peut modifier un groupe privé' : 'Seul le signataire peut modifier ce groupe', 403);
+    if (!delegate) {
+      if (!(await groupsOpen())) {
+        fail('La création et la modification des groupes sont fermées par le délégué', 403);
+      }
+      if (!by || g.createdByFingerprint !== by) {
+        fail(g.isPrivate ? 'Seul le signataire ou le délégué peut modifier un groupe privé' : 'Seul le signataire peut modifier ce groupe', 403);
+      }
     }
     if (!delegate && g.status !== 'en_attente') fail('Un groupe validé ne se modifie que par le délégué', 403);
     const updates: Record<string, any> = {};
@@ -1675,6 +2029,9 @@ export const api = {
     if (!g) fail('Groupe introuvable', 404);
     const delegate = isDelegate();
     if (!delegate) {
+      if (!(await groupsOpen())) {
+        fail('La création et la modification des groupes sont fermées par le délégué', 403);
+      }
       if (g.status === 'valide') fail('Un groupe validé ne se supprime que par le délégué', 403);
       if (!g.createdByFingerprint || g.createdByFingerprint !== safeKey(fingerprint)) {
         fail('Seul le créateur peut supprimer son groupe en attente', 403);
@@ -1725,6 +2082,7 @@ export const api = {
       location: cleanText(data?.location, 80),
       description: cleanText(data?.description, 1000),
       createdByFingerprint: delegate ? undefined : fp,
+      authorUid: authorUid(),
       createdAt: now,
       updatedAt: now,
     });
@@ -1946,6 +2304,7 @@ export const api = {
     }
     const me = chatKey(fingerprint);
     const [value, reactions] = await Promise.all([watch(messagesPath(conversation_id)), watch('chatReactions')]);
+    if (!gid) void purgeOldChat(value);
     const all = liveMessages(value);
     const after_ = after ? String(after) : '';
     const fresh = (after_ ? all.filter((m) => m.id > after_) : all.slice(-100)).map((m) =>
@@ -1978,6 +2337,7 @@ export const api = {
     const now = Date.now();
     const value = clean({
       senderId: user.id,
+      senderUid: currentUid() || undefined,
       senderName: user.display_name.slice(0, 20),
       senderKind: user.kind === 'delegate' ? 'delegate' : 'student',
       content,
@@ -2159,6 +2519,7 @@ export const api = {
     const now = Date.now();
     const value = clean({
       senderId: sender!.id,
+      senderUid: currentUid() || undefined,
       senderName: sender!.display_name.slice(0, 20),
       senderKind: sender!.kind === 'delegate' ? 'delegate' : 'student',
       content,
@@ -2231,6 +2592,7 @@ export const api = {
       description: cleanText(data?.description, 500),
       authorName: author,
       authorFingerprint: fp || undefined,
+      authorUid: authorUid(),
       fileName: `fiche.${isPdf ? 'pdf' : mime.split('/')[1]}`,
       mimeType: mime,
       fileSize: size,

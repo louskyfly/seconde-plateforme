@@ -17,6 +17,7 @@ const firebaseConfig = {
 export const DATABASE_URL = firebaseConfig.databaseURL;
 
 const app = initializeApp(firebaseConfig);
+export { app };
 export const db = getDatabase(app);
 
 // Tests en local uniquement : `VITE_FIREBASE_EMULATOR=127.0.0.1:9000 npm run build`

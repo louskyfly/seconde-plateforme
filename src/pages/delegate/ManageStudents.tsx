@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { useSettings } from '@/hooks/useSettings';
 import { LoadError } from '@/components/ui/LoadError';
 import { StudentTable, StudentForm } from '@/components/students/StudentTable';
 import type { Student, StudentGroup, StudentGroupStatus } from '@/types';
@@ -17,6 +18,8 @@ function statutMeta(valeur: string) {
 function GroupCard({
   group,
   students,
+  min,
+  max,
   onStatus,
   onRemoveMember,
   onJoin,
@@ -24,6 +27,8 @@ function GroupCard({
 }: {
   group: StudentGroup;
   students: Student[];
+  min: number;
+  max: number;
   onStatus: (id: string, status: StudentGroupStatus) => Promise<void>;
   onRemoveMember: (groupId: string, memberKey: string) => Promise<void>;
   onJoin: (groupId: string, studentId: string) => Promise<void>;
@@ -94,7 +99,7 @@ function GroupCard({
         )}
         <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${meta.classe}`}>{meta.label}</span>
         <span className="text-[11px] text-gray-500 dark:text-gray-400">
-          {group.members.length}/4 élève{group.members.length > 1 ? 's' : ''}
+          {group.members.length}/{max} élève{group.members.length > 1 ? 's' : ''}
         </span>
         {group.validated_by && (
           <span className="text-[10px] text-gray-400">
@@ -144,9 +149,9 @@ function GroupCard({
           <button
             type="button"
             onClick={() => changerStatut('valide')}
-            disabled={busy || group.members.length < 3}
+            disabled={busy || group.members.length < min}
             className="px-2.5 py-1 rounded-lg bg-green-500/85 text-white text-[11px] font-bold hover:bg-green-600 disabled:opacity-40"
-            title={group.members.length < 3 ? 'Il faut au moins 3 élèves' : undefined}
+            title={group.members.length < min ? `Il faut au moins ${min} élève${min > 1 ? 's' : ''}` : undefined}
           >
             Valider
           </button>
@@ -224,6 +229,9 @@ function GroupCard({
 }
 
 export default function ManageStudents() {
+  const { settings } = useSettings();
+  const minGroup = settings?.group_min ?? 3;
+  const maxGroup = settings?.group_max ?? 4;
   const [students, setStudents] = useState<Student[]>([]);
   const [groups, setGroups] = useState<StudentGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -385,8 +393,8 @@ export default function ManageStudents() {
         </form>
 
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
-          Un groupe doit contenir 3 ou 4 élèves. Une fois validé, il est figé : on ne peut plus
-          en retirer ni en ajouter.
+          Un groupe doit contenir entre {minGroup} et {maxGroup} élèves. Une fois validé, il est
+          figé : on ne peut plus en retirer ni en ajouter.
         </p>
 
         {groups.length === 0 ? (
@@ -398,6 +406,8 @@ export default function ManageStudents() {
                 key={group.id}
                 group={group}
                 students={students}
+                min={minGroup}
+                max={maxGroup}
                 onStatus={statut}
                 onRemoveMember={retirerMembre}
                 onJoin={rejoindre}

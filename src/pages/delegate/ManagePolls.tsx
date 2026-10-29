@@ -14,7 +14,9 @@ interface PollFormProps {
 
 function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
   const [question, setQuestion] = useState('');
-  const [options, setOptions] = useState<string[]>(['', '']);
+  // On conserve l'identifiant de chaque option : sans lui, retirer une option
+  // au milieu décalait les index et réassignait les votes des suivantes.
+  const [options, setOptions] = useState<{ id?: string; text: string }[]>([{ text: '' }, { text: '' }]);
   const [allowMultiple, setAllowMultiple] = useState(false);
   const [showResults, setShowResults] = useState(true);
   const [anonymous, setAnonymous] = useState(false);
@@ -25,7 +27,7 @@ function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
 
   const reset = () => {
     setQuestion('');
-    setOptions(['', '']);
+    setOptions([{ text: '' }, { text: '' }]);
     setAllowMultiple(false);
     setShowResults(true);
     setAnonymous(false);
@@ -38,7 +40,7 @@ function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
     setError('');
     if (editing) {
       setQuestion(editing.question);
-      setOptions((editing.options || []).map((o) => o.text));
+      setOptions((editing.options || []).map((o) => ({ id: o.id, text: o.text })));
       setAllowMultiple(editing.allow_multiple === 1);
       setShowResults(editing.show_results === 1);
       setAnonymous(editing.anonymous === 1);
@@ -53,7 +55,7 @@ function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
     onClose();
   };
 
-  const addOption = () => setOptions([...options, '']);
+  const addOption = () => setOptions([...options, { text: '' }]);
   const removeOption = (idx: number) => {
     if (options.length <= 2) return;
     setOptions(options.filter((_, i) => i !== idx));
@@ -70,7 +72,7 @@ function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
         await api.updatePoll(editing.id, {
           question,
           options: options
-            .map((text, index) => ({ id: editing.options?.[index]?.id, text: text.trim() }))
+            .map((o) => ({ id: o.id, text: o.text.trim() }))
             .filter((o) => o.text),
           allow_multiple: allowMultiple ? 1 : 0,
           show_results: showResults ? 1 : 0,
@@ -79,7 +81,7 @@ function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
       } else {
         await api.createPoll({
           question,
-          options: options.map((o) => o.trim()).filter(Boolean),
+          options: options.map((o) => o.text.trim()).filter(Boolean),
           allow_multiple: allowMultiple ? 1 : 0,
           show_results: showResults ? 1 : 0,
           anonymous: anonymous ? 1 : 0,
@@ -95,7 +97,7 @@ function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
     }
   };
 
-  const valid = question.trim() && options.filter((o) => o.trim()).length >= 2;
+  const valid = question.trim() && options.filter((o) => o.text.trim()).length >= 2;
 
   return (
     <Modal
@@ -121,11 +123,11 @@ function PollForm({ isOpen, onClose, onSaved, editing }: PollFormProps) {
         <div className="space-y-2">
           <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Options</p>
           {options.map((opt, idx) => (
-            <div key={idx} className="flex gap-2">
+            <div key={opt.id ?? `new-${idx}`} className="flex gap-2">
               <input
-                value={opt}
+                value={opt.text}
                 onChange={(e) =>
-                  setOptions(options.map((o, i) => (i === idx ? e.target.value : o)))
+                  setOptions(options.map((o, i) => (i === idx ? { ...o, text: e.target.value } : o)))
                 }
                 placeholder={`Option ${idx + 1}`}
                 className="glass-input"

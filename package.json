@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "npm run build && node --test server/tests/api.test.js",
+    "test": "node scripts/check-rules.mjs && tsc --noEmit",
+    "rules:deploy": "firebase deploy --only database",
     "start": "node redirect.js"
   },
   "dependencies": {

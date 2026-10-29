@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { parseServerDate } from '@/lib/utils';
 import type { VisitStats } from '@/types';
 
 /** « 29/09 » à partir de « 2026-09-29 ». */
@@ -9,9 +10,10 @@ function jourCourt(day: string): string {
 }
 
 function heure(iso: string): string {
-  // SQLite écrit « YYYY-MM-DD HH:MM:SS » en UTC. On préfère l'heure locale de
-  // l'élève : `new Date` interprète correctement le suffixe Z une fois ajouté.
-  const d = new Date(iso.replace(' ', 'T') + 'Z');
+  // `parseServerDate` gère l'ISO (déjà suffixé Z) comme l'ancien format SQLite.
+  // Avant, on ajoutait un « Z » à une date déjà ISO : résultat invalide, donc
+  // repli silencieux sur l'heure UTC (décalage de 1 à 2 h).
+  const d = parseServerDate(iso);
   return Number.isNaN(d.getTime())
     ? iso.slice(11, 16)
     : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });

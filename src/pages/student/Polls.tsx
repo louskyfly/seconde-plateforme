@@ -73,11 +73,10 @@ export default function Polls() {
             }));
             return {
               ...p,
-              active: 0,
               show_results: 1,
               has_voted: true,
               options: updatedOptions,
-              total_votes: (p.total_votes || 0) + 1,
+              total_votes: (p.total_votes || 0) + options.length,
             };
           })
         );

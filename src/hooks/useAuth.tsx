@@ -4,7 +4,7 @@ import { api, SESSION_EXPIRED_EVENT } from '@/lib/api';
 interface AuthContextType {
   isAuthenticated: boolean;
   loading: boolean;
-  login: (password: string, token?: string) => Promise<void>;
+  login: (password: string, token?: string, email?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -58,8 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [verify, loading]);
 
-  const login = useCallback(async (password: string, token?: string) => {
-    await api.login(password, token);
+  const login = useCallback(async (password: string, token?: string, email?: string) => {
+    await api.login(password, token, email);
     setIsAuthenticated(true);
   }, []);
 

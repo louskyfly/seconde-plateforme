@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
+import { formatDateTime } from '@/lib/utils';
 import { useSettings } from '@/hooks/useSettings';
 import { SiteStatusCard } from '@/components/delegate/SiteStatusCard';
 import { StorageWarning } from '@/components/delegate/StorageWarning';
@@ -175,10 +176,7 @@ function Dashboard() {
             {log.map((entry) => (
               <li key={entry.id} className="text-xs flex items-start gap-2">
                 <span className="text-gray-400 dark:text-gray-500 flex-shrink-0">
-                  {new Date(entry.created_at.replace(' ', 'T') + 'Z').toLocaleString('fr-FR', {
-                    dateStyle: 'short',
-                    timeStyle: 'short',
-                  })}
+                  {formatDateTime(entry.created_at)}
                 </span>
                 <span className="text-gray-600 dark:text-gray-300">
                   {ACTION_LABELS[entry.action] || entry.action}

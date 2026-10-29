@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { generateFingerprint } from '@/lib/utils';
+import { useSettings } from '@/hooks/useSettings';
 import { LoadError } from '@/components/ui/LoadError';
 import type { StudentGroup, StudentGroupStatus } from '@/types';
 
@@ -32,9 +33,6 @@ const STATUTS: Record<StudentGroupStatus, { label: string; classe: string }> = {
   valide: { label: 'Validé', classe: 'bg-green-500/20 text-green-700 dark:text-green-300' },
   refuse: { label: 'Refusé', classe: 'bg-red-500/20 text-red-700 dark:text-red-300' },
 };
-
-const MIN_GROUP = 3;
-const MAX_GROUP = 4;
 
 /** Même normalisation que le serveur : sans elle, `Lucas` et `lucas` seraient deux membres. */
 function normalizeName(value: string): string {
@@ -98,6 +96,10 @@ function NameField({
 }
 
 export function StudentGroups() {
+  const { settings } = useSettings();
+  const minGroup = settings?.group_min ?? 3;
+  const maxGroup = settings?.group_max ?? 4;
+  const groupsOpen = settings?.groups_open === 1;
   const [groups, setGroups] = useState<StudentGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -154,12 +156,12 @@ export function StudentGroups() {
       setErreur('Donne un nom à ton groupe.');
       return;
     }
-    if (membres.length < MIN_GROUP) {
-      setErreur(`Écris au moins ${MIN_GROUP} noms, le tien compris.`);
+    if (membres.length < minGroup) {
+      setErreur(`Écris au moins ${minGroup} noms, le tien compris.`);
       return;
     }
-    if (membres.length > MAX_GROUP) {
-      setErreur(`Un groupe ne peut pas dépasser ${MAX_GROUP} élèves.`);
+    if (membres.length > maxGroup) {
+      setErreur(`Un groupe ne peut pas dépasser ${maxGroup} élèves.`);
       return;
     }
 
@@ -230,7 +232,7 @@ export function StudentGroups() {
       <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100">Mes groupes</h2>
 
       <p className="text-[11px] text-gray-500 dark:text-gray-400">
-        Espace pour renseigner les groupes. Écris les {MIN_GROUP} ou {MAX_GROUP} noms de ton groupe, le
+        Espace pour renseigner les groupes. Écris les {minGroup} ou {maxGroup} noms de ton groupe, le
         tien compris, puis valide avec Entrée à chaque nom. Tu peux encore les changer tant que le
         groupe est en attente. Une fois validé par le délégué, il ne sera plus possible de les modifier.
       </p>
@@ -240,6 +242,11 @@ export function StudentGroups() {
       {monGroupe ? (
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
           Tu as déjà un groupe en attente. Complète-le ci-dessous, ou supprime-le pour recommencer.
+        </p>
+      ) : !groupsOpen ? (
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 rounded-xl glass px-3 py-2">
+          🔒 La création de groupes est fermée par le délégué pour le moment. Tu verras le
+          formulaire quand elle sera ouverte.
         </p>
       ) : (
         <form onSubmit={creer} className="space-y-2">
@@ -262,12 +269,12 @@ export function StudentGroups() {
 
           <div>
             <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
-              Les élèves du groupe ({membres.length}/{MAX_GROUP})
+              Les élèves du groupe ({membres.length}/{maxGroup})
             </p>
 
             <NameField
               onAdd={ajouterNom}
-              disabled={membres.length >= MAX_GROUP}
+              disabled={membres.length >= maxGroup}
               placeholder="Écris un prénom et un nom, puis Entrée"
             />
 
@@ -292,10 +299,10 @@ export function StudentGroups() {
               </ul>
             )}
 
-            {membres.length < MIN_GROUP && (
+            {membres.length < minGroup && (
               <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                Il manque encore {MIN_GROUP - membres.length} nom
-                {MIN_GROUP - membres.length > 1 ? 's' : ''}.
+                Il manque encore {minGroup - membres.length} nom
+                {minGroup - membres.length > 1 ? 's' : ''}.
               </p>
             )}
           </div>
@@ -349,9 +356,9 @@ export function StudentGroups() {
                     : 'Aucun élève pour l’instant'}
                 </p>
 
-                {g.peut_modifier ? (
+                {g.peut_modifier && groupsOpen ? (
                   <div className="space-y-2 pt-1">
-                    {g.members.length < MAX_GROUP && (
+                    {g.members.length < maxGroup && (
                       <NameField
                         onAdd={(n) => void ajouterMembre(g.id, n)}
                         disabled={busy}

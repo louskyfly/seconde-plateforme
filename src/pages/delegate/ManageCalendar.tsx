@@ -6,12 +6,13 @@ import { Modal } from '@/components/ui/Modal';
 
 interface EventFormProps {
   event: Event | null;
+  events: Event[];
   isOpen: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function EventForm({ event, isOpen, onClose, onSaved }: EventFormProps) {
+function EventForm({ event, events, isOpen, onClose, onSaved }: EventFormProps) {
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -47,6 +48,18 @@ function EventForm({ event, isOpen, onClose, onSaved }: EventFormProps) {
     setBusy(true);
     setError('');
     const payload = { title, date, time: time || null, description, category };
+    // Évite le doublon exact (même titre, même jour) sans l'interdire.
+    if (!event) {
+      const duplicate = events.some(
+        (ev) =>
+          ev.title.trim().toLowerCase() === title.trim().toLowerCase() &&
+          ev.date.split('T')[0] === date
+      );
+      if (duplicate && !window.confirm('Un événement avec ce titre existe déjà à cette date. Ajouter quand même ?')) {
+        setBusy(false);
+        return;
+      }
+    }
     try {
       if (event) {
         await api.updateEvent(event.id, payload);
@@ -291,6 +304,7 @@ export function ManageCalendar() {
 
       <EventForm
         event={editing}
+        events={events}
         isOpen={showCreate}
         onClose={() => setShowCreate(false)}
         onSaved={load}

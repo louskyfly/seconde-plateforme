@@ -34,6 +34,20 @@ export function ChatView({ fingerprint, isAdmin }: ChatViewProps) {
   const [sending, setSending] = useState(false);
 const [uploading, setUploading] = useState(false);
 const [newCount, setNewCount] = useState(0);
+/** Photo ouverte en plein écran (dans l'app, pas dans un onglet : iOS bloque data:). */
+const [viewImage, setViewImage] = useState<string | null>(null);
+/** Hauteur réellement visible : le clavier iPad réduit visualViewport. */
+const [viewportH, setViewportH] = useState(() =>
+  typeof window !== 'undefined' && window.visualViewport ? window.visualViewport.height : window.innerHeight
+);
+
+useEffect(() => {
+  const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+  if (!vv) return;
+  const onResize = () => setViewportH(vv.height);
+  vv.addEventListener('resize', onResize);
+  return () => vv.removeEventListener('resize', onResize);
+}, []);
 
   /** Sélecteur de réactions ouvert, par identifiant de message. */
   const [reactionFor, setReactionFor] = useState<string | null>(null);
@@ -59,16 +73,6 @@ const [newCount, setNewCount] = useState(0);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const stickToBottom = useRef(true);
-  /**
-   * Dernier id connu, tenu dans une ref : le rafraîchissement ne dépend ainsi
-   * plus du tableau `messages` (avant, la fonction était figée au premier rendu
-   * et le bouton « Actualiser » pouvait être nécessaire pour voir les messages).
-   */
-  const lastIdRef = useRef("");
-
-  useEffect(() => {
-    lastIdRef.current = messages.length ? messages[messages.length - 1].id : '';
-  }, [messages]);
 
   const scrollToBottom = useCallback((smooth = false) => {
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
@@ -104,29 +108,17 @@ const [newCount, setNewCount] = useState(0);
   const refresh = useCallback(
     async (silent = true) => {
       if (!conversation) return;
-      const after = lastIdRef.current;
       try {
-        const data = await api.getChatMessages(fingerprint, conversation.id, after);
-        if (data.messages.length === 0 && !data.reaction_updates) {
-          if (!silent) setError('');
-          return;
-        }
+        // On relit toujours les 100 derniers messages (servis par le cache
+        // temps réel) au lieu de ne demander que les nouveaux : c'est ce qui
+        // fait disparaître un message supprimé par un autre appareil.
+        const data = await api.getChatMessages(fingerprint, conversation.id, '');
         setMessages((prev) => {
           const known = new Set(prev.map((m) => m.id));
           const fresh = data.messages.filter((m) => !known.has(m.id));
           if (fresh.length && prev.length && !stickToBottom.current) setNewCount((c) => c + fresh.length);
-          return [...prev, ...fresh];
+          return data.messages;
         });
-        // Appliquer les mises à jour de réaction pour les messages déjà connus.
-        if (data.reaction_updates) {
-          setMessages((prev) =>
-            prev.map((m) => {
-              const upd = data.reaction_updates![m.id];
-              if (!upd) return m;
-              return { ...m, reactions: upd };
-            })
-          );
-        }
         if (!silent) setError('');
       } catch (err: any) {
         if (err?.message === 'Profil inconnu') setNeedsProfile(true);
@@ -326,7 +318,10 @@ const [newCount, setNewCount] = useState(0);
   }
 
   return (
-    <div className="animate-fadeIn flex flex-col" style={{ height: 'calc(100dvh - 190px)' }}>
+    <div
+      className="animate-fadeIn flex flex-col"
+      style={{ height: `max(280px, ${Math.round(viewportH - 190)}px)` }}
+    >
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <div>
           <h1 className="text-xl font-bold">{conversation?.title || 'Chat de classe'}</h1>
@@ -373,6 +368,8 @@ const [newCount, setNewCount] = useState(0);
                 onTouchEnd={canReact ? () => cancelLongPress() : undefined}
                 onTouchMove={canReact ? () => cancelLongPress() : undefined}
                 onTouchCancel={canReact ? () => cancelLongPress() : undefined}
+                onContextMenu={canReact ? (e) => e.preventDefault() : undefined}
+                style={canReact ? { WebkitTouchCallout: 'none' } : undefined}
               >
                 <div className="flex items-center gap-2 mb-0.5">
                   {!mine && (
@@ -394,7 +391,7 @@ const [newCount, setNewCount] = useState(0);
                     className="rounded-xl max-h-64 w-full object-cover my-1 cursor-zoom-in"
                     onClick={() => {
                       loadFileUrl(`chat:${m.id}`, () => api.getChatImage(m.id)).then((u) => {
-                        if (u) window.open(u, '_blank', 'noopener');
+                        if (u) setViewImage(u);
                       });
                     }}
                   />
@@ -486,6 +483,29 @@ const [newCount, setNewCount] = useState(0);
           {sending ? '…' : 'Envoyer'}
         </button>
       </form>
+
+      {viewImage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-4"
+          onClick={() => setViewImage(null)}
+          role="dialog"
+          aria-label="Photo du message"
+        >
+          <img
+            src={viewImage}
+            alt="Photo du message"
+            className="max-h-full max-w-full rounded-xl object-contain"
+          />
+          <button
+            type="button"
+            onClick={() => setViewImage(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 text-white text-xl"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

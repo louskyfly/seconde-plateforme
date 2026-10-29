@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
  * (iPad) sait afficher, ouvrir dans un nouvel onglet et télécharger.
  */
 const cache = new Map<string, Promise<string | null>>();
+/** Borne le cache : un long chat ne doit pas retenir indéfiniment les images. */
+const MAX_CACHE = 40;
 
 export function dataUrlToObjectUrl(dataUrl: string): string {
   try {
@@ -32,19 +34,23 @@ export function loadFileUrl(key: string, loader: () => Promise<string | null>): 
         return null;
       });
     cache.set(key, p);
+    if (cache.size > MAX_CACHE) {
+      const oldest = cache.keys().next().value;
+      if (oldest) cache.delete(oldest);
+    }
   }
   return p;
 }
 
 /** URL affichable d'un fichier stocké dans Firebase (null tant qu'il charge). */
-export function useFileUrl(key: string | null, loader: () => Promise<string | null>) {
+export function useFileUrl(key: string | null, loader: () => Promise<string | null>, enabled = true) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let alive = true;
     setUrl(null);
     setFailed(false);
-    if (!key) return;
+    if (!key || !enabled) return;
     loadFileUrl(key, loader).then((u) => {
       if (!alive) return;
       if (u) setUrl(u);
@@ -54,6 +60,6 @@ export function useFileUrl(key: string | null, loader: () => Promise<string | nu
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, enabled]);
   return { url, failed };
 }

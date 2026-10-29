@@ -290,10 +290,18 @@ export function ManageMessages() {
             const isExpanded = expandedId === m.id;
             const statusMeta = MESSAGE_STATUSES[m.status] || m.status;
             return (
-              <button
+              <div
                 key={m.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setExpandedId(isExpanded ? null : m.id)}
-                className="glass-card text-left w-full block"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setExpandedId(isExpanded ? null : m.id);
+                  }
+                }}
+                className="glass-card text-left w-full block cursor-pointer"
               >
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -388,7 +396,7 @@ export function ManageMessages() {
                     </button>
                   </div>
                 )}
-              </button>
+              </div>
             );
           })}
         </div>

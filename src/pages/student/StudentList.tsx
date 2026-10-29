@@ -3,7 +3,6 @@ import { api } from '@/lib/api';
 import { LoadError } from '@/components/ui/LoadError';
 import { StudentTable } from '@/components/students/StudentTable';
 import { StudentGroups } from '@/components/students/StudentGroups';
-import { CreateGroup } from '@/components/students/CreateGroup';
 import type { Student } from '@/types';
 
 /**
@@ -100,10 +99,8 @@ export default function StudentList() {
         </p>
       )}
 
-      {/* Les groupes se renseignent à la main : un élève n'est pas obligé de se
-          retrouver dans le tableau ci-dessus pour former son groupe. */}
-      <CreateGroup students={students} onCreated={() => window.location.reload()} />
-
+      {/* Les groupes se renseignent dans la section ci-dessous ; le délégué
+          décide quand la création est ouverte. */}
       <StudentGroups />
     </div>
   );

@@ -39,6 +39,13 @@ export function Settings() {
   const [homeError, setHomeError] = useState('');
   const [homeBusy, setHomeBusy] = useState(false);
 
+  const [groupMin, setGroupMin] = useState(3);
+  const [groupMax, setGroupMax] = useState(4);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [groupSuccess, setGroupSuccess] = useState('');
+  const [groupError, setGroupError] = useState('');
+  const [groupBusy, setGroupBusy] = useState(false);
+
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [newToken, setNewToken] = useState('');
   const [regenBusy, setRegenBusy] = useState(false);
@@ -99,7 +106,11 @@ export function Settings() {
     e.target.value = '';
     if (!file) return;
 
-    if (!window.confirm('Restaurer cette sauvegarde ? Toutes les données actuelles seront remplacées.')) {
+    if (
+      !window.confirm(
+        'Restaurer cette sauvegarde ? Les éléments présents dans le fichier seront réécrits. Les données absentes du fichier ne sont pas supprimées.'
+      )
+    ) {
       return;
     }
 
@@ -125,6 +136,9 @@ export function Settings() {
     setHomeInfo(settings.home_info);
     setHomeImage(settings.home_image ?? null);
     setSeason(normalizeSeasonTheme(settings.season_theme));
+    setGroupMin(settings.group_min ?? 3);
+    setGroupMax(settings.group_max ?? 4);
+    setGroupsOpen(settings.groups_open === 1);
   }, [settings]);
 
   /** Active ou désactive immédiatement un thème de saison, pour toute la classe. */
@@ -176,6 +190,41 @@ export function Settings() {
       setHomeError(err.message || 'Erreur');
     } finally {
       setHomeBusy(false);
+    }
+  };
+
+  const saveGroups = async (e: FormEvent) => {
+    e.preventDefault();
+    setGroupBusy(true);
+    setGroupError('');
+    setGroupSuccess('');
+    if (!Number.isFinite(groupMin) || !Number.isFinite(groupMax) || groupMin < 1) {
+      setGroupError('Le minimum doit être au moins 1.');
+      setGroupBusy(false);
+      return;
+    }
+    if (groupMax < groupMin) {
+      setGroupError('Le maximum doit être supérieur ou égal au minimum.');
+      setGroupBusy(false);
+      return;
+    }
+    try {
+      await api.updateSettings({
+        group_min: groupMin,
+        group_max: groupMax,
+        groups_open: groupsOpen ? 1 : 0,
+      });
+      await refreshSettings().catch(() => {});
+      setGroupSuccess('Réglages des groupes enregistrés');
+    } catch (err: any) {
+      const msg = err.message || 'Erreur';
+      setGroupError(
+        msg.includes('refusée')
+          ? "La base refuse l'enregistrement : les règles Firebase doivent être mises à jour (voir SECURITY.md), puis l'application redéployée."
+          : msg
+      );
+    } finally {
+      setGroupBusy(false);
     }
   };
 
@@ -379,6 +428,69 @@ export function Settings() {
         {classError && <p className="text-sm text-red-500">{classError}</p>}
         <button type="submit" disabled={classBusy} className="glass-button-primary w-full">
           {classBusy ? 'Enregistrement...' : 'Enregistrer'}
+        </button>
+      </form>
+
+      <form onSubmit={saveGroups} className="glass-card space-y-4">
+        <div>
+          <h2 className="font-semibold">Groupes de travail</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Choisis quand les élèves peuvent créer leurs groupes et combien d'élèves ils doivent
+            contenir. Quand c'est fermé, la fenêtre de création est masquée pour eux.
+          </p>
+        </div>
+
+        <label className="flex items-center gap-3 cursor-pointer min-h-[44px]">
+          <input
+            type="checkbox"
+            checked={groupsOpen}
+            onChange={(e) => setGroupsOpen(e.target.checked)}
+            className="w-5 h-5 accent-indigo-600"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            Autoriser les élèves à créer et modifier leurs groupes
+          </span>
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+              Élèves minimum
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={groupMin}
+              onChange={(e) => setGroupMin(Number(e.target.value))}
+              className="glass-input"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">
+              Élèves maximum
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={groupMax}
+              onChange={(e) => setGroupMax(Number(e.target.value))}
+              className="glass-input"
+            />
+          </div>
+        </div>
+
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          {groupsOpen
+            ? `Les élèves voient le formulaire (${groupMin} à ${groupMax} élèves).`
+            : 'Le formulaire de création est actuellement masqué pour les élèves.'}
+        </p>
+
+        {groupSuccess && <p className="text-sm text-green-600 dark:text-green-400">{groupSuccess}</p>}
+        {groupError && <p className="text-sm text-red-500">{groupError}</p>}
+        <button type="submit" disabled={groupBusy} className="glass-button-primary w-full">
+          {groupBusy ? 'Enregistrement...' : 'Enregistrer les réglages des groupes'}
         </button>
       </form>
 

@@ -6,6 +6,12 @@ export interface Settings {
   home_image: string | null;
   /** Thème de saison : 'aucun' | 'halloween' | 'noel' */
   season_theme?: string;
+  /** Nombre minimum d'élèves dans un groupe de travail (réglé par le délégué). */
+  group_min: number;
+  /** Nombre maximum d'élèves dans un groupe de travail. */
+  group_max: number;
+  /** 1 = les élèves peuvent créer/modifier leurs groupes, 0 = fenêtre masquée. */
+  groups_open: number;
 }
 
 export interface Announcement {

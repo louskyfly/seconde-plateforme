@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Date LOCALE : `toISOString()` donnait la date UTC, donc entre 00 h et 02 h
+  // en France « aujourd'hui » désignait encore la veille.
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /**

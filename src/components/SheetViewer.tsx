@@ -98,18 +98,30 @@ export function SheetViewer({ sheet, onClose }: SheetViewerProps) {
         </>
       ) : isPdf ? (
         <>
-        <iframe
-          src={fileUrl}
-          title={sheet.title}
-          onError={() => setBroken(true)}
-          className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white"
-          style={{ height: '70dvh' }}
-        />
-        <div className="mt-3 text-center">
-          <a href={fileUrl} target="_blank" rel="noopener" className="glass-button text-xs px-4 py-2 inline-block">
-            Ouvrir le PDF en plein écran
-          </a>
-        </div>
+          {/* iOS Safari ne rend pas les PDF dans une <iframe> (et n'émet pas
+              d'erreur) : on utilise <object>, dont le contenu de repli est
+              affiché quand le moteur ne sait pas rendre le PDF. */}
+          <object
+            data={fileUrl}
+            type="application/pdf"
+            className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white"
+            style={{ height: '70dvh' }}
+          >
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+              <p className="text-3xl">📄</p>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                L’aperçu PDF n’est pas disponible sur cet appareil.
+              </p>
+            </div>
+          </object>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <a href={fileUrl} download className="glass-button text-xs px-4 py-2 inline-block">
+              ⬇️ Télécharger le PDF
+            </a>
+            <a href={fileUrl} target="_blank" rel="noopener" className="glass-button text-xs px-4 py-2 inline-block">
+              Ouvrir en plein écran
+            </a>
+          </div>
         </>
       ) : (
         <div className="rounded-xl bg-gray-100 dark:bg-gray-800/60 py-10 text-center">

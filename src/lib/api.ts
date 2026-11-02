@@ -1668,32 +1668,42 @@ export const api = {
     const valid = new Set(Object.keys(poll.options || {}));
     for (const o of option_ids) if (!valid.has(String(o))) fail('Option invalide');
     const optionsValue = Object.fromEntries(option_ids.map((o) => [String(o), true]));
-    try {
-      await set(ref(db, `pollVotes/${id}/${voterKey}`), {
-        options: optionsValue,
-        voterName: name,
-        voterUid: authorUid() || null,
-        createdAt: Date.now(),
-      });
-    } catch (err) {
-      // Règles pas encore déployées : `voterName` / `voterUid` sont refusés.
-      // On réessaie en encodant le pseudo dans la clé (autorisée), sans champ
-      // supplémentaire : le vote compte et le pseudo reste lisible.
-      const refused = String((err as any)?.message || (err as any)?.code || '')
-        .toLowerCase()
-        .includes('permission');
-      if (!refused) explain(err);
-      const pseudoKey = `${encodeURIComponent(name).replace(/~/g, '')}~${voterKey}`;
+    const anonymousPoll = poll.anonymous !== false;
+    const base = { options: optionsValue, createdAt: Date.now() };
+    const uid = authorUid();
+    const withUid = uid ? { ...base, voterUid: uid } : base;
+    const isPermission = (e: any) =>
+      String(e?.message || e?.code || '').toLowerCase().includes('permission');
+
+    if (anonymousPoll) {
+      // Sondage anonyme : le pseudo est exigé à la saisie, mais n'est PAS
+      // stocké — sinon n'importe quel lecteur de pollVotes pourrait le lire.
       try {
-        await set(ref(db, `pollVotes/${id}/${pseudoKey}`), {
-          options: optionsValue,
-          createdAt: Date.now(),
-        });
-      } catch (err2) {
-        if (String((err2 as any)?.code || (err2 as any)?.message || '').toLowerCase().includes('permission')) {
-          fail('Vous avez déjà voté');
+        await set(ref(db, `pollVotes/${id}/${voterKey}`), withUid);
+      } catch (err) {
+        if (!isPermission(err)) explain(err);
+        try {
+          await set(ref(db, `pollVotes/${id}/${voterKey}`), base);
+        } catch (err2) {
+          if (isPermission(err2)) fail('Vous avez déjà voté');
+          explain(err2);
         }
-        explain(err2);
+      }
+    } else {
+      try {
+        await set(ref(db, `pollVotes/${id}/${voterKey}`), { ...withUid, voterName: name });
+      } catch (err) {
+        if (!isPermission(err)) explain(err);
+        // Règles pas encore déployées : `voterName` / `voterUid` sont refusés.
+        // On réessaie en encodant le pseudo dans la clé (autorisée), sans champ
+        // supplémentaire : le vote compte et le pseudo reste lisible.
+        const pseudoKey = `${encodeURIComponent(name).replace(/~/g, '')}~${voterKey}`;
+        try {
+          await set(ref(db, `pollVotes/${id}/${pseudoKey}`), base);
+        } catch (err2) {
+          if (isPermission(err2)) fail('Vous avez déjà voté');
+          explain(err2);
+        }
       }
     }
     return shapePoll({ ...poll, id } as Row, await watch('pollVotes'), voterKey, fingerprint);

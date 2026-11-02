@@ -63,7 +63,11 @@ export default function Polls() {
       const options = selectedOptions[poll.id];
       if (!options || options.length === 0) return;
       // Pseudo obligatoire : sans prénom valide, le vote n'est pas envoyé.
-      const name = await ensure('Pour voter, indique ton prénom : il servira de pseudo sur ce sondage.');
+      const name = await ensure(
+        poll.anonymous === 1
+          ? 'Pour voter, indique ton prénom. Ce sondage est anonyme : il ne sera pas affiché.'
+          : 'Pour voter, indique ton prénom : il servira de pseudo sur ce sondage.'
+      );
       if (!name) return;
       setPseudo(name);
       setVoting(poll.id);
@@ -171,7 +175,11 @@ export default function Polls() {
         )}
         {canVote && pseudo && (
           <p className="mt-1 text-center text-[10px] text-gray-500 dark:text-gray-400">
-            Tu votes en tant que <strong>{pseudo}</strong>.
+            {poll.anonymous === 1 ? (
+              <>Vote anonyme : ton prénom ne sera pas enregistré.</>
+            ) : (
+              <>Tu votes en tant que <strong>{pseudo}</strong>.</>
+            )}
           </p>
         )}
       </div>

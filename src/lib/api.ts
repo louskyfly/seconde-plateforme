@@ -419,7 +419,15 @@ const DEFAULT_LINK_TOKEN = 'cb29d732629c';
 const DEFAULT_PASSWORD_HASH = '$2a$10$dev';
 const DEFAULT_MAINTENANCE_MESSAGE =
   'Le site est temporairement indisponible pour maintenance. Merci de revenir plus tard.';
-const SEASON_THEMES = ['aucun', 'halloween', 'noel'];
+const SEASON_THEMES = [
+  'aucun',
+  'halloween',
+  'noel',
+  'sous-marin',
+  'futuriste',
+  'medieval',
+  'fantastique',
+];
 
 /** Bornes par défaut d'un groupe de travail. */
 const DEFAULT_GROUP_MIN = 3;
@@ -448,23 +456,33 @@ async function groupsOpen(): Promise<boolean> {
 
 /**
  * Compatibilité temporaire : tant que `database.rules.json` n'autorise pas les
- * champs `groupMin`, `groupMax` et `groupsOpen` dans `settings`, ces réglages
- * sont stockés dans un marqueur invisible à la fin de `homeInfo`.
+ * champs `groupMin`, `groupMax`, `groupsOpen` et les nouveaux `seasonTheme`
+ * dans `settings`, ces réglages sont stockés dans un marqueur invisible à la
+ * fin de `homeInfo`.
  *
- * Dès que les règles sont déployées, les vrais champs existent et ce marqueur
- * n'est plus utilisé. `shapeSettings` retire toujours le marqueur du texte
- * affiché, pour qu'il ne soit jamais visible sur l'accueil.
+ * Dès que les règles sont déployées, les vrais champs existent, mais le
+ * marqueur reste la source de vérité pour ne pas perdre le thème choisi entre
+ * deux versions. `shapeSettings` retire toujours le marqueur du texte affiché,
+ * pour qu'il ne soit jamais visible sur l'accueil.
  */
 const GROUP_MARKER = /\[\[group-config:(\{[^}]*\})\]\]/;
 
-function readGroupMarker(homeInfo: unknown): { min: number; max: number; open: boolean } | null {
+interface MarkerConfig {
+  min: number;
+  max: number;
+  open: boolean;
+  theme?: string;
+}
+
+function readGroupMarker(homeInfo: unknown): MarkerConfig | null {
   const match = String(homeInfo || '').match(GROUP_MARKER);
   if (!match) return null;
   try {
     const parsed = JSON.parse(match[1]);
     const min = clampInt(parsed.min, 1, HARD_GROUP_MAX, DEFAULT_GROUP_MIN);
     const max = clampInt(parsed.max, min, HARD_GROUP_MAX, Math.max(min, DEFAULT_GROUP_MAX));
-    return { min, max, open: parsed.open === true };
+    const theme = SEASON_THEMES.includes(parsed.theme) ? String(parsed.theme) : undefined;
+    return { min, max, open: parsed.open === true, theme };
   } catch {
     return null;
   }
@@ -477,7 +495,7 @@ function stripGroupMarker(homeInfo: unknown): string {
     .trim();
 }
 
-function withGroupMarker(homeInfo: unknown, cfg: { min: number; max: number; open: boolean }): string {
+function withGroupMarker(homeInfo: unknown, cfg: MarkerConfig): string {
   const marker = `[[group-config:${JSON.stringify(cfg)}]]`;
   const text = stripGroupMarker(homeInfo).slice(0, Math.max(0, 5000 - marker.length - 2));
   return text ? `${text}\n\n${marker}` : marker;
@@ -493,13 +511,17 @@ function cleanUrl(value: unknown, max = 2000): string | null {
 
 async function rawSettings(): Promise<Record<string, any>> {
   const s = (await watch('settings')) || {};
-  // Compatibilité : les réglages de groupe peuvent vivre dans homeInfo tant
-  // que les règles Firebase n'autorisent pas les champs dédiés.
-  if (s.groupMin === undefined) {
-    const cfg = readGroupMarker(s.homeInfo);
-    if (cfg) return { ...s, groupMin: cfg.min, groupMax: cfg.max, groupsOpen: cfg.open };
-  }
-  return s;
+  // Compatibilité : les réglages de groupe et les nouveaux thèmes peuvent
+  // vivre dans homeInfo tant que les règles Firebase ne les autorisent pas.
+  const cfg = readGroupMarker(s.homeInfo);
+  if (!cfg) return s;
+  return {
+    ...s,
+    ...(s.groupMin === undefined
+      ? { groupMin: cfg.min, groupMax: cfg.max, groupsOpen: cfg.open }
+      : {}),
+    ...(cfg.theme ? { seasonTheme: cfg.theme } : {}),
+  };
 }
 
 function shapeSettings(s: Record<string, any>): Settings {
@@ -600,33 +622,58 @@ function shapeMessage(m: Row, delegateName?: string): Message {
 /* Sondages                                                                 */
 /* ------------------------------------------------------------------------ */
 
-function shapePoll(p: Row, votesByPoll: any, voterKey?: string): Poll {
+function shapePoll(p: Row, votesByPoll: any, voterKey?: string, legacyKey?: string): Poll {
   const votes: Record<string, any> = (votesByPoll && votesByPoll[p.id]) || {};
   const optionCounts: Record<string, number> = {};
   let totalVotes = 0;
-  for (const v of Object.values(votes)) {
-    for (const optId of Object.keys((v as any)?.options || {})) {
+  let simulatedVotes = 0;
+  const voters: { name: string; option_ids: string[]; simulated?: boolean }[] = [];
+  for (const [key, v] of Object.entries(votes)) {
+    const optIds = Object.keys((v as any)?.options || {});
+    for (const optId of optIds) {
       optionCounts[optId] = (optionCounts[optId] || 0) + 1;
       totalVotes++;
     }
+    // Compatibilité : avant le déploiement des règles, le pseudo et le marqueur
+    // « simulé » vivent dans la clé du vote, pas dans des champs dédiés.
+    const simulated = (v as any)?.simulated === true || key.startsWith('sim_');
+    if (simulated) simulatedVotes++;
+    const storedName = (v as any)?.voterName;
+    const keyName = key.includes('~') ? decodeURIComponent(key.split('~')[0]) : '';
+    const name = typeof storedName === 'string' && storedName ? storedName : keyName;
+    if (name) voters.push({ name, option_ids: optIds, simulated });
   }
   const options: PollOption[] = Object.entries(p.options || {})
     .map(([optId, o]: [string, any]) => ({ optId, text: o?.text || '', position: Number(o?.position ?? 0) }))
     .sort((a, b) => a.position - b.position || a.optId.localeCompare(b.optId, undefined, { numeric: true }))
     .map((o) => ({ id: o.optId, poll_id: p.id, text: o.text, vote_count: optionCounts[o.optId] || 0 }));
+  const anonymous = p.anonymous !== false;
+  // Un vote peut avoir été enregistré avec l'empreinte (avant l'activation de
+  // Firebase Auth) ou avec l'uid : on vérifie les deux pour ne pas autoriser
+  // un second vote après la bascule.
+  const meKeys = [voterKey, legacyKey]
+    .filter((k): k is string => !!k)
+    .map((k) => safeKey(k))
+    .filter(Boolean);
+  const hasVoted = meKeys.some(
+    (me) => !!votes[me] || Object.keys(votes).some((key) => key.endsWith(`~${me}`))
+  );
   return {
     id: p.id,
     question: p.question || '',
     allow_multiple: p.allowMultiple ? 1 : 0,
     show_results: p.showResults === false ? 0 : 1,
-    anonymous: p.anonymous === false ? 0 : 1,
+    anonymous: anonymous ? 1 : 0,
     active: p.active === false ? 0 : 1,
     created_at: iso(p.createdAt),
     closed_at: p.closedAt ? iso(p.closedAt) : null,
     options,
     total_votes: totalVotes,
-    total_voters: Object.keys(votes).length,
-    has_voted: !!(voterKey && votes[safeKey(voterKey)]),
+    total_voters: Math.max(0, Object.keys(votes).length - simulatedVotes),
+    has_voted: hasVoted,
+    simulated_votes: simulatedVotes,
+    // Les noms ne sont exposés qu'au délégué, et jamais sur un sondage anonyme.
+    voters: isDelegate() && !anonymous ? voters : undefined,
   };
 }
 
@@ -1177,19 +1224,24 @@ export const api = {
     }
     const hasGroupPatch =
       patch.groupMin !== undefined || patch.groupMax !== undefined || patch.groupsOpen !== undefined;
+    const themeChanged = patch.seasonTheme !== undefined;
+    const hasMarkerPatch = hasGroupPatch || themeChanged;
+    let wroteSettings = false;
     try {
       await write(() => update(ref(db, 'settings'), patch));
+      wroteSettings = true;
     } catch (err: any) {
       // Règles Firebase pas encore mises à jour : on range les réglages de
-      // groupe dans le marqueur de homeInfo (invisible pour les élèves).
+      // groupe et le thème dans le marqueur de homeInfo (invisible).
       const refused = String(err?.message || '').includes('refusée');
-      if (!hasGroupPatch || !refused) throw err;
+      if (!hasMarkerPatch || !refused) throw err;
       const raw = (await watch('settings')) || {};
       const existing = readGroupMarker(raw.homeInfo);
-      const cfg = {
+      const cfg: MarkerConfig = {
         min: patch.groupMin ?? existing?.min ?? DEFAULT_GROUP_MIN,
         max: patch.groupMax ?? existing?.max ?? DEFAULT_GROUP_MAX,
         open: patch.groupsOpen !== undefined ? patch.groupsOpen === true : existing?.open === true,
+        theme: patch.seasonTheme ?? existing?.theme,
       };
       await write(() =>
         update(ref(db, 'settings'), {
@@ -1197,6 +1249,19 @@ export const api = {
           updatedAt: Date.now(),
         })
       );
+    }
+    if (wroteSettings && themeChanged) {
+      // Le marqueur reste la source de vérité du thème : on le synchronise
+      // pour qu'une bascule ultérieure ne revienne pas à l'ancienne valeur.
+      const raw = (await watch('settings')) || {};
+      const existing = readGroupMarker(raw.homeInfo);
+      if (existing) {
+        await write(() =>
+          update(ref(db, 'settings'), {
+            homeInfo: withGroupMarker(raw.homeInfo, { ...existing, theme: patch.seasonTheme }),
+          })
+        );
+      }
     }
     return shapeSettings(await rawSettings());
   },
@@ -1549,7 +1614,7 @@ export const api = {
     return rows(polls)
       .filter((p) => delegate || p.active !== false)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-      .map((p) => shapePoll(p, votes, voterKeyFor(fingerprint)));
+      .map((p) => shapePoll(p, votes, voterKeyFor(fingerprint), fingerprint));
   },
   getPoll: async (id: string): Promise<Poll> => {
     const [polls, votes] = await Promise.all([watch('polls'), watch('pollVotes')]);
@@ -1581,8 +1646,12 @@ export const api = {
     void logAdmin('poll_create', 'poll', id, question);
     return shapePoll({ ...value, id } as Row, {});
   },
-  votePoll: async (id: string, option_ids: string[], fingerprint: string): Promise<any> => {
+  votePoll: async (id: string, option_ids: string[], fingerprint: string, voterName?: string): Promise<any> => {
     if (!Array.isArray(option_ids) || option_ids.length === 0) fail('Au moins une option requise');
+    // Le pseudo est obligatoire : c'est lui qui identifie le vote dans la liste
+    // des votants du délégué (jamais affiché aux élèves sur un sondage anonyme).
+    const name = cleanFirstName(String(voterName || ''));
+    if (!isValidFirstName(name)) fail('Indique ton prénom (pseudo) pour voter');
     const fp = safeKey(fingerprint);
     const voterKey = voterKeyFor(fingerprint);
     if (voterKey.length < 8) fail('Identifiant appareil manquant', 401);
@@ -1590,23 +1659,93 @@ export const api = {
     if (!poll) fail('Sondage introuvable', 404);
     if (poll.active === false) fail('Ce sondage est fermé');
     if (!poll.allowMultiple && option_ids.length > 1) fail('Ce sondage n\u2019autorise qu\u2019un seul choix');
-    if (votes?.[id]?.[voterKey] || votes?.[id]?.[fp]) fail('Vous avez déjà voté');
+    const pollVotes = (votes && votes[id]) || {};
+    const already =
+      !!pollVotes[voterKey] ||
+      !!pollVotes[fp] ||
+      Object.keys(pollVotes).some((key) => key.endsWith(`~${voterKey}`));
+    if (already) fail('Vous avez déjà voté');
     const valid = new Set(Object.keys(poll.options || {}));
     for (const o of option_ids) if (!valid.has(String(o))) fail('Option invalide');
+    const optionsValue = Object.fromEntries(option_ids.map((o) => [String(o), true]));
     try {
       await set(ref(db, `pollVotes/${id}/${voterKey}`), {
-        options: Object.fromEntries(option_ids.map((o) => [String(o), true])),
+        options: optionsValue,
+        voterName: name,
         voterUid: authorUid() || null,
         createdAt: Date.now(),
       });
     } catch (err) {
-      // La règle « un vote par appareil » refuse toute réécriture.
-      if (String((err as any)?.code || (err as any)?.message || '').toLowerCase().includes('permission')) {
-        fail('Vous avez déjà voté');
+      // Règles pas encore déployées : `voterName` / `voterUid` sont refusés.
+      // On réessaie en encodant le pseudo dans la clé (autorisée), sans champ
+      // supplémentaire : le vote compte et le pseudo reste lisible.
+      const refused = String((err as any)?.message || (err as any)?.code || '')
+        .toLowerCase()
+        .includes('permission');
+      if (!refused) explain(err);
+      const pseudoKey = `${encodeURIComponent(name).replace(/~/g, '')}~${voterKey}`;
+      try {
+        await set(ref(db, `pollVotes/${id}/${pseudoKey}`), {
+          options: optionsValue,
+          createdAt: Date.now(),
+        });
+      } catch (err2) {
+        if (String((err2 as any)?.code || (err2 as any)?.message || '').toLowerCase().includes('permission')) {
+          fail('Vous avez déjà voté');
+        }
+        explain(err2);
       }
-      explain(err);
     }
-    return shapePoll({ ...poll, id } as Row, await watch('pollVotes'), voterKey);
+    return shapePoll({ ...poll, id } as Row, await watch('pollVotes'), voterKey, fingerprint);
+  },
+  /** Ajoute des votes factices (délégué) pour prévisualiser les résultats. */
+  simulateVotes: async (id: string, option_ids: string[], count = 1): Promise<Poll> => {
+    requireDelegate();
+    const poll = await findItem('polls', id);
+    if (!poll) fail('Sondage introuvable', 404);
+    const n = clampInt(count, 1, 100, 1);
+    const valid = new Set(Object.keys(poll.options || {}));
+    const chosen = (option_ids || []).map(String).filter((o) => valid.has(o));
+    if (!chosen.length) fail('Choisis au moins une option');
+    if (!poll.allowMultiple && chosen.length > 1) fail('Ce sondage n\u2019autorise qu\u2019un seul choix');
+    const now = Date.now();
+    const updates: Record<string, any> = {};
+    const fallback: Record<string, any> = {};
+    for (let i = 0; i < n; i++) {
+      const key = `sim_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}_${i}`;
+      updates[`pollVotes/${id}/${key}`] = {
+        options: Object.fromEntries(chosen.map((o) => [o, true])),
+        voterName: 'Vote simulé',
+        simulated: true,
+        createdAt: now,
+      };
+      fallback[`pollVotes/${id}/${key}`] = {
+        options: Object.fromEntries(chosen.map((o) => [o, true])),
+        createdAt: now,
+      };
+    }
+    try {
+      await write(() => update(ref(db), updates));
+    } catch (err: any) {
+      // Règles pas encore déployées : le préfixe `sim_` de la clé suffit à
+      // identifier les votes simulés, sans champ supplémentaire.
+      if (!String(err?.message || '').includes('refusée')) throw err;
+      await write(() => update(ref(db), fallback));
+    }
+    return shapePoll({ ...poll, id } as Row, await watch('pollVotes'), voterKeyFor());
+  },
+  /** Supprime uniquement les votes simulés d'un sondage. */
+  clearSimulatedVotes: async (id: string): Promise<{ removed: number }> => {
+    requireDelegate();
+    const votes = ((await watch('pollVotes')) || {})[id] || {};
+    const updates: Record<string, null> = {};
+    for (const [key, v] of Object.entries(votes)) {
+      if ((v as any)?.simulated === true || key.startsWith('sim_')) {
+        updates[`pollVotes/${id}/${key}`] = null;
+      }
+    }
+    if (Object.keys(updates).length) await write(() => update(ref(db), updates));
+    return { removed: Object.keys(updates).length };
   },
   updatePoll: async (id: string, data: any): Promise<Poll> => {
     requireDelegate();

@@ -26,7 +26,7 @@
       "accentColor": { ".validate": "newData.isString() && newData.val().matches(/^#[0-9a-fA-F]{3,8}$/)" },
       "homeInfo": { ".validate": "newData.isString() && newData.val().length <= 5000" },
       "homeImage": { ".validate": "newData.isString() && newData.val().length <= 1500000" },
-      "seasonTheme": { ".validate": "newData.val() === 'aucun' || newData.val() === 'halloween' || newData.val() === 'noel'" },
+      "seasonTheme": { ".validate": "newData.val() === 'aucun' || newData.val() === 'halloween' || newData.val() === 'noel' || newData.val() === 'sous-marin' || newData.val() === 'futuriste' || newData.val() === 'medieval' || newData.val() === 'fantastique'" },
       "groupMin": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 20" },
       "groupMax": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 20" },
       "groupsOpen": { ".validate": "newData.isBoolean()" },
@@ -164,12 +164,14 @@
       ".read": "auth != null",
       "$pollId": {
         "$voter": {
-          ".write": "auth != null && auth.uid == $voter && !data.exists() && root.child('polls').child($pollId).child('active').val() !== false",
-          ".validate": "newData.hasChildren(['options', 'createdAt']) && newData.child('voterUid').val() === auth.uid",
+          ".write": "auth != null && ((auth.uid == $voter && !data.exists() && root.child('polls').child($pollId).child('active').val() !== false) || (root.child('delegates').child(auth.uid).exists() && (newData.child('simulated').val() === true || !newData.exists())))",
+          ".validate": "newData.hasChildren(['options', 'createdAt']) && ((newData.child('simulated').val() === true && newData.child('voterName').val() === 'Vote simulé') || (newData.child('voterUid').val() === auth.uid && newData.child('voterName').isString() && newData.child('voterName').val().length > 0))",
           "options": {
             "$optId": { ".validate": "newData.val() === true && root.child('polls').child($pollId).child('options').child($optId).exists()" }
           },
           "voterUid": { ".validate": "newData.isString() && newData.val() === auth.uid" },
+          "voterName": { ".validate": "newData.isString() && newData.val().length <= 30" },
+          "simulated": { ".validate": "newData.isBoolean()" },
           "createdAt": { ".validate": "newData.isNumber()" },
           "$other": { ".validate": false }
         }

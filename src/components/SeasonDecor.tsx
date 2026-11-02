@@ -178,6 +178,159 @@ function Gift() {
   );
 }
 
+function Bubble() {
+  return (
+    <svg viewBox="0 0 32 32" className="h-full w-full">
+      <circle cx="16" cy="16" r="13" fill="rgba(125, 227, 255, 0.12)" stroke="rgba(160, 235, 255, 0.75)" strokeWidth="1.4" />
+      <circle cx="11" cy="11" r="3.2" fill="rgba(255, 255, 255, 0.55)" />
+      <circle cx="21" cy="21" r="1.5" fill="rgba(255, 255, 255, 0.35)" />
+    </svg>
+  );
+}
+
+function Fish() {
+  return (
+    <svg viewBox="0 0 64 40" className="h-full w-full">
+      <path d="M8 20c10-12 28-14 38-6l10-8v28l-10-8c-10 8-28 6-38-6z" fill="currentColor" opacity="0.85" />
+      <path d="M46 20c4-4 8-6 10-6v12c-2 0-6-2-10-6z" fill="currentColor" opacity="0.55" />
+      <circle cx="20" cy="17" r="2.2" fill="#06222e" />
+      <path d="M30 14c4 2 4 10 0 12" stroke="#06222e" strokeWidth="1.2" fill="none" opacity="0.4" />
+    </svg>
+  );
+}
+
+function Seaweed() {
+  return (
+    <svg viewBox="0 0 40 100" className="h-full w-full">
+      <path d="M20 100c-10-16 8-22 0-38s8-22 0-38" stroke="currentColor" strokeWidth="6" fill="none" strokeLinecap="round" opacity="0.8" />
+      <path d="M8 100c-5-12 4-16 0-28s4-16 0-26" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.55" />
+      <path d="M32 100c5-12-4-16 0-28s-4-16 0-26" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.55" />
+    </svg>
+  );
+}
+
+function Coral() {
+  return (
+    <svg viewBox="0 0 80 60" className="h-full w-full">
+      <path d="M40 60V34M40 40L22 22M40 44L58 24M22 22V10M58 24V8M22 22l-8-4M58 24l8-4" stroke="currentColor" strokeWidth="6" strokeLinecap="round" fill="none" />
+      <circle cx="14" cy="16" r="4" fill="currentColor" />
+      <circle cx="66" cy="18" r="4" fill="currentColor" />
+      <circle cx="22" cy="8" r="3.5" fill="currentColor" />
+      <circle cx="58" cy="6" r="3.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function FlyingCar() {
+  return (
+    <svg viewBox="0 0 90 40" className="h-full w-full">
+      <path d="M6 26h78" stroke="currentColor" strokeWidth="2" opacity="0.35" strokeLinecap="round" />
+      <path d="M14 24l10-9h34l12 9z" fill="currentColor" opacity="0.9" />
+      <rect x="10" y="23" width="62" height="7" rx="3.5" fill="currentColor" opacity="0.75" />
+      <path d="M30 15h20l6 6H26z" fill="#bfefff" opacity="0.75" />
+      <circle cx="22" cy="31" r="2.6" fill="#7dfcff" />
+      <circle cx="60" cy="31" r="2.6" fill="#7dfcff" />
+      <path d="M72 26h14" stroke="#7dfcff" strokeWidth="2" strokeLinecap="round" opacity="0.8" />
+    </svg>
+  );
+}
+
+function Skyscraper() {
+  return (
+    <svg viewBox="0 0 70 140" className="h-full w-full">
+      <rect x="8" y="28" width="54" height="112" rx="3" fill="currentColor" opacity="0.28" />
+      <rect x="14" y="10" width="42" height="18" rx="2" fill="currentColor" opacity="0.4" />
+      <path d="M35 0v10" stroke="currentColor" strokeWidth="2" opacity="0.7" />
+      <g fill="#8ff6ff" opacity="0.85">
+        <rect x="16" y="38" width="8" height="7" rx="1" />
+        <rect x="31" y="38" width="8" height="7" rx="1" />
+        <rect x="46" y="38" width="8" height="7" rx="1" />
+        <rect x="16" y="54" width="8" height="7" rx="1" />
+        <rect x="46" y="54" width="8" height="7" rx="1" />
+        <rect x="31" y="70" width="8" height="7" rx="1" />
+        <rect x="16" y="86" width="8" height="7" rx="1" />
+        <rect x="46" y="86" width="8" height="7" rx="1" />
+        <rect x="31" y="102" width="8" height="7" rx="1" />
+        <rect x="16" y="118" width="8" height="7" rx="1" />
+        <rect x="46" y="118" width="8" height="7" rx="1" />
+      </g>
+      <g fill="#ff7de9" opacity="0.7">
+        <rect x="31" y="54" width="8" height="7" rx="1" />
+        <rect x="16" y="70" width="8" height="7" rx="1" />
+        <rect x="46" y="70" width="8" height="7" rx="1" />
+        <rect x="31" y="86" width="8" height="7" rx="1" />
+      </g>
+    </svg>
+  );
+}
+
+function Castle() {
+  return (
+    <svg viewBox="0 0 100 90" className="h-full w-full">
+      <path d="M6 90V46h10v-8h8v8h8v-8h8v8h8V22h10V10h8v12h10v24h8v-8h8v8h8v-8h8v52z" fill="currentColor" opacity="0.75" />
+      <path d="M30 90V66a10 10 0 0 1 20 0v24z" fill="#1b140d" opacity="0.65" />
+      <g fill="#ffd27d" opacity="0.9">
+        <rect x="18" y="54" width="6" height="9" rx="1" />
+        <rect x="38" y="30" width="6" height="9" rx="1" />
+        <rect x="56" y="30" width="6" height="9" rx="1" />
+        <rect x="76" y="54" width="6" height="9" rx="1" />
+      </g>
+      <path d="M49 10V0" stroke="currentColor" strokeWidth="2" />
+      <path d="M49 0l14 4-14 4z" fill="#c0392b" />
+    </svg>
+  );
+}
+
+function Banner() {
+  return (
+    <svg viewBox="0 0 40 100" className="h-full w-full">
+      <path d="M20 0v100" stroke="currentColor" strokeWidth="2" opacity="0.6" />
+      <path d="M8 8h24v46l-12-9-12 9z" fill="currentColor" opacity="0.85" />
+      <path d="M14 18h12M14 28h12M14 38h8" stroke="#1b140d" strokeWidth="2" opacity="0.45" />
+    </svg>
+  );
+}
+
+function Shield() {
+  return (
+    <svg viewBox="0 0 60 70" className="h-full w-full">
+      <path d="M30 2l26 8v22c0 18-12 30-26 36C16 62 4 50 4 32V10z" fill="currentColor" opacity="0.85" />
+      <path d="M30 8l20 6v18c0 14-9 24-20 29-11-5-20-15-20-29V14z" fill="#1b140d" opacity="0.25" />
+      <path d="M30 16v34M18 30h24" stroke="#ffe0a3" strokeWidth="3" opacity="0.8" />
+    </svg>
+  );
+}
+
+function Sparkle() {
+  return (
+    <svg viewBox="0 0 32 32" className="h-full w-full">
+      <path d="M16 1l3.2 9.8L29 14l-9.8 3.2L16 27l-3.2-9.8L3 14l9.8-3.2z" fill="currentColor" />
+      <circle cx="16" cy="14" r="2.2" fill="#fff" opacity="0.9" />
+    </svg>
+  );
+}
+
+function Moon() {
+  return (
+    <svg viewBox="0 0 80 80" className="h-full w-full">
+      <path d="M52 6a34 34 0 1 0 22 58A38 38 0 0 1 52 6z" fill="currentColor" opacity="0.9" />
+      <circle cx="30" cy="30" r="3" fill="#fff" opacity="0.5" />
+      <circle cx="24" cy="46" r="2" fill="#fff" opacity="0.4" />
+      <circle cx="40" cy="52" r="2.4" fill="#fff" opacity="0.35" />
+    </svg>
+  );
+}
+
+function Crystal() {
+  return (
+    <svg viewBox="0 0 60 90" className="h-full w-full">
+      <path d="M30 2l24 28-10 52H16L6 30z" fill="currentColor" opacity="0.8" />
+      <path d="M30 2v80M6 30h48M30 2L16 82M30 2l14 80" stroke="#fff" strokeWidth="1.2" opacity="0.35" />
+      <path d="M16 82h28l-6 6H22z" fill="#fff" opacity="0.25" />
+    </svg>
+  );
+}
+
 const MOTIFS = {
   pumpkin: Pumpkin,
   candle: Candle,
@@ -186,6 +339,18 @@ const MOTIFS = {
   fir: FirTree,
   snow: Snowflake,
   gift: Gift,
+  bubble: Bubble,
+  fish: Fish,
+  seaweed: Seaweed,
+  coral: Coral,
+  car: FlyingCar,
+  tower: Skyscraper,
+  castle: Castle,
+  banner: Banner,
+  shield: Shield,
+  sparkle: Sparkle,
+  moon: Moon,
+  crystal: Crystal,
 };
 type Motif = keyof typeof MOTIFS;
 
@@ -222,14 +387,23 @@ interface Anchor {
   small?: boolean;
 }
 
+type ActiveSeason = Exclude<SeasonTheme, 'aucun'>;
+
 /**
  * Les particules restent dans le haut de l'écran (y de 3 à 41 %) : aucune ne
  * descend volontairement sous la mi-écran, pour ne jamais empiéter sur la
- * lecture du texte. Le motif diffère par thème : flocon pour Noël, feuille
- * d'automne pour Halloween.
+ * lecture du texte. Le motif diffère par thème.
  */
-const FALL_MOTIF: Record<'halloween' | 'noel', Motif> = { halloween: 'leaf', noel: 'snow' };
-const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
+const FALL_MOTIF: Record<ActiveSeason, Motif> = {
+  halloween: 'leaf',
+  noel: 'snow',
+  'sous-marin': 'bubble',
+  futuriste: 'sparkle',
+  medieval: 'sparkle',
+  fantastique: 'sparkle',
+};
+
+const PARTICLES: Record<ActiveSeason, Particle[]> = {
   halloween: [
     { x: 8, y: 6, size: 1.8, opacity: 0.7, duration: 9, delay: 0, drift: 6, color: '#c2621c' },
     { x: 24, y: 18, size: 1.4, opacity: 0.6, duration: 11, delay: 2.4, drift: -5, color: '#a3471a' },
@@ -251,6 +425,43 @@ const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
     { x: 30, y: 34, size: 1.2, opacity: 0.55, duration: 15, delay: 6.6, drift: 4, small: true },
     { x: 62, y: 38, size: 1.3, opacity: 0.55, duration: 16, delay: 7.4, drift: -3, small: true },
   ],
+  'sous-marin': [
+    { x: 6, y: 8, size: 2.2, opacity: 0.7, duration: 10, delay: 0, drift: 5, color: '#bff4ff' },
+    { x: 20, y: 22, size: 1.6, opacity: 0.55, duration: 13, delay: 2.1, drift: -6, color: '#9fe9ff' },
+    { x: 35, y: 5, size: 1.9, opacity: 0.65, duration: 11.5, delay: 4.2, drift: 4, color: '#d8f8ff' },
+    { x: 51, y: 19, size: 1.4, opacity: 0.5, duration: 14, delay: 1.3, drift: -4, color: '#8fdcf5' },
+    { x: 67, y: 7, size: 2.4, opacity: 0.7, duration: 9.5, delay: 3.6, drift: 6, color: '#bff4ff' },
+    { x: 83, y: 20, size: 1.5, opacity: 0.55, duration: 12.5, delay: 5.4, drift: -5, color: '#a8ecff' },
+    { x: 94, y: 4, size: 1.8, opacity: 0.6, duration: 11, delay: 2.7, drift: 3, color: '#cff7ff' },
+    { x: 42, y: 36, size: 1.3, opacity: 0.4, duration: 15, delay: 6.8, drift: 4, color: '#9fe9ff', small: true },
+  ],
+  futuriste: [
+    { x: 8, y: 6, size: 1.2, opacity: 0.9, duration: 8, delay: 0, drift: 4, color: '#8ff6ff' },
+    { x: 24, y: 15, size: 1, opacity: 0.8, duration: 9, delay: 2.2, drift: -3, color: '#ff7de9' },
+    { x: 41, y: 4, size: 1.4, opacity: 0.9, duration: 7.5, delay: 4.1, drift: 5, color: '#8ff6ff' },
+    { x: 57, y: 20, size: 0.9, opacity: 0.7, duration: 10, delay: 1.1, drift: -4, color: '#ff7de9' },
+    { x: 72, y: 8, size: 1.3, opacity: 0.85, duration: 8.5, delay: 3.4, drift: 4, color: '#8ff6ff' },
+    { x: 88, y: 18, size: 1.1, opacity: 0.75, duration: 9.5, delay: 5.7, drift: -5, color: '#ff7de9' },
+    { x: 33, y: 37, size: 1, opacity: 0.5, duration: 11, delay: 6.5, drift: 3, color: '#8ff6ff', small: true },
+  ],
+  medieval: [
+    { x: 9, y: 7, size: 1.1, opacity: 0.55, duration: 12, delay: 0, drift: 5, color: '#ffd98a' },
+    { x: 27, y: 19, size: 0.9, opacity: 0.45, duration: 14, delay: 2.3, drift: -4, color: '#e8c67a' },
+    { x: 44, y: 5, size: 1.2, opacity: 0.5, duration: 13, delay: 4.4, drift: 6, color: '#ffd98a' },
+    { x: 61, y: 21, size: 1, opacity: 0.4, duration: 15, delay: 1.2, drift: -5, color: '#d9b86a' },
+    { x: 76, y: 6, size: 1.3, opacity: 0.5, duration: 12.5, delay: 3.5, drift: 4, color: '#ffd98a' },
+    { x: 91, y: 17, size: 1, opacity: 0.45, duration: 14.5, delay: 5.6, drift: -3, color: '#e8c67a' },
+  ],
+  fantastique: [
+    { x: 7, y: 5, size: 1.5, opacity: 0.9, duration: 10, delay: 0, drift: 4, color: '#e9d5ff' },
+    { x: 22, y: 17, size: 1.1, opacity: 0.75, duration: 12, delay: 2.2, drift: -5, color: '#ffb3f0' },
+    { x: 38, y: 4, size: 1.7, opacity: 0.9, duration: 9, delay: 4.3, drift: 5, color: '#d9c2ff' },
+    { x: 54, y: 20, size: 1, opacity: 0.65, duration: 13, delay: 1.1, drift: -4, color: '#ffb3f0' },
+    { x: 69, y: 7, size: 1.4, opacity: 0.85, duration: 10.5, delay: 3.6, drift: 6, color: '#e9d5ff' },
+    { x: 84, y: 18, size: 1.2, opacity: 0.7, duration: 12.5, delay: 5.8, drift: -5, color: '#d9c2ff' },
+    { x: 95, y: 4, size: 1.3, opacity: 0.8, duration: 11, delay: 2.9, drift: 3, color: '#ffb3f0' },
+    { x: 31, y: 36, size: 0.9, opacity: 0.5, duration: 14, delay: 6.7, drift: 4, color: '#e9d5ff', small: true },
+  ],
 };
 
 /**
@@ -258,7 +469,7 @@ const PARTICLES: Record<'halloween' | 'noel', Particle[]> = {
  * ils ne bougent jamais, donc ils ne peuvent pas gêner la lecture ni saccader.
  * Le décor ne touche pas aux boutons, seulement aux bords de l'écran.
  */
-const ANCHORS: Record<'halloween' | 'noel', Anchor[]> = {
+const ANCHORS: Record<ActiveSeason, Anchor[]> = {
   halloween: [
     { motif: 'web', size: 20, opacity: 0.3, fromRight: -4, fromTop: -7 },
     { motif: 'web', size: 15, opacity: 0.24, fromLeft: -5, fromTop: -8, small: true },
@@ -273,6 +484,33 @@ const ANCHORS: Record<'halloween' | 'noel', Anchor[]> = {
     { motif: 'fir', size: 14, opacity: 0.85, fromRight: 3, fromBottom: -2 },
     { motif: 'gift', size: 7, opacity: 0.75, fromLeft: 18, fromBottom: 0, small: true },
     { motif: 'gift', size: 7, opacity: 0.7, fromRight: 4, fromBottom: 0, small: true },
+  ],
+  'sous-marin': [
+    { motif: 'seaweed', size: 18, opacity: 0.55, fromLeft: 1, fromBottom: -3, color: '#1f9e7a' },
+    { motif: 'seaweed', size: 14, opacity: 0.5, fromRight: 2, fromBottom: -3, color: '#28b58c' },
+    { motif: 'coral', size: 13, opacity: 0.65, fromLeft: 14, fromBottom: -1, color: '#ff8f7a' },
+    { motif: 'coral', size: 9, opacity: 0.55, fromRight: 17, fromBottom: 0, color: '#ffb39e', small: true },
+    { motif: 'fish', size: 11, opacity: 0.7, fromRight: 9, fromTop: 13, color: '#7fe3ff' },
+    { motif: 'fish', size: 7, opacity: 0.5, fromLeft: 8, fromTop: 28, color: '#9fe9ff', small: true },
+  ],
+  futuriste: [
+    { motif: 'tower', size: 24, opacity: 0.5, fromLeft: -2, fromBottom: -4, color: '#2a6cff' },
+    { motif: 'tower', size: 20, opacity: 0.45, fromRight: 1, fromBottom: -4, color: '#3b4fd8' },
+    { motif: 'tower', size: 14, opacity: 0.35, fromLeft: 18, fromBottom: -4, color: '#1f4bd8', small: true },
+    { motif: 'car', size: 13, opacity: 0.85, fromRight: 7, fromTop: 9, color: '#7dfcff' },
+    { motif: 'car', size: 9, opacity: 0.65, fromLeft: 6, fromTop: 22, color: '#ff7de9', small: true },
+  ],
+  medieval: [
+    { motif: 'castle', size: 26, opacity: 0.55, fromRight: -2, fromBottom: -3, color: '#8a6a2f' },
+    { motif: 'banner', size: 9, opacity: 0.8, fromLeft: 3, fromTop: -1, color: '#b03a2e' },
+    { motif: 'banner', size: 7, opacity: 0.65, fromRight: 6, fromTop: -1, color: '#c9a227', small: true },
+    { motif: 'shield', size: 9, opacity: 0.55, fromLeft: 10, fromBottom: 1, color: '#d4af37', small: true },
+  ],
+  fantastique: [
+    { motif: 'moon', size: 16, opacity: 0.75, fromRight: 5, fromTop: 3, color: '#e8d9ff' },
+    { motif: 'crystal', size: 11, opacity: 0.65, fromLeft: 4, fromBottom: 0, color: '#b388ff' },
+    { motif: 'sparkle', size: 6, opacity: 0.8, fromLeft: 14, fromTop: 12, color: '#f0e6ff', small: true },
+    { motif: 'crystal', size: 7, opacity: 0.5, fromRight: 12, fromBottom: 0, color: '#d1b3ff', small: true },
   ],
 };
 

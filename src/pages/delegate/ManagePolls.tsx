@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import type { Poll, PollOption } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { Modal } from '@/components/ui/Modal';
+import { PollChart } from '@/components/polls/PollChart';
 
 interface PollFormProps {
   isOpen: boolean;
@@ -220,6 +221,12 @@ export function ManagePolls() {
   const [toDelete, setToDelete] = useState<Poll | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [flash, setFlash] = useState('');
+  // Un seul panneau de simulation ouvert à la fois (état partagé).
+  const [simFor, setSimFor] = useState<string | null>(null);
+  const [simOption, setSimOption] = useState('');
+  const [simCount, setSimCount] = useState(1);
+  const [simBusy, setSimBusy] = useState(false);
+  const [simError, setSimError] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -267,83 +274,210 @@ export function ManagePolls() {
     }
   };
 
-  const maxVotes = (options: PollOption[] | undefined) =>
-    Math.max(1, ...(options || []).map((o) => o.vote_count || 0));
   const totalVotes = (options: PollOption[] | undefined) =>
     (options || []).reduce((acc, o) => acc + (o.vote_count || 0), 0);
 
-  const PollCard = ({ poll }: { poll: Poll }) => (
-    <div className="glass-card">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <h3 className="font-semibold flex-1 min-w-0">{poll.question}</h3>
-        <span
-          className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-            poll.active === 1
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-              : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-          }`}
-        >
-          {poll.active === 1 ? 'Actif' : 'Clôturé'}
-        </span>
-      </div>
+  const PollCard = ({ poll }: { poll: Poll }) => {
+    const simOpen = simFor === poll.id;
 
-      <div className="mt-3 space-y-2">
-        {(poll.options || []).map((o) => {
-          const votes = o.vote_count || 0;
-          return (
-            <div key={o.id}>
-              <div className="flex items-center justify-between text-sm mb-1">
-                <span className="text-gray-700 dark:text-gray-300">{o.text}</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">{votes} voix</span>
-              </div>
-              <div className="h-2 rounded-full bg-gray-200/70 dark:bg-gray-700/70 overflow-hidden">
-                {poll.show_results === 1 && (
-                  <div
-                    className="h-full rounded-full bg-indigo-500/80 transition-all"
-                    style={{ width: `${votes === 0 ? 0 : Math.max(6, (votes / maxVotes(poll.options)) * 100)}%` }}
-                  />
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    const optionText = (id: string) =>
+      (poll.options || []).find((o) => o.id === id)?.text || id;
 
-      <div className="flex items-center justify-between gap-2 flex-wrap mt-4">
-        <span className="text-xs text-gray-500 dark:text-gray-400">
-          {poll.total_voters ?? 0} élève(s) · {totalVotes(poll.options)} vote(s) · créé le{' '}
-          {formatDate(poll.created_at)}
-        </span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              setEditing(poll);
-              setShowCreate(true);
-            }}
-            className="glass-button text-xs px-3 py-2"
-            aria-label={`Modifier le sondage ${poll.question}`}
-          >
-            Modifier
-          </button>
-          <button
-            disabled={busyId === poll.id}
-            onClick={() => toggleActive(poll)}
-            className={`glass-button text-xs px-3 py-2 ${
-              poll.active === 1 ? '' : 'bg-green-500/20 text-green-600 dark:text-green-400'
+    const toggleSim = () => {
+      if (simOpen) {
+        setSimFor(null);
+      } else {
+        setSimFor(poll.id);
+        setSimOption('');
+        setSimCount(1);
+        setSimError('');
+      }
+    };
+
+    const simulate = async () => {
+      if (!simOption || simBusy) return;
+      setSimBusy(true);
+      setSimError('');
+      try {
+        await api.simulateVotes(poll.id, [simOption], simCount);
+        setSimFor(null);
+        setSimCount(1);
+        load();
+        notify(`${simCount} vote${simCount > 1 ? 's' : ''} simulé${simCount > 1 ? 's' : ''} ajouté${simCount > 1 ? 's' : ''}`);
+      } catch (err: any) {
+        setSimError(err.message || 'Simulation impossible');
+      } finally {
+        setSimBusy(false);
+      }
+    };
+
+    const clearSimulated = async () => {
+      if (!window.confirm('Supprimer tous les votes simulés de ce sondage ?')) return;
+      setSimBusy(true);
+      setSimError('');
+      try {
+        const res = await api.clearSimulatedVotes(poll.id);
+        load();
+        notify(`${res.removed} vote(s) simulé(s) supprimé(s)`);
+      } catch (err: any) {
+        const msg = err.message || 'Suppression impossible';
+        setSimError(
+          msg.includes('refusée')
+            ? "La base refuse la suppression : les règles Firebase doivent être mises à jour (voir SECURITY.md). Les votes simulés restent visibles en attendant."
+            : msg
+        );
+      } finally {
+        setSimBusy(false);
+      }
+    };
+
+    return (
+      <div className="glass-card">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <h3 className="font-semibold flex-1 min-w-0">{poll.question}</h3>
+          <span
+            className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+              poll.active === 1
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
             }`}
           >
-            {poll.active === 1 ? 'Clôturer' : 'Rouvrir'}
-          </button>
-          <button
-            onClick={() => setToDelete(poll)}
-            className="glass-button text-xs px-3 py-2 bg-red-500/90 text-white border-red-400/30"
-          >
-            Supprimer
-          </button>
+            {poll.active === 1 ? 'Actif' : 'Clôturé'}
+          </span>
+        </div>
+
+        <div className="mt-4">
+          <PollChart
+            options={poll.options}
+            total={totalVotes(poll.options)}
+            simulated={poll.simulated_votes}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-2 flex-wrap mt-4">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {poll.total_voters ?? 0} élève(s) · {totalVotes(poll.options)} vote(s)
+            {poll.simulated_votes ? ` · dont ${poll.simulated_votes} simulé(s)` : ''} · créé le{' '}
+            {formatDate(poll.created_at)}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setEditing(poll);
+                setShowCreate(true);
+              }}
+              className="glass-button text-xs px-3 py-2"
+              aria-label={`Modifier le sondage ${poll.question}`}
+            >
+              Modifier
+            </button>
+            <button
+              disabled={busyId === poll.id}
+              onClick={() => toggleActive(poll)}
+              className={`glass-button text-xs px-3 py-2 ${
+                poll.active === 1 ? '' : 'bg-green-500/20 text-green-600 dark:text-green-400'
+              }`}
+            >
+              {poll.active === 1 ? 'Clôturer' : 'Rouvrir'}
+            </button>
+            <button
+              onClick={() => setToDelete(poll)}
+              className="glass-button text-xs px-3 py-2 bg-red-500/90 text-white border-red-400/30"
+            >
+              Supprimer
+            </button>
+          </div>
+        </div>
+
+        {poll.voters && poll.voters.length > 0 && (
+          <details className="mt-3 border-t border-white/10 dark:border-gray-700/30 pt-3">
+            <summary className="cursor-pointer text-xs font-semibold text-gray-600 dark:text-gray-300">
+              Qui a voté ({poll.voters.length})
+            </summary>
+            <ul className="mt-2 space-y-1">
+              {poll.voters.map((v, i) => (
+                <li key={`${v.name}-${i}`} className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="font-medium text-gray-800 dark:text-gray-100">{v.name}</span>
+                  {v.simulated && (
+                    <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300">
+                      simulé
+                    </span>
+                  )}
+                  <span className="ml-auto text-gray-500 dark:text-gray-400">
+                    {v.option_ids.map(optionText).join(', ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        <div className="mt-3 border-t border-white/10 dark:border-gray-700/30 pt-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={toggleSim}
+              className="glass-button text-xs px-3 py-2"
+            >
+              🧪 {simOpen ? 'Fermer la simulation' : 'Simuler des votes'}
+            </button>
+            {poll.simulated_votes ? (
+              <button
+                onClick={clearSimulated}
+                disabled={simBusy}
+                className="glass-button text-xs px-3 py-2 text-amber-700 dark:text-amber-300 disabled:opacity-50"
+              >
+                Effacer les {poll.simulated_votes} votes simulés
+              </button>
+            ) : null}
+          </div>
+
+          {simOpen && (
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <label className="text-[11px] text-gray-500 dark:text-gray-400">
+                Option
+                <select
+                  value={simOption}
+                  onChange={(e) => setSimOption(e.target.value)}
+                  className="glass-input mt-1 text-xs"
+                >
+                  <option value="">Choisir…</option>
+                  {(poll.options || []).map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.text}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-[11px] text-gray-500 dark:text-gray-400">
+                Nombre
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={simCount}
+                  onChange={(e) => setSimCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                  className="glass-input mt-1 w-20 text-xs"
+                />
+              </label>
+              <button
+                onClick={simulate}
+                disabled={!simOption || simBusy}
+                className="glass-button-primary text-xs px-4 py-2 disabled:opacity-50"
+              >
+                {simBusy ? 'Ajout…' : 'Ajouter'}
+              </button>
+            </div>
+          )}
+
+          {simError && <p className="mt-2 text-[11px] text-red-500">{simError}</p>}
+          <p className="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
+            Les votes simulés sont marqués « simulé » et peuvent être effacés sans toucher aux
+            votes réels.
+          </p>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { generateFingerprint, parseServerDate } from '@/lib/utils';
+import { generateFingerprint, getFirstName, parseServerDate } from '@/lib/utils';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { useFirstNamePrompt } from '@/hooks/useFirstNamePrompt';
 import { LoadError } from '@/components/ui/LoadError';
 import type { Poll } from '@/types';
 
@@ -14,6 +15,8 @@ export default function Polls() {
   const [error, setError] = useState('');
   /** true quand le chargement a échoué : sert à ne pas afficher « aucun sondage ». */
   const [loadError, setLoadError] = useState(false);
+  const { ensure, dialog: firstNameDialog } = useFirstNamePrompt();
+  const [pseudo, setPseudo] = useState(() => getFirstName());
 
   const load = useCallback(async () => {
     try {
@@ -59,10 +62,14 @@ export default function Polls() {
     async (poll: Poll) => {
       const options = selectedOptions[poll.id];
       if (!options || options.length === 0) return;
+      // Pseudo obligatoire : sans prénom valide, le vote n'est pas envoyé.
+      const name = await ensure('Pour voter, indique ton prénom : il servira de pseudo sur ce sondage.');
+      if (!name) return;
+      setPseudo(name);
       setVoting(poll.id);
       setError('');
       try {
-        await api.votePoll(poll.id, options, generateFingerprint());
+        await api.votePoll(poll.id, options, generateFingerprint(), name);
         setVotedPolls((prev) => new Set(prev).add(poll.id));
         setPolls((prev) =>
           prev.map((p) => {
@@ -162,6 +169,11 @@ export default function Polls() {
             {voting === poll.id ? 'Envoi...' : 'Voter'}
           </button>
         )}
+        {canVote && pseudo && (
+          <p className="mt-1 text-center text-[10px] text-gray-500 dark:text-gray-400">
+            Tu votes en tant que <strong>{pseudo}</strong>.
+          </p>
+        )}
       </div>
     );
   };
@@ -210,6 +222,8 @@ export default function Polls() {
           {closedPolls.map((poll) => renderPoll(poll, true))}
         </div>
       )}
+
+      {firstNameDialog}
     </div>
   );
 }

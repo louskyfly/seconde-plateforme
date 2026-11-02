@@ -90,6 +90,10 @@ export interface Poll {
   total_voters?: number;
   /** L'élève a déjà voté sur ce sondage (renvoyé si le fingerprint est fourni) */
   has_voted?: boolean;
+  /** Votes ajoutés par le délégué pour tester l'affichage des résultats. */
+  simulated_votes?: number;
+  /** Qui a voté (délégué seulement, et sondage non anonyme). */
+  voters?: { name: string; option_ids: string[]; simulated?: boolean }[];
 }
 
 export interface PollOption {

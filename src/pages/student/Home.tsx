@@ -20,6 +20,10 @@ const SEASON_GREETING: Record<SeasonTheme, string> = {
   aucun: '',
   halloween: '🎃 Joyeux Halloween à toute la classe !',
   noel: '🎄 Joyeuses fêtes de fin d’année !',
+  'sous-marin': '🐠 Bienvenue dans les profondeurs de la classe !',
+  futuriste: '🚀 Cap sur le futur, toute la classe est à bord !',
+  medieval: '🏰 Bienvenue dans la salle de classe médiévale !',
+  fantastique: '✨ Que la magie opère dans cette classe !',
 };
 
 interface BubbleProps {

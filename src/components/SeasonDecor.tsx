@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { normalizeSeasonTheme, type SeasonTheme } from '@/lib/season';
 
@@ -9,20 +9,15 @@ import { normalizeSeasonTheme, type SeasonTheme } from '@/lib/season';
  * applySeason(). On l'observe plutôt que de le stocker ici : la décoration suit
  * ainsi le thème sur toutes les pages, et disparaît avec « Normal ».
  *
- * Deux calques, dans cet ordre d'importance :
- *   1. `.season-decor__fall`  — les particules qui tombent (flocons, feuilles),
- *      seules choses en mouvement. Peu nombreuses, en haut de l'écran.
- *   2. `.season-decor__fixed` — deux ou trois éléments sobres, ancrés dans les
- *      coins et le bas de l'écran, immobiles.
- *
- * Rien ne traverse le contenu : le calque est à z-index 0 et l'application à
- * z-index 1 (voir .app-root dans index.css), donc aucune décoration ne peut
- * passer devant le texte quelle que soit la position de la pile. Les
- * animations ne touchent que `transform` et `opacity`, ce qui évite les
- * recalculs de mise en page saccadés pendant un swipe.
+ * Deux calques :
+ *   1. `.season-decor__fall` — uniquement pour le sous-marin (bulles qui
+ *      remontent) et Noël (flocons qui tombent). Les autres thèmes n'ont plus
+ *      de particules : c'était trop chargé et peu réaliste.
+ *   2. `.season-decor__fixed` — les éléments du décor (coraux, château,
+ *      immeubles, lune...), ancrés sur les bords pour ne jamais passer devant
+ *      le texte. Le calque est en z-index 0 et l'application en z-index 1.
  */
 
-/** Suit le thème posé sur <html> par applySeason(). */
 function useSeasonFromDocument(): SeasonTheme {
   const [season, setSeason] = useState<SeasonTheme>(() =>
     normalizeSeasonTheme(document.documentElement.dataset.season)
@@ -39,21 +34,26 @@ function useSeasonFromDocument(): SeasonTheme {
   return season;
 }
 
+function useUid(): string {
+  return useId().replace(/:/g, '');
+}
+
 /* ------------------------------------------------------------------ */
-/* Motifs                                                              */
+/* Halloween                                                           */
 /* ------------------------------------------------------------------ */
 
 function Pumpkin() {
   return (
     <svg viewBox="0 0 64 56" className="h-full w-full">
-      <ellipse cx="32" cy="36" rx="26" ry="19" fill="#e2620f" />
-      <ellipse cx="20" cy="36" rx="9" ry="18" fill="#f08a2b" />
-      <ellipse cx="44" cy="36" rx="9" ry="18" fill="#f08a2b" />
-      <ellipse cx="32" cy="36" rx="26" ry="19" fill="none" stroke="#b64c07" strokeWidth="1.4" />
-      <path d="M30 17h5l-1-6h-3z" fill="#5a7a35" />
-      <path d="M34 11c2-3 6-3 8-1" stroke="#5a7a35" strokeWidth="2.4" fill="none" strokeLinecap="round" />
-      <path d="M20 30l7 4-7 4zM44 30l-7 4 7 4z" fill="#2a1206" />
-      <path d="M18 42h28l-4 3h-20z" fill="#2a1206" />
+      <ellipse cx="32" cy="52" rx="24" ry="3" fill="#000" opacity="0.25" />
+      <ellipse cx="32" cy="34" rx="26" ry="19" fill="#d95c0e" />
+      <ellipse cx="20" cy="34" rx="9" ry="18" fill="#f08a2b" />
+      <ellipse cx="44" cy="34" rx="9" ry="18" fill="#f08a2b" />
+      <ellipse cx="32" cy="34" rx="26" ry="19" fill="none" stroke="#a84306" strokeWidth="1.4" />
+      <path d="M30 16h5l-1-6h-3z" fill="#5a7a35" />
+      <path d="M34 10c2-3 6-3 8-1" stroke="#5a7a35" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+      <path d="M20 28l7 4-7 4zM44 28l-7 4 7 4z" fill="#2a1206" />
+      <path d="M18 40h28l-4 4h-20z" fill="#2a1206" />
     </svg>
   );
 }
@@ -61,22 +61,12 @@ function Pumpkin() {
 function Candle() {
   return (
     <svg viewBox="0 0 32 72" className="h-full w-full">
-      <ellipse cx="16" cy="68" rx="13" ry="3.5" fill="#000" opacity="0.18" />
+      <ellipse cx="16" cy="68" rx="13" ry="3.5" fill="#000" opacity="0.2" />
       <rect x="9" y="28" width="14" height="40" rx="3" fill="#f4e6cf" />
       <rect x="9" y="28" width="5" height="40" rx="2.5" fill="#fffaf0" />
       <path d="M16 28v-7" stroke="#4a3524" strokeWidth="1.6" strokeLinecap="round" />
       <path d="M16 22c-4-4-2-9 0-13 2 4 4 9 0 13z" fill="#ffb340" />
       <path d="M16 21c-2-2-1-4 0-6 1 2 2 4 0 6z" fill="#fff3c4" />
-    </svg>
-  );
-}
-
-/** Feuille d'automne : c'est ce qui tombe, plutôt qu'un animal qui traverse. */
-function Leaf() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-full w-full">
-      <path d="M12 1c6 4 9 9 9 13a9 9 0 0 1-18 0c0-4 3-9 9-13z" fill="currentColor" />
-      <path d="M12 4v16M12 9l4-3M12 9l-4-3M12 14l4-3M12 14l-4-3" stroke="rgba(60,26,6,0.55)" strokeWidth="1.2" fill="none" />
     </svg>
   );
 }
@@ -108,6 +98,61 @@ function SpiderWeb() {
   );
 }
 
+/** Maison hantée : toit pointu, fenêtres allumées, cheminée. */
+function HauntedHouse() {
+  const uid = useUid();
+  return (
+    <svg viewBox="0 0 160 200" className="h-full w-full">
+      <defs>
+        <linearGradient id={`${uid}h`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#3a2a4d" />
+          <stop offset="1" stopColor="#1a1226" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="80" cy="194" rx="60" ry="6" fill="#000" opacity="0.3" />
+      <path d="M20 196V96l60-46 60 46v100z" fill={`url(#${uid}h)`} stroke="#120c1c" strokeWidth="2" />
+      <path d="M16 98L80 44l64 54" fill="none" stroke="#2a1e3a" strokeWidth="10" strokeLinecap="round" />
+      <rect x="112" y="46" width="16" height="34" fill="#241833" />
+      <path d="M112 46h16" stroke="#120c1c" strokeWidth="3" />
+      <g fill="#ffb347">
+        <rect x="42" y="112" width="18" height="24" rx="2" />
+        <rect x="100" y="112" width="18" height="24" rx="2" />
+        <rect x="70" y="74" width="20" height="18" rx="2" />
+      </g>
+      <g stroke="#1a1226" strokeWidth="1.4">
+        <path d="M51 112v24M42 124h18M109 112v24M100 124h18M80 74v18M70 83h20" />
+      </g>
+      <path d="M66 196v-34a14 14 0 0 1 28 0v34z" fill="#0f0a17" />
+      <g fill="none" stroke="#0f0a17" strokeWidth="2" opacity="0.7">
+        <path d="M20 120h120M20 150h120M20 176h120" />
+      </g>
+    </svg>
+  );
+}
+
+function Bat() {
+  return (
+    <svg viewBox="0 0 80 40" className="h-full w-full">
+      <path d="M40 22c-6-10-16-14-28-10 6 2 10 6 12 12-4-2-8-2-12 0 8 2 12 6 14 12 4-6 8-8 14-8s10 2 14 8c2-6 6-10 14-12-4-2-8-2-12 0 2-6 6-10 12-12-12-4-22 0-28 10z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function MoonSmall() {
+  return (
+    <svg viewBox="0 0 80 80" className="h-full w-full">
+      <path d="M52 6a34 34 0 1 0 22 58A38 38 0 0 1 52 6z" fill="currentColor" opacity="0.9" />
+      <circle cx="30" cy="30" r="3" fill="#fff" opacity="0.45" />
+      <circle cx="24" cy="46" r="2" fill="#fff" opacity="0.35" />
+      <circle cx="40" cy="52" r="2.4" fill="#fff" opacity="0.3" />
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Noël                                                                */
+/* ------------------------------------------------------------------ */
+
 function FirTree() {
   return (
     <svg viewBox="0 0 64 84" className="h-full w-full">
@@ -124,16 +169,7 @@ function FirTree() {
   );
 }
 
-/**
- * Flocon de neige « stellaire dendritique ».
- *
- * Un vrai flocon a une symétrie hexagonale (groupe diédrique D6) : on dessine
- * UNE branche, avec ses ramifications, puis on la répète 6 fois en tournant de
- * 60°. C'est ce qui le distingue d'un simple astérisque (trois barres
- * croisées), qui est la version qu'on obtenait avant.
- */
 const SNOW_ARMS = [0, 60, 120, 180, 240, 300];
-/** Position sur l'épine, longueur de la ramification. */
 const SNOW_BRANCHES = [
   { y: 8.5, len: 5.4 },
   { y: 13, len: 4.2 },
@@ -148,7 +184,6 @@ function Snowflake() {
           <g key={deg} transform={`rotate(${deg} 20 20)`}>
             <path d="M20 20V5" />
             {SNOW_BRANCHES.map((b) => {
-              // Ramification à 60° de l'épine : 0,866 en dx, 0,5 en dy.
               const dx = b.len * 0.866;
               const dy = b.len * 0.5;
               return (
@@ -178,115 +213,328 @@ function Gift() {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Sous-marin                                                          */
+/* ------------------------------------------------------------------ */
+
 function Bubble() {
   return (
     <svg viewBox="0 0 32 32" className="h-full w-full">
-      <circle cx="16" cy="16" r="13" fill="rgba(125, 227, 255, 0.12)" stroke="rgba(160, 235, 255, 0.75)" strokeWidth="1.4" />
-      <circle cx="11" cy="11" r="3.2" fill="rgba(255, 255, 255, 0.55)" />
-      <circle cx="21" cy="21" r="1.5" fill="rgba(255, 255, 255, 0.35)" />
+      <circle cx="16" cy="16" r="13" fill="rgba(125, 227, 255, 0.1)" stroke="rgba(160, 235, 255, 0.7)" strokeWidth="1.4" />
+      <circle cx="11" cy="11" r="3.2" fill="rgba(255, 255, 255, 0.5)" />
+      <circle cx="21" cy="21" r="1.5" fill="rgba(255, 255, 255, 0.3)" />
+    </svg>
+  );
+}
+
+/** Corail branchu, avec pied, branches courbes et polypes lumineux. */
+function Coral() {
+  const uid = useUid();
+  return (
+    <svg viewBox="0 0 120 140" className="h-full w-full">
+      <defs>
+        <linearGradient id={`${uid}c`} x1="0" y1="1" x2="0.6" y2="0">
+          <stop offset="0" stopColor="currentColor" stopOpacity="0.55" />
+          <stop offset="1" stopColor="currentColor" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="60" cy="136" rx="40" ry="5" fill="#000" opacity="0.18" />
+      <g fill="none" stroke={`url(#${uid}c)`} strokeLinecap="round">
+        <path d="M60 136V96" strokeWidth="13" />
+        <path d="M60 102C44 92 32 76 30 58" strokeWidth="10" />
+        <path d="M60 108C78 96 90 80 92 60" strokeWidth="10" />
+        <path d="M60 96C52 82 50 70 54 58" strokeWidth="8" />
+        <path d="M30 60C22 48 20 38 24 28" strokeWidth="7" />
+        <path d="M30 60C38 50 42 42 40 32" strokeWidth="7" />
+        <path d="M92 62C102 52 106 42 102 32" strokeWidth="7" />
+        <path d="M92 62C84 52 80 44 82 34" strokeWidth="7" />
+        <path d="M54 58C48 46 48 38 52 28" strokeWidth="6" />
+      </g>
+      <g fill="currentColor">
+        <circle cx="24" cy="26" r="6" />
+        <circle cx="40" cy="30" r="5.4" />
+        <circle cx="102" cy="30" r="6" />
+        <circle cx="82" cy="32" r="5.4" />
+        <circle cx="52" cy="26" r="4.6" />
+        <circle cx="30" cy="54" r="4" opacity="0.8" />
+        <circle cx="92" cy="56" r="4" opacity="0.8" />
+      </g>
+      <g fill="#fff" opacity="0.4">
+        <circle cx="22" cy="24" r="1.8" />
+        <circle cx="100" cy="28" r="1.8" />
+        <circle cx="50" cy="24" r="1.4" />
+      </g>
+    </svg>
+  );
+}
+
+function Kelp() {
+  return (
+    <svg viewBox="0 0 50 140" className="h-full w-full">
+      <path d="M25 140C10 116 40 106 25 82S40 50 25 26" stroke="currentColor" strokeWidth="9" fill="none" strokeLinecap="round" opacity="0.8" />
+      <path d="M10 140C0 120 20 112 10 92S20 64 10 44" stroke="currentColor" strokeWidth="5" fill="none" strokeLinecap="round" opacity="0.55" />
+      <path d="M40 140C50 120 30 112 40 92S30 64 40 44" stroke="currentColor" strokeWidth="5" fill="none" strokeLinecap="round" opacity="0.55" />
     </svg>
   );
 }
 
 function Fish() {
+  const uid = useUid();
   return (
-    <svg viewBox="0 0 64 40" className="h-full w-full">
-      <path d="M8 20c10-12 28-14 38-6l10-8v28l-10-8c-10 8-28 6-38-6z" fill="currentColor" opacity="0.85" />
-      <path d="M46 20c4-4 8-6 10-6v12c-2 0-6-2-10-6z" fill="currentColor" opacity="0.55" />
-      <circle cx="20" cy="17" r="2.2" fill="#06222e" />
-      <path d="M30 14c4 2 4 10 0 12" stroke="#06222e" strokeWidth="1.2" fill="none" opacity="0.4" />
+    <svg viewBox="0 0 90 50" className="h-full w-full">
+      <defs>
+        <linearGradient id={`${uid}f`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="currentColor" />
+          <stop offset="1" stopColor="currentColor" stopOpacity="0.55" />
+        </linearGradient>
+      </defs>
+      <path d="M12 25c12-14 36-16 50-7l14-10v34L62 32c-14 9-38 7-50-7z" fill={`url(#${uid}f)`} />
+      <path d="M62 25c5-5 10-7 14-7v14c-4 0-9-2-14-7z" fill="currentColor" opacity="0.6" />
+      <path d="M40 18c6 4 6 10 0 14" stroke="#06222e" strokeWidth="1.2" fill="none" opacity="0.35" />
+      <circle cx="24" cy="22" r="2.6" fill="#06222e" />
+      <circle cx="23" cy="21" r="0.8" fill="#fff" />
+      <path d="M30 14c4-4 10-5 16-3" stroke="#fff" strokeWidth="1.4" opacity="0.25" fill="none" />
     </svg>
   );
 }
 
-function Seaweed() {
+function Jellyfish() {
+  const uid = useUid();
   return (
-    <svg viewBox="0 0 40 100" className="h-full w-full">
-      <path d="M20 100c-10-16 8-22 0-38s8-22 0-38" stroke="currentColor" strokeWidth="6" fill="none" strokeLinecap="round" opacity="0.8" />
-      <path d="M8 100c-5-12 4-16 0-28s4-16 0-26" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.55" />
-      <path d="M32 100c5-12-4-16 0-28s-4-16 0-26" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.55" />
+    <svg viewBox="0 0 80 110" className="h-full w-full">
+      <defs>
+        <radialGradient id={`${uid}j`} cx="0.5" cy="0.3" r="0.7">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.55" />
+          <stop offset="1" stopColor="currentColor" stopOpacity="0.75" />
+        </radialGradient>
+      </defs>
+      <path d="M8 44C8 20 24 6 40 6s32 14 32 38c-10-6-22-8-32-8S18 38 8 44z" fill={`url(#${uid}j)`} />
+      <g stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" opacity="0.75">
+        <path d="M20 46c-6 14 4 20 0 34s6 16 2 24" />
+        <path d="M32 48c-4 14 4 20 0 34s4 16 0 22" />
+        <path d="M48 48c4 14-4 20 0 34s-4 16 0 22" />
+        <path d="M60 46c6 14-4 20 0 34s-6 16-2 24" />
+      </g>
+      <g fill="#fff" opacity="0.4">
+        <circle cx="30" cy="24" r="3" />
+        <circle cx="46" cy="18" r="2" />
+      </g>
     </svg>
   );
 }
 
-function Coral() {
+function Submarine() {
+  const uid = useUid();
   return (
-    <svg viewBox="0 0 80 60" className="h-full w-full">
-      <path d="M40 60V34M40 40L22 22M40 44L58 24M22 22V10M58 24V8M22 22l-8-4M58 24l8-4" stroke="currentColor" strokeWidth="6" strokeLinecap="round" fill="none" />
-      <circle cx="14" cy="16" r="4" fill="currentColor" />
-      <circle cx="66" cy="18" r="4" fill="currentColor" />
-      <circle cx="22" cy="8" r="3.5" fill="currentColor" />
-      <circle cx="58" cy="6" r="3.5" fill="currentColor" />
+    <svg viewBox="0 0 180 100" className="h-full w-full">
+      <defs>
+        <linearGradient id={`${uid}s`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#f2c14e" />
+          <stop offset="1" stopColor="#b8860b" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="90" cy="88" rx="66" ry="5" fill="#000" opacity="0.15" />
+      <path d="M20 58c0-18 16-28 40-28h50c24 0 42 10 42 28s-18 28-42 28H60c-24 0-40-10-40-28z" fill={`url(#${uid}s)`} />
+      <rect x="72" y="18" width="34" height="16" rx="6" fill="#d4a017" />
+      <rect x="80" y="8" width="4" height="14" fill="#8a6508" />
+      <path d="M84 8h14" stroke="#8a6508" strokeWidth="3" strokeLinecap="round" />
+      <g fill="#bfefff" stroke="#6b4e05" strokeWidth="2">
+        <circle cx="58" cy="58" r="7" />
+        <circle cx="82" cy="58" r="7" />
+        <circle cx="106" cy="58" r="7" />
+      </g>
+      <path d="M146 48l16-10v36l-16-10z" fill="#8a6508" />
+      <circle cx="154" cy="58" r="4" fill="#ffd27d" />
+      <path d="M20 58H6" stroke="#7dfcff" strokeWidth="3" strokeLinecap="round" opacity="0.6" />
+    </svg>
+  );
+}
+
+function Starfish() {
+  return (
+    <svg viewBox="0 0 80 80" className="h-full w-full">
+      <path d="M40 4l8 22 24 2-18 16 6 24-20-13-20 13 6-24L8 28l24-2z" fill="currentColor" opacity="0.85" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <g fill="#fff" opacity="0.35">
+        <circle cx="40" cy="34" r="2" />
+        <circle cx="28" cy="44" r="1.5" />
+        <circle cx="52" cy="44" r="1.5" />
+        <circle cx="40" cy="52" r="1.5" />
+      </g>
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Futuriste                                                           */
+/* ------------------------------------------------------------------ */
+
+/** Gratte-ciel très haut, fenêtres éclairées et arête néon. */
+function Skyscraper() {
+  const uid = useUid();
+  return (
+    <svg viewBox="0 0 100 320" className="h-full w-full">
+      <defs>
+        <linearGradient id={`${uid}t`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#0b1a3a" />
+          <stop offset="0.5" stopColor="#16306a" />
+          <stop offset="1" stopColor="#0a1530" />
+        </linearGradient>
+        <pattern id={`${uid}w`} width="16" height="20" patternUnits="userSpaceOnUse">
+          <rect x="3" y="5" width="7" height="9" rx="1" fill="#8ff6ff" opacity="0.75" />
+        </pattern>
+        <pattern id={`${uid}p`} width="32" height="40" patternUnits="userSpaceOnUse">
+          <rect x="5" y="10" width="7" height="9" rx="1" fill="#ff7de9" opacity="0.7" />
+        </pattern>
+      </defs>
+      <rect x="18" y="46" width="64" height="274" rx="4" fill={`url(#${uid}t)`} />
+      <rect x="18" y="46" width="64" height="274" fill={`url(#${uid}w)`} opacity="0.4" />
+      <rect x="18" y="46" width="64" height="274" fill={`url(#${uid}p)`} opacity="0.24" />
+      <path d="M50 46V16" stroke="#8ff6ff" strokeWidth="2" opacity="0.8" />
+      <circle cx="50" cy="14" r="3" fill="#ff7de9" />
+      <path d="M18 46h64" stroke="#8ff6ff" strokeWidth="1.5" opacity="0.8" />
+      <path d="M14 320V60h6" stroke="#8ff6ff" strokeWidth="1.2" opacity="0.35" fill="none" />
+      <path d="M86 320V60h-6" stroke="#ff7de9" strokeWidth="1.2" opacity="0.3" fill="none" />
     </svg>
   );
 }
 
 function FlyingCar() {
   return (
-    <svg viewBox="0 0 90 40" className="h-full w-full">
-      <path d="M6 26h78" stroke="currentColor" strokeWidth="2" opacity="0.35" strokeLinecap="round" />
-      <path d="M14 24l10-9h34l12 9z" fill="currentColor" opacity="0.9" />
-      <rect x="10" y="23" width="62" height="7" rx="3.5" fill="currentColor" opacity="0.75" />
-      <path d="M30 15h20l6 6H26z" fill="#bfefff" opacity="0.75" />
-      <circle cx="22" cy="31" r="2.6" fill="#7dfcff" />
-      <circle cx="60" cy="31" r="2.6" fill="#7dfcff" />
-      <path d="M72 26h14" stroke="#7dfcff" strokeWidth="2" strokeLinecap="round" opacity="0.8" />
+    <svg viewBox="0 0 110 46" className="h-full w-full">
+      <path d="M4 30h100" stroke="currentColor" strokeWidth="2" opacity="0.3" strokeLinecap="round" />
+      <path d="M18 28l12-11h40l14 11z" fill="currentColor" opacity="0.9" />
+      <rect x="12" y="27" width="76" height="8" rx="4" fill="currentColor" opacity="0.75" />
+      <path d="M34 17h24l8 8H28z" fill="#bfefff" opacity="0.8" />
+      <circle cx="26" cy="36" r="3" fill="#7dfcff" />
+      <circle cx="74" cy="36" r="3" fill="#7dfcff" />
+      <path d="M88 30h18" stroke="#7dfcff" strokeWidth="2.4" strokeLinecap="round" opacity="0.85" />
+      <path d="M4 30h8" stroke="#ff7de9" strokeWidth="2.4" strokeLinecap="round" opacity="0.6" />
     </svg>
   );
 }
 
-function Skyscraper() {
+function NeonSign() {
   return (
-    <svg viewBox="0 0 70 140" className="h-full w-full">
-      <rect x="8" y="28" width="54" height="112" rx="3" fill="currentColor" opacity="0.28" />
-      <rect x="14" y="10" width="42" height="18" rx="2" fill="currentColor" opacity="0.4" />
-      <path d="M35 0v10" stroke="currentColor" strokeWidth="2" opacity="0.7" />
-      <g fill="#8ff6ff" opacity="0.85">
-        <rect x="16" y="38" width="8" height="7" rx="1" />
-        <rect x="31" y="38" width="8" height="7" rx="1" />
-        <rect x="46" y="38" width="8" height="7" rx="1" />
-        <rect x="16" y="54" width="8" height="7" rx="1" />
-        <rect x="46" y="54" width="8" height="7" rx="1" />
-        <rect x="31" y="70" width="8" height="7" rx="1" />
-        <rect x="16" y="86" width="8" height="7" rx="1" />
-        <rect x="46" y="86" width="8" height="7" rx="1" />
-        <rect x="31" y="102" width="8" height="7" rx="1" />
-        <rect x="16" y="118" width="8" height="7" rx="1" />
-        <rect x="46" y="118" width="8" height="7" rx="1" />
+    <svg viewBox="0 0 40 140" className="h-full w-full">
+      <rect x="8" y="6" width="24" height="128" rx="6" fill="#0a1430" stroke="#ff7de9" strokeWidth="2" opacity="0.9" />
+      <g stroke="#8ff6ff" strokeWidth="3" strokeLinecap="round">
+        <path d="M15 24h10" />
+        <path d="M15 38h10" />
+        <path d="M15 52h10" />
+        <path d="M15 66h10" />
+        <path d="M15 80h10" />
       </g>
-      <g fill="#ff7de9" opacity="0.7">
-        <rect x="31" y="54" width="8" height="7" rx="1" />
-        <rect x="16" y="70" width="8" height="7" rx="1" />
-        <rect x="46" y="70" width="8" height="7" rx="1" />
-        <rect x="31" y="86" width="8" height="7" rx="1" />
+      <g stroke="#ff7de9" strokeWidth="3" strokeLinecap="round">
+        <path d="M15 98h10" />
+        <path d="M15 112h10" />
       </g>
     </svg>
   );
 }
 
+function Planet() {
+  const uid = useUid();
+  return (
+    <svg viewBox="0 0 120 100" className="h-full w-full">
+      <defs>
+        <radialGradient id={`${uid}pl`} cx="0.35" cy="0.3" r="0.8">
+          <stop offset="0" stopColor="#9fe9ff" />
+          <stop offset="1" stopColor="#2a4fd8" />
+        </radialGradient>
+      </defs>
+      <circle cx="60" cy="50" r="30" fill={`url(#${uid}pl)`} />
+      <ellipse cx="60" cy="50" rx="48" ry="12" fill="none" stroke="#ff7de9" strokeWidth="3" opacity="0.7" transform="rotate(-18 60 50)" />
+      <circle cx="48" cy="40" r="4" fill="#fff" opacity="0.25" />
+      <circle cx="72" cy="60" r="3" fill="#fff" opacity="0.2" />
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Médiéval                                                            */
+/* ------------------------------------------------------------------ */
+
+/** Château fort : donjon, tours, créneaux, porte, fenêtres et drapeaux. */
 function Castle() {
+  const uid = useUid();
   return (
-    <svg viewBox="0 0 100 90" className="h-full w-full">
-      <path d="M6 90V46h10v-8h8v8h8v-8h8v8h8V22h10V10h8v12h10v24h8v-8h8v8h8v-8h8v52z" fill="currentColor" opacity="0.75" />
-      <path d="M30 90V66a10 10 0 0 1 20 0v24z" fill="#1b140d" opacity="0.65" />
-      <g fill="#ffd27d" opacity="0.9">
-        <rect x="18" y="54" width="6" height="9" rx="1" />
-        <rect x="38" y="30" width="6" height="9" rx="1" />
-        <rect x="56" y="30" width="6" height="9" rx="1" />
-        <rect x="76" y="54" width="6" height="9" rx="1" />
+    <svg viewBox="0 0 240 200" className="h-full w-full">
+      <defs>
+        <linearGradient id={`${uid}k`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#8a7350" />
+          <stop offset="0.5" stopColor="#b59a6c" />
+          <stop offset="1" stopColor="#6f5a3c" />
+        </linearGradient>
+        <linearGradient id={`${uid}r`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#7a3b2e" />
+          <stop offset="1" stopColor="#4a2119" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="120" cy="196" rx="104" ry="7" fill="#000" opacity="0.25" />
+      {/* Remparts */}
+      <path d="M14 196V120h24v-14h18v14h16v-14h18v14h16v-14h18v14h16v-14h18v14h16v-14h18v14h16v76z" fill={`url(#${uid}k)`} />
+      {/* Donjon */}
+      <rect x="88" y="64" width="64" height="132" fill={`url(#${uid}k)`} />
+      <path d="M84 64h8V50h12v14h8V50h12v14h8V50h12v14h8V50h8v18H84z" fill="#9c8159" />
+      {/* Tours */}
+      <rect x="26" y="86" width="40" height="110" fill={`url(#${uid}k)`} />
+      <path d="M22 86h8V72h10v14h8V72h10v14h8V72h6v18H22z" fill="#9c8159" />
+      <rect x="174" y="86" width="40" height="110" fill={`url(#${uid}k)`} />
+      <path d="M170 86h8V72h10v14h8V72h10v14h8V72h6v18h-50z" fill="#9c8159" />
+      {/* Toits */}
+      <path d="M46 72L30 40l32 0z" fill={`url(#${uid}r)`} />
+      <path d="M194 72l-16-32 32 0z" fill={`url(#${uid}r)`} />
+      <path d="M120 64L96 24h48z" fill={`url(#${uid}r)`} />
+      {/* Porte */}
+      <path d="M104 196v-40a16 16 0 0 1 32 0v40z" fill="#2a1a12" />
+      <path d="M120 140v56M108 152h24" stroke="#5a3a22" strokeWidth="2.5" />
+      {/* Fenêtres allumées */}
+      <g fill="#ffd27d">
+        <rect x="100" y="82" width="10" height="16" rx="5" />
+        <rect x="130" y="82" width="10" height="16" rx="5" />
+        <rect x="38" y="108" width="8" height="14" rx="4" />
+        <rect x="48" y="140" width="8" height="14" rx="4" />
+        <rect x="186" y="108" width="8" height="14" rx="4" />
+        <rect x="196" y="140" width="8" height="14" rx="4" />
       </g>
-      <path d="M49 10V0" stroke="currentColor" strokeWidth="2" />
-      <path d="M49 0l14 4-14 4z" fill="#c0392b" />
+      {/* Drapeaux */}
+      <path d="M120 24V4" stroke="#3a2a1a" strokeWidth="2.5" />
+      <path d="M120 4l20 5-20 5z" fill="#c0392b" />
+      <path d="M46 40V22" stroke="#3a2a1a" strokeWidth="2" />
+      <path d="M46 22l14 4-14 4z" fill="#c9a227" />
+      {/* Pierre */}
+      <g stroke="#5b4a33" strokeWidth="1" opacity="0.35">
+        <path d="M14 136h212M14 160h212M14 184h212" />
+        <path d="M64 120v76M88 120v76M152 120v76M176 120v76" />
+      </g>
+    </svg>
+  );
+}
+
+function Tower() {
+  return (
+    <svg viewBox="0 0 80 180" className="h-full w-full">
+      <rect x="20" y="50" width="40" height="130" fill="currentColor" opacity="0.85" />
+      <path d="M16 50h8V38h8v12h8V38h8v12h8V38h8v12h8v12H16z" fill="currentColor" opacity="0.95" />
+      <path d="M40 38L20 8h40z" fill="#7a3b2e" />
+      <path d="M40 8V0" stroke="#3a2a1a" strokeWidth="2" />
+      <path d="M40 0l12 4-12 4z" fill="#c9a227" />
+      <g fill="#ffd27d">
+        <rect x="30" y="70" width="7" height="11" rx="3.5" />
+        <rect x="43" y="98" width="7" height="11" rx="3.5" />
+        <rect x="30" y="126" width="7" height="11" rx="3.5" />
+      </g>
     </svg>
   );
 }
 
 function Banner() {
   return (
-    <svg viewBox="0 0 40 100" className="h-full w-full">
-      <path d="M20 0v100" stroke="currentColor" strokeWidth="2" opacity="0.6" />
-      <path d="M8 8h24v46l-12-9-12 9z" fill="currentColor" opacity="0.85" />
-      <path d="M14 18h12M14 28h12M14 38h8" stroke="#1b140d" strokeWidth="2" opacity="0.45" />
+    <svg viewBox="0 0 40 110" className="h-full w-full">
+      <path d="M20 0v110" stroke="#3a2a1a" strokeWidth="2.5" opacity="0.8" />
+      <path d="M8 10h24v52l-12-10-12 10z" fill="currentColor" opacity="0.9" />
+      <path d="M8 10h24v10H8z" fill="#000" opacity="0.2" />
+      <path d="M14 26h12M14 38h12M14 50h8" stroke="#1b140d" strokeWidth="2.4" opacity="0.4" />
     </svg>
   );
 }
@@ -294,67 +542,205 @@ function Banner() {
 function Shield() {
   return (
     <svg viewBox="0 0 60 70" className="h-full w-full">
-      <path d="M30 2l26 8v22c0 18-12 30-26 36C16 62 4 50 4 32V10z" fill="currentColor" opacity="0.85" />
-      <path d="M30 8l20 6v18c0 14-9 24-20 29-11-5-20-15-20-29V14z" fill="#1b140d" opacity="0.25" />
-      <path d="M30 16v34M18 30h24" stroke="#ffe0a3" strokeWidth="3" opacity="0.8" />
+      <path d="M30 2l26 8v22c0 18-12 30-26 36C16 62 4 50 4 32V10z" fill="currentColor" opacity="0.9" />
+      <path d="M30 8l20 6v18c0 14-9 24-20 29-11-5-20-15-20-29V14z" fill="#1b140d" opacity="0.22" />
+      <path d="M30 14v38M16 30h28" stroke="#ffe0a3" strokeWidth="3.4" opacity="0.85" />
     </svg>
   );
 }
 
-function Sparkle() {
+function Sword() {
   return (
-    <svg viewBox="0 0 32 32" className="h-full w-full">
-      <path d="M16 1l3.2 9.8L29 14l-9.8 3.2L16 27l-3.2-9.8L3 14l9.8-3.2z" fill="currentColor" />
-      <circle cx="16" cy="14" r="2.2" fill="#fff" opacity="0.9" />
+    <svg viewBox="0 0 30 130" className="h-full w-full">
+      <path d="M15 4l6 16v66H9V20z" fill="#d9dde3" stroke="#8b939e" strokeWidth="1.5" />
+      <path d="M15 4v82" stroke="#fff" strokeWidth="1.4" opacity="0.5" />
+      <rect x="4" y="86" width="22" height="6" rx="3" fill="#c9a227" />
+      <rect x="12" y="92" width="6" height="22" rx="3" fill="#5a3a22" />
+      <circle cx="15" cy="120" r="6" fill="#c9a227" />
     </svg>
   );
 }
+
+function Chest() {
+  return (
+    <svg viewBox="0 0 80 60" className="h-full w-full">
+      <ellipse cx="40" cy="56" rx="32" ry="4" fill="#000" opacity="0.2" />
+      <rect x="8" y="24" width="64" height="30" rx="4" fill="#6b4a2a" />
+      <path d="M8 24c0-10 14-16 32-16s32 6 32 16z" fill="#7d5732" />
+      <rect x="8" y="30" width="64" height="6" fill="#c9a227" />
+      <rect x="35" y="34" width="10" height="12" rx="2" fill="#e6c45a" />
+      <g fill="#f5d76e">
+        <circle cx="20" cy="44" r="2.5" />
+        <circle cx="28" cy="47" r="2" />
+        <circle cx="52" cy="45" r="2.5" />
+        <circle cx="60" cy="48" r="2" />
+      </g>
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Fantastique                                                         */
+/* ------------------------------------------------------------------ */
 
 function Moon() {
   return (
-    <svg viewBox="0 0 80 80" className="h-full w-full">
-      <path d="M52 6a34 34 0 1 0 22 58A38 38 0 0 1 52 6z" fill="currentColor" opacity="0.9" />
-      <circle cx="30" cy="30" r="3" fill="#fff" opacity="0.5" />
-      <circle cx="24" cy="46" r="2" fill="#fff" opacity="0.4" />
-      <circle cx="40" cy="52" r="2.4" fill="#fff" opacity="0.35" />
+    <svg viewBox="0 0 120 120" className="h-full w-full">
+      <circle cx="60" cy="60" r="46" fill="currentColor" opacity="0.95" />
+      <g fill="#c9b8ff" opacity="0.45">
+        <circle cx="44" cy="42" r="9" />
+        <circle cx="74" cy="54" r="6" />
+        <circle cx="52" cy="78" r="7" />
+        <circle cx="80" cy="82" r="4" />
+        <circle cx="34" cy="64" r="3.5" />
+      </g>
+      <g fill="#fff" opacity="0.35">
+        <circle cx="40" cy="38" r="2" />
+        <circle cx="76" cy="50" r="1.5" />
+      </g>
     </svg>
   );
 }
 
 function Crystal() {
+  const uid = useUid();
   return (
-    <svg viewBox="0 0 60 90" className="h-full w-full">
-      <path d="M30 2l24 28-10 52H16L6 30z" fill="currentColor" opacity="0.8" />
-      <path d="M30 2v80M6 30h48M30 2L16 82M30 2l14 80" stroke="#fff" strokeWidth="1.2" opacity="0.35" />
-      <path d="M16 82h28l-6 6H22z" fill="#fff" opacity="0.25" />
+    <svg viewBox="0 0 80 120" className="h-full w-full">
+      <defs>
+        <linearGradient id={`${uid}cr`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#f0e6ff" />
+          <stop offset="0.5" stopColor="currentColor" />
+          <stop offset="1" stopColor="#5b2a9e" />
+        </linearGradient>
+      </defs>
+      <path d="M40 2l30 34-12 80H22L10 36z" fill={`url(#${uid}cr)`} opacity="0.9" />
+      <path d="M40 2v114M10 36h60M40 2L22 116M40 2l18 114" stroke="#fff" strokeWidth="1.3" opacity="0.35" />
+      <path d="M22 116h36l-8 4H30z" fill="#fff" opacity="0.3" />
     </svg>
   );
 }
 
+function FloatingIsland() {
+  return (
+    <svg viewBox="0 0 140 110" className="h-full w-full">
+      <path d="M16 46c8-20 30-28 54-26 26 2 46 14 54 26-12 8-28 12-54 12S28 54 16 46z" fill="#4b2a7a" />
+      <path d="M18 46c14 8 32 12 52 12s38-4 52-12l-10 34-24 16-18-10-18 10-24-16z" fill="#2a1450" />
+      <path d="M22 48c10 6 24 9 48 9s38-3 48-9" stroke="#b388ff" strokeWidth="2" fill="none" opacity="0.5" />
+      <g fill="#7a4fd0" opacity="0.8">
+        <circle cx="40" cy="38" r="3" />
+        <circle cx="62" cy="34" r="2" />
+        <circle cx="88" cy="36" r="2.5" />
+      </g>
+      <path d="M70 58v34" stroke="#b388ff" strokeWidth="2" opacity="0.5" />
+      <path d="M70 92c-6 4-6 10 0 14 6-4 6-10 0-14z" fill="#b388ff" opacity="0.7" />
+    </svg>
+  );
+}
+
+function MagicTree() {
+  return (
+    <svg viewBox="0 0 120 160" className="h-full w-full">
+      <path d="M60 158V96M60 120l-18-14M60 132l20-16M60 106l-14-18" stroke="#3a2350" strokeWidth="7" strokeLinecap="round" />
+      <g fill="currentColor">
+        <circle cx="60" cy="64" r="30" opacity="0.55" />
+        <circle cx="34" cy="80" r="20" opacity="0.45" />
+        <circle cx="86" cy="80" r="20" opacity="0.45" />
+        <circle cx="60" cy="42" r="18" opacity="0.6" />
+      </g>
+      <g fill="#fff" opacity="0.5">
+        <circle cx="48" cy="52" r="2" />
+        <circle cx="72" cy="44" r="1.6" />
+        <circle cx="38" cy="74" r="1.6" />
+        <circle cx="84" cy="72" r="1.8" />
+      </g>
+    </svg>
+  );
+}
+
+function Star() {
+  return (
+    <svg viewBox="0 0 32 32" className="h-full w-full">
+      <path d="M16 1l3.2 9.8L29 14l-9.8 3.2L16 27l-3.2-9.8L3 14l9.8-3.2z" fill="currentColor" />
+      <circle cx="16" cy="14" r="2" fill="#fff" opacity="0.9" />
+    </svg>
+  );
+}
+
+function Dragon() {
+  return (
+    <svg viewBox="0 0 160 80" className="h-full w-full">
+      <path d="M20 40c14-14 34-20 54-16 10-10 24-12 34-4-6 2-10 6-12 12 8 2 14 6 18 12-8-2-16-2-22 2-6 12-18 20-34 20-16 0-30-8-38-26z" fill="currentColor" opacity="0.8" />
+      <path d="M74 24c-8-12-20-18-34-16 10 6 16 12 18 20zM110 24c8-10 18-14 30-12-8 5-13 10-15 16z" fill="currentColor" opacity="0.65" />
+      <path d="M20 40c-6-4-12-4-18 0 6 2 10 4 12 8z" fill="currentColor" opacity="0.7" />
+      <circle cx="96" cy="34" r="2.4" fill="#ffd27d" />
+    </svg>
+  );
+}
+
+function Portal() {
+  const uid = useUid();
+  return (
+    <svg viewBox="0 0 100 140" className="h-full w-full">
+      <defs>
+        <radialGradient id={`${uid}po`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.8" />
+          <stop offset="0.5" stopColor="#b388ff" stopOpacity="0.5" />
+          <stop offset="1" stopColor="#5b2a9e" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="50" cy="70" rx="44" ry="60" fill={`url(#${uid}po)`} />
+      <path d="M18 130V56a32 32 0 0 1 64 0v74" fill="none" stroke="#d9c2ff" strokeWidth="3" opacity="0.7" />
+      <path d="M26 130V58a24 24 0 0 1 48 0v72" fill="none" stroke="#b388ff" strokeWidth="2" opacity="0.5" />
+      <g fill="#fff" opacity="0.6">
+        <circle cx="50" cy="54" r="2" />
+        <circle cx="40" cy="74" r="1.5" />
+        <circle cx="60" cy="88" r="1.5" />
+      </g>
+    </svg>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Registre des motifs                                                 */
+/* ------------------------------------------------------------------ */
+
 const MOTIFS = {
   pumpkin: Pumpkin,
   candle: Candle,
-  leaf: Leaf,
   web: SpiderWeb,
+  house: HauntedHouse,
+  bat: Bat,
+  moonSmall: MoonSmall,
   fir: FirTree,
   snow: Snowflake,
   gift: Gift,
   bubble: Bubble,
-  fish: Fish,
-  seaweed: Seaweed,
   coral: Coral,
-  car: FlyingCar,
+  kelp: Kelp,
+  fish: Fish,
+  jellyfish: Jellyfish,
+  submarine: Submarine,
+  starfish: Starfish,
   tower: Skyscraper,
+  car: FlyingCar,
+  neon: NeonSign,
+  planet: Planet,
   castle: Castle,
+  keep: Tower,
   banner: Banner,
   shield: Shield,
-  sparkle: Sparkle,
+  sword: Sword,
+  chest: Chest,
   moon: Moon,
   crystal: Crystal,
+  island: FloatingIsland,
+  tree: MagicTree,
+  star: Star,
+  dragon: Dragon,
+  portal: Portal,
 };
 type Motif = keyof typeof MOTIFS;
 
-/** Position en % de la fenêtre + taille en vmin (le décor s'adapte au téléphone). */
 interface Box {
   x: number;
   y: number;
@@ -363,23 +749,22 @@ interface Box {
 }
 
 interface Particle extends Box {
-  /** Durée de chute. */
   duration: number;
-  /** Décalage : évite que tout tombe en même temps. */
   delay: number;
-  /** Légère dérive horizontale. */
   drift: number;
   color?: string;
-  /** Masqué sur petit écran, où la place manque. */
   small?: boolean;
 }
 
 interface Anchor {
   motif: Motif;
+  /** Taille en vmin (carré) si w/h ne sont pas fournis. */
   size: number;
+  /** Largeur / hauteur explicites en vmin (immeubles, château...). */
+  w?: number;
+  h?: number;
   opacity: number;
   color?: string;
-  /** Ancrage : distance depuis le bord, en % de la fenêtre. */
   fromLeft?: number;
   fromRight?: number;
   fromTop?: number;
@@ -387,32 +772,22 @@ interface Anchor {
   small?: boolean;
 }
 
-type ActiveSeason = Exclude<SeasonTheme, 'aucun'>;
-
-/**
- * Les particules restent dans le haut de l'écran (y de 3 à 41 %) : aucune ne
- * descend volontairement sous la mi-écran, pour ne jamais empiéter sur la
- * lecture du texte. Le motif diffère par thème.
- */
-const FALL_MOTIF: Record<ActiveSeason, Motif> = {
-  halloween: 'leaf',
-  noel: 'snow',
+/** Particules uniquement pour le sous-marin (bulles) et Noël (flocons). */
+const FALL_MOTIF: Partial<Record<SeasonTheme, Motif>> = {
   'sous-marin': 'bubble',
-  futuriste: 'sparkle',
-  medieval: 'sparkle',
-  fantastique: 'sparkle',
+  noel: 'snow',
 };
 
-const PARTICLES: Record<ActiveSeason, Particle[]> = {
-  halloween: [
-    { x: 8, y: 6, size: 1.8, opacity: 0.7, duration: 9, delay: 0, drift: 6, color: '#c2621c' },
-    { x: 24, y: 18, size: 1.4, opacity: 0.6, duration: 11, delay: 2.4, drift: -5, color: '#a3471a' },
-    { x: 41, y: 4, size: 2, opacity: 0.65, duration: 10, delay: 4.1, drift: 4, color: '#d4772a' },
-    { x: 58, y: 22, size: 1.5, opacity: 0.55, duration: 12, delay: 1.2, drift: -7, color: '#9c4a1c' },
-    { x: 73, y: 8, size: 1.7, opacity: 0.6, duration: 9.5, delay: 3.3, drift: 5, color: '#c2621c' },
-    { x: 88, y: 19, size: 1.3, opacity: 0.5, duration: 11.5, delay: 5.6, drift: -4, color: '#8f5a2a' },
-    { x: 33, y: 38, size: 1.2, opacity: 0.45, duration: 13, delay: 6.4, drift: 3, color: '#b8551d', small: true },
-    { x: 66, y: 41, size: 1.3, opacity: 0.45, duration: 12.5, delay: 7.2, drift: -3, color: '#b8551d', small: true },
+const PARTICLES: Partial<Record<SeasonTheme, Particle[]>> = {
+  'sous-marin': [
+    { x: 6, y: 0, size: 2.2, opacity: 0.7, duration: 12, delay: 0, drift: 5, color: '#bff4ff' },
+    { x: 20, y: 0, size: 1.6, opacity: 0.55, duration: 15, delay: 2.1, drift: -6, color: '#9fe9ff' },
+    { x: 35, y: 0, size: 1.9, opacity: 0.65, duration: 13, delay: 4.2, drift: 4, color: '#d8f8ff' },
+    { x: 51, y: 0, size: 1.4, opacity: 0.5, duration: 16, delay: 1.3, drift: -4, color: '#8fdcf5' },
+    { x: 67, y: 0, size: 2.4, opacity: 0.7, duration: 11, delay: 3.6, drift: 6, color: '#bff4ff' },
+    { x: 83, y: 0, size: 1.5, opacity: 0.55, duration: 14, delay: 5.4, drift: -5, color: '#a8ecff' },
+    { x: 94, y: 0, size: 1.8, opacity: 0.6, duration: 12.5, delay: 2.7, drift: 3, color: '#cff7ff' },
+    { x: 42, y: 0, size: 1.3, opacity: 0.4, duration: 17, delay: 6.8, drift: 4, color: '#9fe9ff', small: true },
   ],
   noel: [
     { x: 7, y: 5, size: 2, opacity: 0.85, duration: 11, delay: 0, drift: 5 },
@@ -425,99 +800,87 @@ const PARTICLES: Record<ActiveSeason, Particle[]> = {
     { x: 30, y: 34, size: 1.2, opacity: 0.55, duration: 15, delay: 6.6, drift: 4, small: true },
     { x: 62, y: 38, size: 1.3, opacity: 0.55, duration: 16, delay: 7.4, drift: -3, small: true },
   ],
-  'sous-marin': [
-    { x: 6, y: 8, size: 2.2, opacity: 0.7, duration: 10, delay: 0, drift: 5, color: '#bff4ff' },
-    { x: 20, y: 22, size: 1.6, opacity: 0.55, duration: 13, delay: 2.1, drift: -6, color: '#9fe9ff' },
-    { x: 35, y: 5, size: 1.9, opacity: 0.65, duration: 11.5, delay: 4.2, drift: 4, color: '#d8f8ff' },
-    { x: 51, y: 19, size: 1.4, opacity: 0.5, duration: 14, delay: 1.3, drift: -4, color: '#8fdcf5' },
-    { x: 67, y: 7, size: 2.4, opacity: 0.7, duration: 9.5, delay: 3.6, drift: 6, color: '#bff4ff' },
-    { x: 83, y: 20, size: 1.5, opacity: 0.55, duration: 12.5, delay: 5.4, drift: -5, color: '#a8ecff' },
-    { x: 94, y: 4, size: 1.8, opacity: 0.6, duration: 11, delay: 2.7, drift: 3, color: '#cff7ff' },
-    { x: 42, y: 36, size: 1.3, opacity: 0.4, duration: 15, delay: 6.8, drift: 4, color: '#9fe9ff', small: true },
-  ],
-  futuriste: [
-    { x: 8, y: 6, size: 1.2, opacity: 0.9, duration: 8, delay: 0, drift: 4, color: '#8ff6ff' },
-    { x: 24, y: 15, size: 1, opacity: 0.8, duration: 9, delay: 2.2, drift: -3, color: '#ff7de9' },
-    { x: 41, y: 4, size: 1.4, opacity: 0.9, duration: 7.5, delay: 4.1, drift: 5, color: '#8ff6ff' },
-    { x: 57, y: 20, size: 0.9, opacity: 0.7, duration: 10, delay: 1.1, drift: -4, color: '#ff7de9' },
-    { x: 72, y: 8, size: 1.3, opacity: 0.85, duration: 8.5, delay: 3.4, drift: 4, color: '#8ff6ff' },
-    { x: 88, y: 18, size: 1.1, opacity: 0.75, duration: 9.5, delay: 5.7, drift: -5, color: '#ff7de9' },
-    { x: 33, y: 37, size: 1, opacity: 0.5, duration: 11, delay: 6.5, drift: 3, color: '#8ff6ff', small: true },
-  ],
-  medieval: [
-    { x: 9, y: 7, size: 1.1, opacity: 0.55, duration: 12, delay: 0, drift: 5, color: '#ffd98a' },
-    { x: 27, y: 19, size: 0.9, opacity: 0.45, duration: 14, delay: 2.3, drift: -4, color: '#e8c67a' },
-    { x: 44, y: 5, size: 1.2, opacity: 0.5, duration: 13, delay: 4.4, drift: 6, color: '#ffd98a' },
-    { x: 61, y: 21, size: 1, opacity: 0.4, duration: 15, delay: 1.2, drift: -5, color: '#d9b86a' },
-    { x: 76, y: 6, size: 1.3, opacity: 0.5, duration: 12.5, delay: 3.5, drift: 4, color: '#ffd98a' },
-    { x: 91, y: 17, size: 1, opacity: 0.45, duration: 14.5, delay: 5.6, drift: -3, color: '#e8c67a' },
-  ],
-  fantastique: [
-    { x: 7, y: 5, size: 1.5, opacity: 0.9, duration: 10, delay: 0, drift: 4, color: '#e9d5ff' },
-    { x: 22, y: 17, size: 1.1, opacity: 0.75, duration: 12, delay: 2.2, drift: -5, color: '#ffb3f0' },
-    { x: 38, y: 4, size: 1.7, opacity: 0.9, duration: 9, delay: 4.3, drift: 5, color: '#d9c2ff' },
-    { x: 54, y: 20, size: 1, opacity: 0.65, duration: 13, delay: 1.1, drift: -4, color: '#ffb3f0' },
-    { x: 69, y: 7, size: 1.4, opacity: 0.85, duration: 10.5, delay: 3.6, drift: 6, color: '#e9d5ff' },
-    { x: 84, y: 18, size: 1.2, opacity: 0.7, duration: 12.5, delay: 5.8, drift: -5, color: '#d9c2ff' },
-    { x: 95, y: 4, size: 1.3, opacity: 0.8, duration: 11, delay: 2.9, drift: 3, color: '#ffb3f0' },
-    { x: 31, y: 36, size: 0.9, opacity: 0.5, duration: 14, delay: 6.7, drift: 4, color: '#e9d5ff', small: true },
-  ],
 };
 
 /**
- * Éléments immobiles, ancrés dans les coins : ce sont eux qui font le décor,
- * ils ne bougent jamais, donc ils ne peuvent pas gêner la lecture ni saccader.
- * Le décor ne touche pas aux boutons, seulement aux bords de l'écran.
+ * Éléments fixes. Les gros décors (château, immeubles) sont placés sur les
+ * bords et le bas de l'écran, avec une taille en vmin : ils remplissent la
+ * page sans recouvrir le texte, qui reste dans la colonne centrale.
  */
-const ANCHORS: Record<ActiveSeason, Anchor[]> = {
+const ANCHORS: Record<Exclude<SeasonTheme, 'aucun'>, Anchor[]> = {
   halloween: [
-    { motif: 'web', size: 20, opacity: 0.3, fromRight: -4, fromTop: -7 },
-    { motif: 'web', size: 15, opacity: 0.24, fromLeft: -5, fromTop: -8, small: true },
-    { motif: 'pumpkin', size: 13, opacity: 0.92, fromRight: 20, fromBottom: -1 },
-    { motif: 'pumpkin', size: 7.5, opacity: 0.8, fromRight: 31, fromBottom: 0, small: true },
-    { motif: 'pumpkin', size: 8, opacity: 0.7, fromLeft: 2, fromBottom: -2, small: true },
-    { motif: 'candle', size: 10, opacity: 0.8, fromRight: 4, fromBottom: 0, small: true },
-    { motif: 'candle', size: 7.5, opacity: 0.7, fromRight: 12.5, fromBottom: 0, small: true },
+    { motif: 'web', size: 20, opacity: 0.28, fromRight: -4, fromTop: -7 },
+    { motif: 'web', size: 14, opacity: 0.22, fromLeft: -5, fromTop: -8, small: true },
+    { motif: 'house', size: 30, opacity: 0.7, fromRight: 1, fromBottom: -3 },
+    { motif: 'moonSmall', size: 12, opacity: 0.8, fromLeft: 8, fromTop: 5 },
+    { motif: 'bat', size: 8, opacity: 0.55, fromLeft: 20, fromTop: 16, small: true },
+    { motif: 'bat', size: 6, opacity: 0.45, fromRight: 22, fromTop: 24, small: true },
+    { motif: 'pumpkin', size: 12, opacity: 0.92, fromLeft: 3, fromBottom: -1 },
+    { motif: 'pumpkin', size: 7, opacity: 0.8, fromLeft: 13, fromBottom: 0, small: true },
+    { motif: 'candle', size: 9, opacity: 0.8, fromRight: 30, fromBottom: 0, small: true },
   ],
   noel: [
-    { motif: 'fir', size: 19, opacity: 0.9, fromLeft: 1.5, fromBottom: -2 },
-    { motif: 'fir', size: 14, opacity: 0.85, fromRight: 3, fromBottom: -2 },
-    { motif: 'gift', size: 7, opacity: 0.75, fromLeft: 18, fromBottom: 0, small: true },
-    { motif: 'gift', size: 7, opacity: 0.7, fromRight: 4, fromBottom: 0, small: true },
+    { motif: 'fir', size: 20, opacity: 0.9, fromLeft: 1.5, fromBottom: -2 },
+    { motif: 'fir', size: 15, opacity: 0.85, fromRight: 3, fromBottom: -2 },
+    { motif: 'fir', size: 10, opacity: 0.7, fromLeft: 14, fromBottom: -1, small: true },
+    { motif: 'gift', size: 7, opacity: 0.75, fromLeft: 20, fromBottom: 0, small: true },
+    { motif: 'gift', size: 7, opacity: 0.7, fromRight: 8, fromBottom: 0, small: true },
   ],
   'sous-marin': [
-    { motif: 'seaweed', size: 18, opacity: 0.55, fromLeft: 1, fromBottom: -3, color: '#1f9e7a' },
-    { motif: 'seaweed', size: 14, opacity: 0.5, fromRight: 2, fromBottom: -3, color: '#28b58c' },
-    { motif: 'coral', size: 13, opacity: 0.65, fromLeft: 14, fromBottom: -1, color: '#ff8f7a' },
-    { motif: 'coral', size: 9, opacity: 0.55, fromRight: 17, fromBottom: 0, color: '#ffb39e', small: true },
-    { motif: 'fish', size: 11, opacity: 0.7, fromRight: 9, fromTop: 13, color: '#7fe3ff' },
-    { motif: 'fish', size: 7, opacity: 0.5, fromLeft: 8, fromTop: 28, color: '#9fe9ff', small: true },
+    { motif: 'kelp', size: 18, w: 10, h: 34, opacity: 0.6, fromLeft: 1, fromBottom: -4, color: '#1f9e7a' },
+    { motif: 'kelp', size: 16, w: 9, h: 30, opacity: 0.55, fromRight: 2, fromBottom: -4, color: '#28b58c' },
+    { motif: 'coral', size: 18, opacity: 0.85, fromLeft: 12, fromBottom: -2, color: '#ff8f7a' },
+    { motif: 'coral', size: 13, opacity: 0.75, fromRight: 16, fromBottom: -1, color: '#ffb39e' },
+    { motif: 'coral', size: 9, opacity: 0.6, fromLeft: 30, fromBottom: 0, color: '#ff6f61', small: true },
+    { motif: 'starfish', size: 6, opacity: 0.7, fromLeft: 26, fromBottom: 2, color: '#ffb347', small: true },
+    { motif: 'submarine', size: 22, w: 30, h: 16, opacity: 0.8, fromRight: 6, fromTop: 1 },
+    { motif: 'jellyfish', size: 11, opacity: 0.6, fromLeft: 1, fromTop: 42, color: '#c9a7ff' },
+    { motif: 'fish', size: 10, opacity: 0.75, fromLeft: 45, fromTop: 2, color: '#7fe3ff' },
+    { motif: 'fish', size: 6, opacity: 0.5, fromRight: 20, fromBottom: 12, color: '#9fe9ff', small: true },
+    { motif: 'fish', size: 7, opacity: 0.55, fromRight: 28, fromTop: 6, color: '#7fe3ff', small: true },
   ],
   futuriste: [
-    { motif: 'tower', size: 24, opacity: 0.5, fromLeft: -2, fromBottom: -4, color: '#2a6cff' },
-    { motif: 'tower', size: 20, opacity: 0.45, fromRight: 1, fromBottom: -4, color: '#3b4fd8' },
-    { motif: 'tower', size: 14, opacity: 0.35, fromLeft: 18, fromBottom: -4, color: '#1f4bd8', small: true },
-    { motif: 'car', size: 13, opacity: 0.85, fromRight: 7, fromTop: 9, color: '#7dfcff' },
-    { motif: 'car', size: 9, opacity: 0.65, fromLeft: 6, fromTop: 22, color: '#ff7de9', small: true },
+    { motif: 'tower', size: 26, w: 20, h: 92, opacity: 0.36, fromLeft: -6, fromBottom: -8, color: '#2a6cff' },
+    { motif: 'tower', size: 24, w: 18, h: 80, opacity: 0.3, fromRight: -6, fromBottom: -8, color: '#3b4fd8' },
+    { motif: 'tower', size: 18, w: 14, h: 58, opacity: 0.28, fromLeft: 16, fromBottom: -6, color: '#1f4bd8', small: true },
+    { motif: 'tower', size: 16, w: 12, h: 52, opacity: 0.24, fromRight: 18, fromBottom: -6, color: '#2a4fc0', small: true },
+    { motif: 'neon', size: 10, w: 5, h: 18, opacity: 0.8, fromLeft: 6, fromTop: 26, small: true },
+    { motif: 'neon', size: 8, w: 4, h: 14, opacity: 0.7, fromRight: 8, fromTop: 34, small: true },
+    { motif: 'planet', size: 15, opacity: 0.8, fromRight: 14, fromTop: 2 },
+    { motif: 'car', size: 14, w: 18, h: 8, opacity: 0.9, fromRight: 5, fromTop: 12 },
+    { motif: 'car', size: 10, w: 13, h: 6, opacity: 0.7, fromLeft: 8, fromTop: 22, small: true },
   ],
   medieval: [
-    { motif: 'castle', size: 26, opacity: 0.55, fromRight: -2, fromBottom: -3, color: '#8a6a2f' },
-    { motif: 'banner', size: 9, opacity: 0.8, fromLeft: 3, fromTop: -1, color: '#b03a2e' },
-    { motif: 'banner', size: 7, opacity: 0.65, fromRight: 6, fromTop: -1, color: '#c9a227', small: true },
-    { motif: 'shield', size: 9, opacity: 0.55, fromLeft: 10, fromBottom: 1, color: '#d4af37', small: true },
+    { motif: 'castle', size: 40, w: 54, h: 40, opacity: 0.85, fromRight: -2, fromBottom: -5 },
+    { motif: 'keep', size: 20, w: 11, h: 26, opacity: 0.8, fromLeft: 2, fromBottom: -4 },
+    { motif: 'keep', size: 16, w: 9, h: 21, opacity: 0.7, fromLeft: 12, fromBottom: -4, small: true },
+    { motif: 'banner', size: 9, w: 4, h: 12, opacity: 0.85, fromLeft: 24, fromTop: -1 },
+    { motif: 'banner', size: 7, w: 3.5, h: 10, opacity: 0.7, fromRight: 26, fromTop: -1, small: true },
+    { motif: 'shield', size: 8, opacity: 0.7, fromLeft: 2, fromTop: 52, small: true },
+    { motif: 'sword', size: 12, w: 4, h: 16, opacity: 0.6, fromLeft: 20, fromBottom: 2, small: true },
+    { motif: 'chest', size: 8, opacity: 0.7, fromRight: 8, fromBottom: 1, small: true },
   ],
   fantastique: [
-    { motif: 'moon', size: 16, opacity: 0.75, fromRight: 5, fromTop: 3, color: '#e8d9ff' },
-    { motif: 'crystal', size: 11, opacity: 0.65, fromLeft: 4, fromBottom: 0, color: '#b388ff' },
-    { motif: 'sparkle', size: 6, opacity: 0.8, fromLeft: 14, fromTop: 12, color: '#f0e6ff', small: true },
-    { motif: 'crystal', size: 7, opacity: 0.5, fromRight: 12, fromBottom: 0, color: '#d1b3ff', small: true },
+    { motif: 'moon', size: 22, opacity: 0.9, fromRight: 5, fromTop: 2 },
+    { motif: 'portal', size: 18, w: 14, h: 22, opacity: 0.6, fromLeft: 1, fromBottom: 8 },
+    { motif: 'island', size: 18, w: 20, h: 15, opacity: 0.7, fromLeft: -4, fromTop: 44, small: true },
+    { motif: 'tree', size: 20, w: 13, h: 24, opacity: 0.75, fromRight: -3, fromBottom: 2 },
+    { motif: 'crystal', size: 12, opacity: 0.8, fromLeft: 4, fromBottom: -2, color: '#b388ff' },
+    { motif: 'crystal', size: 8, opacity: 0.65, fromRight: 12, fromBottom: -2, color: '#d1b3ff', small: true },
+    { motif: 'crystal', size: 6, opacity: 0.55, fromLeft: 30, fromBottom: 0, color: '#e0ccff', small: true },
+    { motif: 'dragon', size: 16, w: 22, h: 11, opacity: 0.55, fromLeft: 45, fromTop: 1 },
+    { motif: 'star', size: 5, opacity: 0.9, fromLeft: 40, fromTop: 4, color: '#f0e6ff', small: true },
+    { motif: 'star', size: 4, opacity: 0.7, fromRight: 28, fromTop: 18, color: '#ffb3f0', small: true },
+    { motif: 'star', size: 3, opacity: 0.6, fromLeft: 60, fromTop: 8, color: '#d9c2ff', small: true },
   ],
 };
 
 function anchorStyle(a: Anchor): CSSProperties {
+  const w = a.w ?? a.size;
+  const h = a.h ?? a.size;
   return {
-    width: `${a.size}vmin`,
-    height: `${a.size}vmin`,
+    width: `${w}vmin`,
+    height: `${h}vmin`,
     opacity: a.opacity,
     left: a.fromLeft !== undefined ? `${a.fromLeft}%` : undefined,
     right: a.fromRight !== undefined ? `${a.fromRight}%` : undefined,
@@ -530,34 +893,38 @@ export function SeasonDecor() {
   const season = useSeasonFromDocument();
   if (season === 'aucun') return null;
 
+  const particles = PARTICLES[season] || [];
+  const fallMotif = FALL_MOTIF[season];
+  const rising = season === 'sous-marin';
+
   return (
     <div className="season-decor" aria-hidden="true">
-      <div className="season-decor__fall">
-        {PARTICLES[season].map((p, i) => {
-          const Motif = MOTIFS[FALL_MOTIF[season]];
-          return (
-            <span
-              key={`fall-${i}`}
-              className={`season-decor__flake ${p.small ? 'season-decor__item--small' : ''}`}
-              style={{
-                left: `${p.x}%`,
-                top: `${p.y}%`,
-                width: `${p.size}vmin`,
-                height: `${p.size}vmin`,
-                opacity: p.opacity,
-                color: p.color,
-                // Une durée et une dérive par particule : la chute n'est jamais
-                // synchrone, donc l'œil ne suit pas un mouvement_unique.
-                ['--fall-duration' as string]: `${p.duration}s`,
-                ['--fall-delay' as string]: `${p.delay}s`,
-                ['--fall-drift' as string]: `${p.drift}vmin`,
-              }}
-            >
-              <Motif />
-            </span>
-          );
-        })}
-      </div>
+      {fallMotif && particles.length > 0 && (
+        <div className={`season-decor__fall ${rising ? 'season-decor__fall--rise' : ''}`}>
+          {particles.map((p, i) => {
+            const Motif = MOTIFS[fallMotif];
+            return (
+              <span
+                key={`fall-${i}`}
+                className={`season-decor__flake ${p.small ? 'season-decor__item--small' : ''}`}
+                style={{
+                  left: `${p.x}%`,
+                  top: `${p.y}%`,
+                  width: `${p.size}vmin`,
+                  height: `${p.size}vmin`,
+                  opacity: p.opacity,
+                  color: p.color,
+                  ['--fall-duration' as string]: `${p.duration}s`,
+                  ['--fall-delay' as string]: `${p.delay}s`,
+                  ['--fall-drift' as string]: `${p.drift}vmin`,
+                }}
+              >
+                <Motif />
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       <div className="season-decor__fixed">
         {ANCHORS[season].map((a, i) => {

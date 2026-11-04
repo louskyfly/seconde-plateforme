@@ -684,6 +684,9 @@ html[data-season='fantastique'] .season-greeting {
 }
 .season-decor__flake {
   animation: decor-fall var(--fall-duration, 12s) linear var(--fall-delay, 0s) infinite;
+  /* Pendant le délai, on applique déjà l'image 0 % : une bulle en attente
+     reste sous l'écran au lieu d'apparaître en haut. */
+  animation-fill-mode: both;
 }
 /* Éléments fixes : posés dans un coin, ils ne bougent pas. */
 .season-decor__anchor {
@@ -714,6 +717,31 @@ html[data-season='fantastique'] .season-greeting {
   }
   100% {
     transform: translate3d(var(--fall-drift, 4vmin), 104vh, 0) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Bulles du thème sous-marin : elles REMONTENT (l'inverse des flocons). */
+.season-decor__fall--rise .season-decor__flake {
+  animation-name: decor-rise;
+}
+
+@keyframes decor-rise {
+  0% {
+    transform: translate3d(0, 104vh, 0) scale(0.6);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate3d(calc(var(--fall-drift, 4vmin) * 0.5), 50vh, 0) scale(1);
+  }
+  90% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate3d(var(--fall-drift, 4vmin), -8vh, 0) scale(1.15);
     opacity: 0;
   }
 }

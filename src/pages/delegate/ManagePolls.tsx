@@ -282,6 +282,7 @@ export function ManagePolls() {
 
     const optionText = (id: string) =>
       (poll.options || []).find((o) => o.id === id)?.text || id;
+    const realVoters = (poll.voters || []).filter((v) => !v.simulated);
 
     const toggleSim = () => {
       if (simOpen) {
@@ -303,27 +304,27 @@ export function ManagePolls() {
         setSimFor(null);
         setSimCount(1);
         load();
-        notify(`${simCount} vote${simCount > 1 ? 's' : ''} simulé${simCount > 1 ? 's' : ''} ajouté${simCount > 1 ? 's' : ''}`);
+        notify(`${simCount} vote${simCount > 1 ? 's' : ''} ajouté${simCount > 1 ? 's' : ''}`);
       } catch (err: any) {
-        setSimError(err.message || 'Simulation impossible');
+        setSimError(err.message || 'Ajout impossible');
       } finally {
         setSimBusy(false);
       }
     };
 
     const clearSimulated = async () => {
-      if (!window.confirm('Supprimer tous les votes simulés de ce sondage ?')) return;
+      if (!window.confirm('Retirer les votes ajoutés pour les tests ?')) return;
       setSimBusy(true);
       setSimError('');
       try {
         const res = await api.clearSimulatedVotes(poll.id);
         load();
-        notify(`${res.removed} vote(s) simulé(s) supprimé(s)`);
+        notify(`${res.removed} vote(s) de test retiré(s)`);
       } catch (err: any) {
         const msg = err.message || 'Suppression impossible';
         setSimError(
           msg.includes('refusée')
-            ? "La base refuse la suppression : les règles Firebase doivent être mises à jour (voir SECURITY.md). Les votes simulés restent visibles en attendant."
+            ? "La base refuse la suppression : les règles Firebase doivent être mises à jour (voir SECURITY.md)."
             : msg
         );
       } finally {
@@ -347,17 +348,12 @@ export function ManagePolls() {
         </div>
 
         <div className="mt-4">
-          <PollChart
-            options={poll.options}
-            total={totalVotes(poll.options)}
-            simulated={poll.simulated_votes}
-          />
+          <PollChart options={poll.options} total={totalVotes(poll.options)} />
         </div>
 
         <div className="flex items-center justify-between gap-2 flex-wrap mt-4">
           <span className="text-xs text-gray-500 dark:text-gray-400">
-            {poll.total_voters ?? 0} élève(s) · {totalVotes(poll.options)} vote(s)
-            {poll.simulated_votes ? ` · dont ${poll.simulated_votes} simulé(s)` : ''} · créé le{' '}
+            {poll.total_voters ?? 0} élève(s) · {totalVotes(poll.options)} vote(s) · créé le{' '}
             {formatDate(poll.created_at)}
           </span>
           <div className="flex gap-2">
@@ -389,20 +385,15 @@ export function ManagePolls() {
           </div>
         </div>
 
-        {poll.voters && poll.voters.length > 0 && (
+        {realVoters.length > 0 && (
           <details className="mt-3 border-t border-white/10 dark:border-gray-700/30 pt-3">
             <summary className="cursor-pointer text-xs font-semibold text-gray-600 dark:text-gray-300">
-              Qui a voté ({poll.voters.length})
+              Qui a voté ({realVoters.length})
             </summary>
             <ul className="mt-2 space-y-1">
-              {poll.voters.map((v, i) => (
+              {realVoters.map((v, i) => (
                 <li key={`${v.name}-${i}`} className="flex flex-wrap items-center gap-2 text-[11px]">
                   <span className="font-medium text-gray-800 dark:text-gray-100">{v.name}</span>
-                  {v.simulated && (
-                    <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300">
-                      simulé
-                    </span>
-                  )}
                   <span className="ml-auto text-gray-500 dark:text-gray-400">
                     {v.option_ids.map(optionText).join(', ')}
                   </span>
@@ -418,7 +409,7 @@ export function ManagePolls() {
               onClick={toggleSim}
               className="glass-button text-xs px-3 py-2"
             >
-              🧪 {simOpen ? 'Fermer la simulation' : 'Simuler des votes'}
+              {simOpen ? 'Fermer' : '➕ Ajouter des votes'}
             </button>
             {poll.simulated_votes ? (
               <button
@@ -426,7 +417,7 @@ export function ManagePolls() {
                 disabled={simBusy}
                 className="glass-button text-xs px-3 py-2 text-amber-700 dark:text-amber-300 disabled:opacity-50"
               >
-                Effacer les {poll.simulated_votes} votes simulés
+                Réinitialiser les votes de test
               </button>
             ) : null}
           </div>
@@ -471,8 +462,8 @@ export function ManagePolls() {
 
           {simError && <p className="mt-2 text-[11px] text-red-500">{simError}</p>}
           <p className="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
-            Les votes simulés sont marqués « simulé » et peuvent être effacés sans toucher aux
-            votes réels.
+            Les votes ajoutés ici sont comptés comme des votes normaux. « Réinitialiser les votes
+            de test » les retire sans toucher aux votes des élèves.
           </p>
         </div>
       </div>

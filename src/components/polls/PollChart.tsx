@@ -13,12 +13,10 @@ const COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#a855f7'
 export function PollChart({
   options,
   total,
-  simulated = 0,
   size = 150,
 }: {
   options: PollOption[] | undefined;
   total: number;
-  simulated?: number;
   size?: number;
 }) {
   const list = options || [];
@@ -93,12 +91,6 @@ export function PollChart({
           </li>
         ))}
       </ul>
-
-      {simulated > 0 && (
-        <p className="w-full text-[10px] text-amber-600 dark:text-amber-400">
-          🧪 dont {simulated} vote{simulated > 1 ? 's' : ''} simulé{simulated > 1 ? 's' : ''}
-        </p>
-      )}
     </div>
   );
 }

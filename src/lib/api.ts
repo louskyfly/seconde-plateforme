@@ -669,7 +669,9 @@ function shapePoll(p: Row, votesByPoll: any, voterKey?: string, legacyKey?: stri
     closed_at: p.closedAt ? iso(p.closedAt) : null,
     options,
     total_votes: totalVotes,
-    total_voters: Math.max(0, Object.keys(votes).length - simulatedVotes),
+    // Les votes de test comptent comme des votants : ils ne doivent pas être
+    // distinguables des votes réels (le délégué décide de les ajouter).
+    total_voters: Object.keys(votes).length,
     has_voted: hasVoted,
     simulated_votes: simulatedVotes,
     // Les noms ne sont exposés qu'au délégué, et jamais sur un sondage anonyme.

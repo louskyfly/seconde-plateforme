@@ -101,7 +101,7 @@ function Sidebar({ token }: { token: string }) {
           <span className="text-lg">🚪</span>
           <span>Déconnexion</span>
         </button>
-        <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-3 text-center">
+        <p className="text-[10px] text-gray-300 dark:text-gray-400 mt-3 text-center">
           Créé et déployé par Lucas Sanchez
         </p>
       </div>
@@ -203,7 +203,7 @@ function DelegateLayout() {
             <Outlet />
           </div>
         </div>
-        <footer className="pb-4 text-center text-[10px] text-gray-300 dark:text-gray-600">
+        <footer className="pb-4 text-center text-[10px] text-gray-300 dark:text-gray-400">
           Créé et déployé par Lucas Sanchez
         </footer>
       </main>

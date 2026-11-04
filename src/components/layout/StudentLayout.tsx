@@ -68,7 +68,7 @@ function Sidebar() {
         <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
           {settings?.delegate_name || 'Délégué'}
         </p>
-        <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-2">
+        <p className="text-[10px] text-gray-300 dark:text-gray-400 mt-2">
           Créé et déployé par Lucas Sanchez
         </p>
       </div>
@@ -116,7 +116,7 @@ export function StudentLayout() {
             <Outlet />
           </div>
         </div>
-        <footer className="pb-4 text-center text-[10px] text-gray-300 dark:text-gray-600">
+        <footer className="pb-4 text-center text-[10px] text-gray-300 dark:text-gray-400">
           Créé et déployé par Lucas Sanchez
         </footer>
       </main>

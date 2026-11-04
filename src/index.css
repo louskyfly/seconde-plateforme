@@ -794,3 +794,57 @@ html[data-season='noel'] .season-decor::before {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===== Lisibilité : contraste des textes secondaires =====
+   L'application est en mode sombre. Les gris 500/600 de Tailwind tombaient
+   sous 4,5:1 sur le fond nuit : on les éclaircit d'un cran. Les badges clairs
+   conservent leurs variantes dark: (gray-300), non touchées ici. */
+.dark .text-gray-500 {
+  color: #9ca3af !important; /* gray-400 */
+}
+/* Variantes `dark:` utilisées par les composants (gris 500/600 sur fond nuit). */
+.dark .dark\:text-gray-500,
+.dark .dark\:text-gray-600 {
+  color: #9ca3af !important; /* gray-400 */
+}
+.dark .dark\:text-indigo-400 {
+  color: #a5b4fc !important; /* indigo-300, plus clair sur fond nuit */
+}
+.dark .text-red-500,
+.dark .text-red-600 {
+  color: #f87171 !important; /* red-400 */
+}
+/* Boutons pleins : un fond plus foncé garde le texte blanc lisible. */
+.dark .bg-red-500,
+.dark .bg-red-500\/90,
+.dark .bg-red-500\/80 {
+  background-color: #b91c1c !important; /* red-700 */
+}
+.dark .bg-green-500,
+.dark .bg-green-500\/85 {
+  background-color: #15803d !important; /* green-700 */
+}
+.dark .bg-indigo-500 {
+  background-color: #4f46e5 !important; /* indigo-600 */
+}
+/* Texte blanc translucide sur les bulles indigo. */
+.dark .text-white\/60 {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+.dark .text-white\/70 {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+/* Titres en dégradé : version claire pour ressortir sur le fond nuit. */
+.dark .gradient-text-night {
+  background-image: linear-gradient(120deg, #93b4f5 0%, #dbe7ff 55%, #a9c4f0 100%);
+}
+/* Badge de saison : le texte blanc garde un contour lisible sur les dégradés. */
+.season-greeting {
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+/* Le dégradé du badge est assombri pour que le texte blanc reste lisible,
+   quel que soit le thème (orange, vert, violet...). */
+html[data-season] .season-greeting {
+  background-color: rgba(8, 14, 28, 0.5);
+  background-blend-mode: multiply;
+}

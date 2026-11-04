@@ -128,7 +128,7 @@ export function MiniCalendar({ events, selected, onSelectDay, compact = false }:
               disabled={!onSelectDay}
               aria-label={`${date.getDate()} ${MONTHS[date.getMonth()]}${hasEvent ? ', événement' : ''}`}
               className={`${cell} relative flex flex-col items-center justify-center rounded-lg transition-colors ${
-                inMonth ? 'text-gray-700 dark:text-gray-200' : 'text-gray-300 dark:text-gray-600'
+                inMonth ? 'text-gray-700 dark:text-gray-200' : 'text-gray-300 dark:text-gray-400'
               } ${isSelected ? 'bg-indigo-500 text-white font-bold' : ''} ${
                 isToday && !isSelected ? 'ring-1 ring-indigo-400 font-bold' : ''
               } ${onSelectDay ? 'hover:bg-indigo-500/15 cursor-pointer' : 'cursor-default'}`}

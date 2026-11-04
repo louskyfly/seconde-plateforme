@@ -638,20 +638,71 @@ function FloatingIsland() {
 }
 
 function MagicTree() {
+  const uid = useUid();
   return (
-    <svg viewBox="0 0 120 160" className="h-full w-full">
-      <path d="M60 158V96M60 120l-18-14M60 132l20-16M60 106l-14-18" stroke="#3a2350" strokeWidth="7" strokeLinecap="round" />
-      <g fill="currentColor">
-        <circle cx="60" cy="64" r="30" opacity="0.55" />
-        <circle cx="34" cy="80" r="20" opacity="0.45" />
-        <circle cx="86" cy="80" r="20" opacity="0.45" />
-        <circle cx="60" cy="42" r="18" opacity="0.6" />
+    <svg viewBox="0 0 180 240" className="h-full w-full">
+      <defs>
+        <linearGradient id={`${uid}tr`} x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0" stopColor="#2a1450" />
+          <stop offset="1" stopColor="#5b3a86" />
+        </linearGradient>
+        <radialGradient id={`${uid}gl`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="#f0e6ff" stopOpacity="0.55" />
+          <stop offset="0.55" stopColor="#b388ff" stopOpacity="0.28" />
+          <stop offset="1" stopColor="#7c3aed" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="90" cy="236" rx="58" ry="6" fill="#000" opacity="0.22" />
+      <path
+        d="M90 236c-20-6-34-4-46 2 14 2 26 2 36-2M90 236c20-6 34-4 46 2-14 2-26 2-36-2"
+        fill="none"
+        stroke={`url(#${uid}tr)`}
+        strokeWidth="7"
+        strokeLinecap="round"
+      />
+      <path
+        d="M78 232c-4-38-2-62 6-88 2-10 8-18 12-26 4 10 10 20 12 30 6 26 8 50 6 84z"
+        fill={`url(#${uid}tr)`}
+      />
+      <path
+        d="M88 230c-2-30 0-56 6-80M100 230c2-26 0-52-4-74"
+        stroke="#1b0d33"
+        strokeWidth="1.6"
+        opacity="0.45"
+        fill="none"
+      />
+      <path
+        d="M90 150c-16-10-30-12-44-8M90 160c16-12 32-14 46-8M90 180c-12-6-22-6-32-2M90 190c12-6 24-6 34-2"
+        stroke={`url(#${uid}tr)`}
+        strokeWidth="6"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <ellipse cx="90" cy="88" rx="76" ry="68" fill={`url(#${uid}gl)`} />
+      <g fill="#7c3aed">
+        <ellipse cx="52" cy="104" rx="34" ry="28" opacity="0.75" />
+        <ellipse cx="128" cy="104" rx="34" ry="28" opacity="0.75" />
+        <ellipse cx="90" cy="68" rx="42" ry="32" opacity="0.85" />
+        <ellipse cx="64" cy="76" rx="26" ry="22" opacity="0.8" />
+        <ellipse cx="116" cy="76" rx="26" ry="22" opacity="0.8" />
       </g>
-      <g fill="#fff" opacity="0.5">
-        <circle cx="48" cy="52" r="2" />
-        <circle cx="72" cy="44" r="1.6" />
-        <circle cx="38" cy="74" r="1.6" />
-        <circle cx="84" cy="72" r="1.8" />
+      <g fill="#a78bfa" opacity="0.55">
+        <ellipse cx="76" cy="62" rx="18" ry="14" />
+        <ellipse cx="106" cy="72" rx="16" ry="12" />
+        <ellipse cx="58" cy="96" rx="14" ry="10" />
+        <ellipse cx="124" cy="96" rx="14" ry="10" />
+      </g>
+      <g fill="#f0e6ff">
+        <circle cx="70" cy="86" r="3.4" />
+        <circle cx="102" cy="58" r="3" />
+        <circle cx="118" cy="98" r="3.2" />
+        <circle cx="52" cy="108" r="2.6" />
+        <circle cx="86" cy="112" r="2.4" />
+      </g>
+      <g fill="#fff" opacity="0.8">
+        <circle cx="68" cy="84" r="1.2" />
+        <circle cx="100" cy="56" r="1.1" />
+        <circle cx="116" cy="96" r="1.2" />
       </g>
     </svg>
   );
@@ -810,68 +861,54 @@ const PARTICLES: Partial<Record<SeasonTheme, Particle[]>> = {
 const ANCHORS: Record<Exclude<SeasonTheme, 'aucun'>, Anchor[]> = {
   halloween: [
     { motif: 'web', size: 20, opacity: 0.28, fromRight: -4, fromTop: -7 },
-    { motif: 'web', size: 14, opacity: 0.22, fromLeft: -5, fromTop: -8, small: true },
-    { motif: 'house', size: 30, opacity: 0.7, fromRight: 1, fromBottom: -3 },
-    { motif: 'moonSmall', size: 12, opacity: 0.8, fromLeft: 8, fromTop: 5 },
-    { motif: 'bat', size: 8, opacity: 0.55, fromLeft: 20, fromTop: 16, small: true },
-    { motif: 'bat', size: 6, opacity: 0.45, fromRight: 22, fromTop: 24, small: true },
-    { motif: 'pumpkin', size: 12, opacity: 0.92, fromLeft: 3, fromBottom: -1 },
-    { motif: 'pumpkin', size: 7, opacity: 0.8, fromLeft: 13, fromBottom: 0, small: true },
-    { motif: 'candle', size: 9, opacity: 0.8, fromRight: 30, fromBottom: 0, small: true },
+    { motif: 'house', size: 30, opacity: 0.7, fromRight: 0, fromBottom: -3 },
+    { motif: 'moonSmall', size: 12, opacity: 0.8, fromRight: 24, fromTop: 4 },
+    { motif: 'bat', size: 8, opacity: 0.55, fromRight: 34, fromTop: 10, small: true },
+    { motif: 'pumpkin', size: 12, opacity: 0.92, fromRight: 30, fromBottom: -1 },
+    { motif: 'candle', size: 9, opacity: 0.8, fromRight: 38, fromBottom: 0, small: true },
   ],
   noel: [
-    { motif: 'fir', size: 20, opacity: 0.9, fromLeft: 1.5, fromBottom: -2 },
-    { motif: 'fir', size: 15, opacity: 0.85, fromRight: 3, fromBottom: -2 },
-    { motif: 'fir', size: 10, opacity: 0.7, fromLeft: 14, fromBottom: -1, small: true },
-    { motif: 'gift', size: 7, opacity: 0.75, fromLeft: 20, fromBottom: 0, small: true },
-    { motif: 'gift', size: 7, opacity: 0.7, fromRight: 8, fromBottom: 0, small: true },
+    { motif: 'fir', size: 20, opacity: 0.9, fromRight: 2, fromBottom: -2 },
+    { motif: 'fir', size: 15, opacity: 0.85, fromRight: 16, fromBottom: -2 },
+    { motif: 'fir', size: 10, opacity: 0.7, fromRight: 30, fromBottom: -1, small: true },
+    { motif: 'gift', size: 7, opacity: 0.75, fromRight: 8, fromBottom: 0, small: true },
   ],
   'sous-marin': [
-    { motif: 'kelp', size: 18, w: 10, h: 34, opacity: 0.6, fromLeft: 1, fromBottom: -4, color: '#1f9e7a' },
-    { motif: 'kelp', size: 16, w: 9, h: 30, opacity: 0.55, fromRight: 2, fromBottom: -4, color: '#28b58c' },
-    { motif: 'coral', size: 18, opacity: 0.85, fromLeft: 12, fromBottom: -2, color: '#ff8f7a' },
-    { motif: 'coral', size: 13, opacity: 0.75, fromRight: 16, fromBottom: -1, color: '#ffb39e' },
-    { motif: 'coral', size: 9, opacity: 0.6, fromLeft: 30, fromBottom: 0, color: '#ff6f61', small: true },
-    { motif: 'starfish', size: 6, opacity: 0.7, fromLeft: 26, fromBottom: 2, color: '#ffb347', small: true },
+    { motif: 'kelp', size: 18, w: 10, h: 34, opacity: 0.6, fromRight: 1, fromBottom: -4, color: '#1f9e7a' },
+    { motif: 'kelp', size: 16, w: 9, h: 30, opacity: 0.55, fromRight: 14, fromBottom: -4, color: '#28b58c' },
+    { motif: 'coral', size: 18, opacity: 0.85, fromRight: 20, fromBottom: -2, color: '#ff8f7a' },
+    { motif: 'coral', size: 13, opacity: 0.75, fromRight: 6, fromBottom: -1, color: '#ffb39e' },
+    { motif: 'starfish', size: 6, opacity: 0.7, fromRight: 30, fromBottom: 2, color: '#ffb347', small: true },
     { motif: 'submarine', size: 22, w: 30, h: 16, opacity: 0.8, fromRight: 6, fromTop: 1 },
-    { motif: 'jellyfish', size: 11, opacity: 0.6, fromLeft: 1, fromTop: 42, color: '#c9a7ff' },
-    { motif: 'fish', size: 10, opacity: 0.75, fromLeft: 45, fromTop: 2, color: '#7fe3ff' },
-    { motif: 'fish', size: 6, opacity: 0.5, fromRight: 20, fromBottom: 12, color: '#9fe9ff', small: true },
-    { motif: 'fish', size: 7, opacity: 0.55, fromRight: 28, fromTop: 6, color: '#7fe3ff', small: true },
+    { motif: 'jellyfish', size: 11, opacity: 0.6, fromRight: 2, fromTop: 42, color: '#c9a7ff' },
+    { motif: 'fish', size: 10, opacity: 0.75, fromRight: 45, fromTop: 2, color: '#7fe3ff' },
+    { motif: 'fish', size: 6, opacity: 0.5, fromRight: 24, fromBottom: 12, color: '#9fe9ff', small: true },
+    { motif: 'fish', size: 7, opacity: 0.55, fromRight: 30, fromTop: 6, color: '#7fe3ff', small: true },
   ],
   futuriste: [
-    { motif: 'tower', size: 26, w: 20, h: 92, opacity: 0.36, fromLeft: -6, fromBottom: -8, color: '#2a6cff' },
-    { motif: 'tower', size: 24, w: 18, h: 80, opacity: 0.3, fromRight: -6, fromBottom: -8, color: '#3b4fd8' },
-    { motif: 'tower', size: 18, w: 14, h: 58, opacity: 0.28, fromLeft: 16, fromBottom: -6, color: '#1f4bd8', small: true },
-    { motif: 'tower', size: 16, w: 12, h: 52, opacity: 0.24, fromRight: 18, fromBottom: -6, color: '#2a4fc0', small: true },
-    { motif: 'neon', size: 10, w: 5, h: 18, opacity: 0.8, fromLeft: 6, fromTop: 26, small: true },
-    { motif: 'neon', size: 8, w: 4, h: 14, opacity: 0.7, fromRight: 8, fromTop: 34, small: true },
+    { motif: 'tower', size: 26, w: 22, h: 94, opacity: 0.36, fromRight: -5, fromBottom: -8, color: '#2a6cff' },
+    { motif: 'tower', size: 24, w: 16, h: 76, opacity: 0.26, fromRight: -12, fromBottom: -8, color: '#3b4fd8' },
+    { motif: 'tower', size: 18, w: 12, h: 54, opacity: 0.24, fromRight: 14, fromBottom: -6, color: '#1f4bd8', small: true },
+    { motif: 'neon', size: 10, w: 5, h: 18, opacity: 0.8, fromRight: 36, fromTop: 2, small: true },
     { motif: 'planet', size: 15, opacity: 0.8, fromRight: 14, fromTop: 2 },
     { motif: 'car', size: 14, w: 18, h: 8, opacity: 0.9, fromRight: 5, fromTop: 12 },
-    { motif: 'car', size: 10, w: 13, h: 6, opacity: 0.7, fromLeft: 8, fromTop: 22, small: true },
   ],
   medieval: [
-    { motif: 'castle', size: 40, w: 54, h: 40, opacity: 0.85, fromRight: -2, fromBottom: -5 },
-    { motif: 'keep', size: 20, w: 11, h: 26, opacity: 0.8, fromLeft: 2, fromBottom: -4 },
-    { motif: 'keep', size: 16, w: 9, h: 21, opacity: 0.7, fromLeft: 12, fromBottom: -4, small: true },
-    { motif: 'banner', size: 9, w: 4, h: 12, opacity: 0.85, fromLeft: 24, fromTop: -1 },
-    { motif: 'banner', size: 7, w: 3.5, h: 10, opacity: 0.7, fromRight: 26, fromTop: -1, small: true },
-    { motif: 'shield', size: 8, opacity: 0.7, fromLeft: 2, fromTop: 52, small: true },
-    { motif: 'sword', size: 12, w: 4, h: 16, opacity: 0.6, fromLeft: 20, fromBottom: 2, small: true },
+    { motif: 'castle', size: 40, w: 54, h: 36, opacity: 0.62, fromRight: -3, fromBottom: -7 },
+    { motif: 'keep', size: 20, w: 11, h: 26, opacity: 0.8, fromRight: 28, fromBottom: -4 },
+    { motif: 'banner', size: 9, w: 4, h: 12, opacity: 0.85, fromRight: 34, fromTop: -1 },
+    { motif: 'sword', size: 12, w: 4, h: 16, opacity: 0.6, fromRight: 40, fromBottom: 2, small: true },
     { motif: 'chest', size: 8, opacity: 0.7, fromRight: 8, fromBottom: 1, small: true },
   ],
   fantastique: [
     { motif: 'moon', size: 22, opacity: 0.9, fromRight: 5, fromTop: 2 },
-    { motif: 'portal', size: 18, w: 14, h: 22, opacity: 0.6, fromLeft: 1, fromBottom: 8 },
-    { motif: 'island', size: 18, w: 20, h: 15, opacity: 0.7, fromLeft: -4, fromTop: 44, small: true },
-    { motif: 'tree', size: 20, w: 13, h: 24, opacity: 0.75, fromRight: -3, fromBottom: 2 },
-    { motif: 'crystal', size: 12, opacity: 0.8, fromLeft: 4, fromBottom: -2, color: '#b388ff' },
-    { motif: 'crystal', size: 8, opacity: 0.65, fromRight: 12, fromBottom: -2, color: '#d1b3ff', small: true },
-    { motif: 'crystal', size: 6, opacity: 0.55, fromLeft: 30, fromBottom: 0, color: '#e0ccff', small: true },
-    { motif: 'dragon', size: 16, w: 22, h: 11, opacity: 0.55, fromLeft: 45, fromTop: 1 },
-    { motif: 'star', size: 5, opacity: 0.9, fromLeft: 40, fromTop: 4, color: '#f0e6ff', small: true },
-    { motif: 'star', size: 4, opacity: 0.7, fromRight: 28, fromTop: 18, color: '#ffb3f0', small: true },
-    { motif: 'star', size: 3, opacity: 0.6, fromLeft: 60, fromTop: 8, color: '#d9c2ff', small: true },
+    { motif: 'dragon', size: 16, w: 22, h: 11, opacity: 0.55, fromRight: 34, fromTop: 1 },
+    { motif: 'tree', size: 22, w: 15, h: 27, opacity: 0.85, fromRight: -2, fromBottom: 2 },
+    { motif: 'crystal', size: 12, opacity: 0.8, fromRight: 16, fromBottom: -2, color: '#b388ff' },
+    { motif: 'crystal', size: 8, opacity: 0.65, fromRight: 4, fromBottom: -2, color: '#d1b3ff', small: true },
+    { motif: 'portal', size: 18, w: 14, h: 22, opacity: 0.55, fromRight: 26, fromBottom: 4 },
+    { motif: 'star', size: 5, opacity: 0.9, fromRight: 40, fromTop: 4, color: '#f0e6ff', small: true },
+    { motif: 'star', size: 4, opacity: 0.7, fromRight: 46, fromTop: 6, color: '#ffb3f0', small: true },
   ],
 };
 

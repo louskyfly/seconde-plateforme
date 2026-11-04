@@ -617,8 +617,14 @@ html[data-season='fantastique'] .glass::after {
     radial-gradient(130% 65% at 15% 0%, rgba(179, 136, 255, 0.16) 0%, rgba(179, 136, 255, 0) 45%);
 }
 
-/* Petit message de saison sur l'accueil */
-.season-greeting {
+/* Les grands décors passent derrière le contenu : une ombre portée sur les
+   titres en dégradé garantit qu'ils restent lisibles même sur un château ou
+   une tour. */
+html[data-season] .gradient-text-night {
+  filter: drop-shadow(0 1px 6px rgba(0, 0, 0, 0.55));
+}
+
+/* Petit message de saison sur l'accueil */.season-greeting {
   display: inline-block;
   padding: 0.3rem 0.75rem;
   border-radius: 9999px;

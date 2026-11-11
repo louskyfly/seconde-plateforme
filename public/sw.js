@@ -2,7 +2,7 @@
 // Les pages HTML viennent du réseau en priorité, pour que chaque appareil
 // récupère tout de suite la nouvelle version du site. Les données (Firebase)
 // ne passent jamais par ce service worker.
-const CACHE_NAME = 'seconde-platform-v5';
+const CACHE_NAME = 'seconde-platform-v6';
 const BASE = '/seconde-plateforme/';
 const STATIC_ASSETS = [BASE, BASE + 'manifest.json', BASE + 'favicon.svg', BASE + 'icons/icon-192.png'];
 
@@ -66,8 +66,38 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// Notification envoyée par le robot GitHub Actions (scripts/push-notifier.mjs).
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { title: 'Seconde', body: event.data ? event.data.text() : '' };
+  }
+  const title = data.title || 'Seconde';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: BASE + 'icons/icon-192.png',
+      badge: BASE + 'icons/icon-192.png',
+      tag: data.tag || undefined,
+      data: { url: data.url || BASE },
+    })
+  );
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = event.notification.data && event.notification.data.url;
-  if (url) event.waitUntil(clients.openWindow(url));
+  const url = (event.notification.data && event.notification.data.url) || BASE;
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if (client.url.startsWith(self.location.origin + BASE) && 'focus' in client) {
+          client.navigate(url).catch(() => undefined);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
+  );
 });

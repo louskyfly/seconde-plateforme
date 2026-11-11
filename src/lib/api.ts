@@ -118,7 +118,27 @@ function explain(err: unknown): never {
   throw new ApiError('Connexion impossible : vérifie ton réseau et réessaie.', 0);
 }
 
+/** Clé Firebase d'un abonnement : empreinte SHA-256 (adresse d'envoi + appareil). */
+async function pushKey(endpoint: string, uid: string): Promise<string> {
+  const bytes = new TextEncoder().encode(`${uid}|${endpoint}`);
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash))
+    .slice(0, 20)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/** Horodatages des écritures faites depuis cet appareil (notifications : ne pas s'alerter soi-même). */
+const localWrites: number[] = [];
+
+/** Vrai si un élément créé à `ts` vient très probablement de cet appareil. */
+export function isLocalWrite(ts: number): boolean {
+  return localWrites.some((t) => Math.abs(t - ts) < 5000);
+}
+
 async function write<T>(op: () => Promise<T>): Promise<T> {
+  localWrites.push(Date.now());
+  if (localWrites.length > 50) localWrites.shift();
   try {
     // Sous les règles Firebase durcies, aucune écriture n'est acceptée avant
     // que la connexion (anonyme ou délégué) soit établie.
@@ -2345,9 +2365,46 @@ export const api = {
   },
 
   /* ---------------- Push notifications (désactivées : pas de serveur) ---------------- */
-  getPushVapidKey: async (): Promise<{ publicKey: string }> => fail('Notifications indisponibles sur cette version du site', 501),
-  subscribePush: async (_subscription: any): Promise<{ success: boolean }> => ({ success: false }),
-  unsubscribePush: async (_endpoint: string): Promise<{ success: boolean }> => ({ success: true }),
+  /** Enregistre l'abonnement aux notifications de cet appareil (envoi par GitHub Actions). */
+  subscribePush: async (sub: { endpoint?: string; keys?: { p256dh?: string; auth?: string } }): Promise<{ success: boolean }> => {
+    const endpoint = String(sub?.endpoint || '');
+    const p256dh = String(sub?.keys?.p256dh || '');
+    const authKey = String(sub?.keys?.auth || '');
+    if (!endpoint.startsWith('https://') || !p256dh || !authKey) fail('Abonnement invalide');
+    await authReady;
+    const uid = authorUid();
+    if (!uid) fail('Connexion impossible : vérifie ton réseau et réessaie.', 0);
+    const key = await pushKey(endpoint, uid);
+    await write(() =>
+      set(
+        ref(db, `pushSubs/${key}`),
+        clean({ endpoint, p256dh, auth: authKey, uid, createdAt: Date.now(), ua: navigator.userAgent.slice(0, 200) })
+      )
+    );
+    try {
+      localStorage.setItem('push_sub_key', key);
+    } catch {
+      /* stockage indisponible */
+    }
+    return { success: true };
+  },
+  unsubscribePush: async (_endpoint: string): Promise<{ success: boolean }> => {
+    let key: string | null = null;
+    try {
+      key = localStorage.getItem('push_sub_key');
+    } catch {
+      /* stockage indisponible */
+    }
+    if (key) {
+      await write(() => set(ref(db, `pushSubs/${key}`), null)).catch(() => {});
+      try {
+        localStorage.removeItem('push_sub_key');
+      } catch {
+        /* stockage indisponible */
+      }
+    }
+    return { success: true };
+  },
 
   /* ---------------- Maintenance ---------------- */
   getMaintenanceState: async (): Promise<MaintenanceState & { is_admin: boolean }> => {

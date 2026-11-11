@@ -4,6 +4,7 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useChatUnread } from '@/hooks/useChatUnread';
 import { usePendingPolls } from '@/hooks/usePendingPolls';
 import { BottomNav } from './BottomNav';
+import { NotificationBell } from '@/components/NotificationBell';
 import { useEffect } from 'react';
 
 const NAV_ITEMS = [
@@ -77,23 +78,31 @@ function Sidebar() {
 }
 
 function PushBanner() {
-  const { shouldAsk, status, enable } = usePushNotifications();
+  const { shouldAsk, status, enable, dismiss } = usePushNotifications();
   if (!shouldAsk) return null;
+  const needsInstall = status === 'needs-install';
 
   return (
-    <div className="glass mb-4 flex items-center gap-3 rounded-full px-4 py-3 animate-slideUp">
+    <div className="glass mb-4 flex items-center gap-3 rounded-3xl px-4 py-3 pr-14 lg:pr-4 animate-slideUp">
       <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-indigo-500/10 text-xl">
         🔔
       </span>
       <p className="min-w-0 flex-1 text-xs text-gray-600 dark:text-gray-300">
-        Active les notifications pour être prévenu des nouvelles annonces et sondages.
+        {needsInstall
+          ? "Pour recevoir les notifications sur l'iPad : touche Partager ⬆️ puis « Sur l'écran d'accueil », puis ouvre le site depuis l'icône."
+          : 'Active les notifications pour être prévenu des nouvelles fiches, idées, annonces, sondages et dates.'}
       </p>
-      <button
-        onClick={enable}
-        disabled={status === 'busy'}
-        className="glass-button-primary flex-shrink-0 px-4 py-2 text-xs"
-      >
-        {status === 'busy' ? '...' : 'Activer'}
+      {!needsInstall && (
+        <button
+          onClick={enable}
+          disabled={status === 'busy'}
+          className="glass-button-primary flex-shrink-0 px-4 py-2 text-xs"
+        >
+          {status === 'busy' ? '...' : 'Activer'}
+        </button>
+      )}
+      <button onClick={dismiss} aria-label="Masquer" className="flex-shrink-0 px-1 text-gray-500 dark:text-gray-400">
+        ✕
       </button>
     </div>
   );
@@ -109,6 +118,7 @@ export function StudentLayout() {
   return (
     <div className="min-h-[100dvh]">
       <Sidebar />
+      <NotificationBell />
       <main className="lg:ml-64">
         <div className="page-container">
           <PushBanner />

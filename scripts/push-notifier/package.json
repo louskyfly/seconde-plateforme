@@ -1,0 +1,9 @@
+{
+  "name": "push-notifier",
+  "private": true,
+  "type": "module",
+  "description": "Robot GitHub Actions : envoie les notifications des nouveautés aux iPads abonnés",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

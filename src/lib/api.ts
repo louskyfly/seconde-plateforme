@@ -118,14 +118,43 @@ function explain(err: unknown): never {
   throw new ApiError('Connexion impossible : vérifie ton réseau et réessaie.', 0);
 }
 
-/** Clé Firebase d'un abonnement : empreinte SHA-256 (adresse d'envoi + appareil). */
-async function pushKey(endpoint: string, uid: string): Promise<string> {
-  const bytes = new TextEncoder().encode(`${uid}|${endpoint}`);
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
+/** Clé Firebase d'un abonnement : empreinte SHA-256 de son adresse d'envoi. */
+async function pushKey(endpoint: string): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(endpoint));
   return Array.from(new Uint8Array(hash))
     .slice(0, 20)
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+/** Clé publique du robot d'envoi (= clé publique VAPID, courbe P-256). */
+const ROBOT_PUBLIC_KEY = 'BBV2uv63gwvTZrDnqDHkytVOvKhfNWOcqqQRH4MHyLyWnOvhY-1vnQeNdg5qDRi4wXXUIZD7-GWmMR54WoM5efY';
+
+function b64url(bytes: Uint8Array): string {
+  let bin = '';
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromB64url(s: string): Uint8Array {
+  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4));
+  return Uint8Array.from(bin, (ch) => ch.charCodeAt(0));
+}
+
+/** Chiffre un texte pour le robot : ECDH P-256 éphémère + SHA-256 + AES-GCM. */
+async function sealForRobot(text: string): Promise<string> {
+  const robot = await crypto.subtle.importKey('raw', fromB64url(ROBOT_PUBLIC_KEY) as BufferSource, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  const eph = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const secret = await crypto.subtle.deriveBits({ name: 'ECDH', public: robot }, eph.privateKey, 256);
+  const aesKey = await crypto.subtle.importKey('raw', await crypto.subtle.digest('SHA-256', secret), 'AES-GCM', false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, new TextEncoder().encode(text)));
+  const pub = new Uint8Array(await crypto.subtle.exportKey('raw', eph.publicKey));
+  const out = new Uint8Array(pub.length + iv.length + ct.length);
+  out.set(pub, 0);
+  out.set(iv, pub.length);
+  out.set(ct, pub.length + iv.length);
+  return b64url(out);
 }
 
 /** Horodatages des écritures faites depuis cet appareil (notifications : ne pas s'alerter soi-même). */
@@ -2365,22 +2394,24 @@ export const api = {
   },
 
   /* ---------------- Push notifications (désactivées : pas de serveur) ---------------- */
-  /** Enregistre l'abonnement aux notifications de cet appareil (envoi par GitHub Actions). */
+  /**
+   * Enregistre l'abonnement aux notifications de cet appareil. Il est chiffré
+   * avec la clé publique du robot d'envoi : la liste est lisible, mais seul le
+   * robot (GitHub Actions) peut s'en servir.
+   */
   subscribePush: async (sub: { endpoint?: string; keys?: { p256dh?: string; auth?: string } }): Promise<{ success: boolean }> => {
     const endpoint = String(sub?.endpoint || '');
     const p256dh = String(sub?.keys?.p256dh || '');
     const authKey = String(sub?.keys?.auth || '');
     if (!endpoint.startsWith('https://') || !p256dh || !authKey) fail('Abonnement invalide');
-    await authReady;
-    const uid = authorUid();
-    if (!uid) fail('Connexion impossible : vérifie ton réseau et réessaie.', 0);
-    const key = await pushKey(endpoint, uid);
-    await write(() =>
-      set(
-        ref(db, `pushSubs/${key}`),
-        clean({ endpoint, p256dh, auth: authKey, uid, createdAt: Date.now(), ua: navigator.userAgent.slice(0, 200) })
-      )
-    );
+    const key = await pushKey(endpoint);
+    const c = await sealForRobot(JSON.stringify({ e: endpoint, p: p256dh, a: authKey, f: safeKey(generateFingerprint()) }));
+    try {
+      await write(() => set(ref(db, `pushSubs/${key}`), { c, createdAt: Date.now() }));
+    } catch (e: any) {
+      // Déjà enregistré (la liste n'accepte que des ajouts) : rien à faire.
+      if (!/permission/i.test(String(e?.message || e))) throw e;
+    }
     try {
       localStorage.setItem('push_sub_key', key);
     } catch {
@@ -2389,19 +2420,10 @@ export const api = {
     return { success: true };
   },
   unsubscribePush: async (_endpoint: string): Promise<{ success: boolean }> => {
-    let key: string | null = null;
     try {
-      key = localStorage.getItem('push_sub_key');
+      localStorage.removeItem('push_sub_key');
     } catch {
       /* stockage indisponible */
-    }
-    if (key) {
-      await write(() => set(ref(db, `pushSubs/${key}`), null)).catch(() => {});
-      try {
-        localStorage.removeItem('push_sub_key');
-      } catch {
-        /* stockage indisponible */
-      }
     }
     return { success: true };
   },

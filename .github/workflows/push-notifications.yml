@@ -10,10 +10,10 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'run (surveillance), test (notification de test), signup (création du compte robot)'
+        description: 'run (surveillance) ou test (notification de test à tous les appareils)'
         default: run
         type: choice
-        options: [run, test, signup]
+        options: [run, test]
 
 concurrency:
   group: push-notifier-${{ github.event.inputs.mode || 'run' }}
@@ -41,7 +41,5 @@ jobs:
         env:
           MODE: ${{ github.event.inputs.mode || 'run' }}
           RUN_MINUTES: '340'
-          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
-          BOT_PASSWORD: ${{ secrets.BOT_PASSWORD }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: node notifier.mjs

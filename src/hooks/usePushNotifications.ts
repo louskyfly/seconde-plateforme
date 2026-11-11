@@ -94,6 +94,31 @@ export function usePushNotifications() {
     }
   }, [ensureSubscribed]);
 
+  // Demande automatique : au premier toucher dans l'appli, la fenêtre d'Apple
+  // « Autoriser les notifications » s'ouvre toute seule (Apple exige un geste
+  // de l'utilisateur, impossible d'activer sans son accord).
+  useEffect(() => {
+    if (status !== 'default') return;
+    let asked = false;
+    try {
+      asked = sessionStorage.getItem('push_auto_asked') === '1';
+    } catch {
+      /* stockage indisponible */
+    }
+    if (asked) return;
+    const onTap = () => {
+      document.removeEventListener('click', onTap, true);
+      try {
+        sessionStorage.setItem('push_auto_asked', '1');
+      } catch {
+        /* stockage indisponible */
+      }
+      void enable();
+    };
+    document.addEventListener('click', onTap, true);
+    return () => document.removeEventListener('click', onTap, true);
+  }, [status, enable]);
+
   const dismiss = useCallback(() => {
     try {
       localStorage.setItem(DISMISS_KEY, '1');

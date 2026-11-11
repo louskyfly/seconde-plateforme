@@ -198,7 +198,7 @@
 
     "revisions": {
       ".read": "auth != null",
-      ".indexOn": ["date"],
+      ".indexOn": ["date", "createdAt"],
       "$id": {
         ".write": "auth != null && (!data.exists() || root.child('delegates').child(auth.uid).exists() || data.child('authorUid').val() === auth.uid)",
         ".validate": "!newData.exists() || (newData.hasChildren(['title', 'date']) && newData.child('authorUid').val() === auth.uid)",
@@ -496,6 +496,17 @@
         "targetType": { ".validate": "newData.isString() && newData.val().length <= 60" },
         "targetId": { ".validate": "newData.isString() && newData.val().length <= 64" },
         "detail": { ".validate": "newData.isString() && newData.val().length <= 500" },
+        "createdAt": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "pushSubs": {
+      ".read": true,
+      "$id": {
+        ".write": "!data.exists() && newData.exists() && $id.length <= 64",
+        ".validate": "newData.hasChildren(['c', 'createdAt'])",
+        "c": { ".validate": "newData.isString() && newData.val().length <= 3000" },
         "createdAt": { ".validate": "newData.isNumber()" },
         "$other": { ".validate": false }
       }
